@@ -237,9 +237,201 @@ Side panels (indicators list, symbol list) have `overflow-y: auto` and scroll na
 - `setActivePanel()` now also triggers order book / tech info refresh
 - `applyLayoutData()` now also restores settings + alerts
 
+---
+
+## v3.0 — Major Feature Expansion + Rebuild
+**Date:** 2026-06-13
+
+### Bug Fix
+- File was truncated at line 3029 (mid-function). Rebuilt complete JS from scratch preserving all v2.0 features.
+
+### New Indicators (added to INDICATORS_DEF)
+- **Stoch RSI** (oscillator): RSI → Stochastic transformation with K/D smoothing. Params: RSI period, Stoch period, K smooth, D smooth.
+- **Heikin Ashi** (overlay): Alternative candle type rendered as semi-transparent second series on main chart.
+- **HTF Levels** (overlay): Draws previous day H/L and previous week H/L as dashed horizontal lines with price labels.
+- **MA Ribbon** (overlay): 8 EMAs (20/25/30/35/40/45/50/55) with rainbow color gradient.
+
+### New Calc Functions
+- `calcStochRSI(data, rsiP, stochP, kSmooth, dSmooth)`
+- `calcHeikinAshi(data)` → array of {time, open, high, low, close}
+- `calcHTFLevels(data, tf)` → {prevDayH, prevDayL, prevDayO, prevDayC, prevWeekH, prevWeekL}
+- `calcMARibbon(data)` → array of {period, color, vals}
+
+### Market Scanner Tab (4th right-panel tab)
+- Scan types: Top Gainers, Top Losers, Highest Volume, RSI Overbought/Oversold, Above/Below EMA 200
+- Scope: Watchlist only OR All Pairs (up to 100)
+- Price scans use cached WS prices; RSI/EMA scans fetch candle data (limit 30 symbols for perf)
+- Click result → loads symbol in active chart
+
+### Indicator Settings Editing
+- Clicking indicator chip body (not ×) opens edit modal with current params pre-filled
+- Supports editing params + color on any existing indicator
+- `showIndicatorModal(defId, existingInd, panel)` — second/third args optional
+
+### Indicator Templates
+- Templates button in topbar (right of layouts)
+- 4 presets: Trend Setup (EMA 20/50/200 + SuperTrend + ADX), Mean Reversion (BB + RSI + MFI), Momentum (MACD + ROC + Donchian), Volume Focus (VWAP + Vol Profile + OBV)
+- Click template card in modal → applies all indicators to active panel
+
+### Data Cache
+- `state.klineCache[key]` where key = `exchange:symbol:tf`
+- 1-minute TTL; `getCachedKlines(symbol, tf, limit)` wraps `fetchKlinesExchange`
+- Used by scanner for performance
+
+### Watchlist Color Labels
+- Small colored dot per symbol row in watchlist
+- Right-click dot → color picker context menu (Red/Orange/Green/Blue/Purple or remove)
+- Stored in `state.symColors` (persisted with autosave)
+
+### WebSocket Status Indicator
+- Small dot in topbar (right side, after Templates button)
+- Green = connected, Red = error, grey = idle
+- `updateWSStatus('connected'|'error'|'')` function
+
+### Architecture Changes (v3)
+- `state.klineCache`: in-memory candle cache
+- `state.symColors`: per-symbol color label map
+- Autosave version bumped to 3
+- `renderSymbolList()` now includes color label dots
+- `renderIndChips()` now supports click-to-edit
+- Drawing toolbar now built by `buildDrawingToolbar()` (no inline HTML)
+- `loadPanelData()` now returns a Promise for use in `restorePanels()`
+
 ## Future improvement ideas
-- Chart screenshot / export to PNG
-- Multiple timeframe analysis overlay
-- Trading journal / notes per drawing
-- Alert via email/webhook
 - More exchange support: Hyperliquid, dYdX, Gate.io
+- Add order book timeframe selector
+- Add auto chart scaling
+
+-  Multi-timeframe analysis overlay
+This is also listed in memory. The app already supports per-panel timeframes and multi-panel layouts, but it does not appear to overlay higher-timeframe levels directly onto a lower-timeframe chart. [onedrive.live.com], [index | HTML]
+Recommendation: add “HTF Levels” as an overlay feature:
+
+previous day high/low/open/close
+previous week high/low
+previous month high/low
+higher-timeframe moving averages
+higher-timeframe candles as ghost candles
+session VWAP / anchored VWAP
+
+Why it matters: crypto traders often analyse a 1h or 15m chart while watching daily/weekly levels. This would be more useful than simply adding more panels because it keeps context visible in the active chart.
+
+- Market scanner / screener tab
+The right panel currently has Watchlist, Order Book, and Tech Info tabs. [onedrive.live.com], [index | HTML]
+Recommendation: add a fourth tab: Scanner.
+Scanner ideas:
+
+top gainers / losers
+highest volume
+unusual volume
+RSI overbought/oversold
+price above/below EMA 200
+breakout above Donchian high
+watchlist-only scan vs all pairs
+
+Why it matters: global symbol search helps when users know what they want; a scanner helps them discover opportunities.
+
+- ~~Watchlist colour labels~~ ✅ Done in v3.0 (color dot per symbol with context menu)
+
+- Mobile and tablet optimisation
+The app currently uses a three-column layout, fixed side panels, chart grid, and minimum chart sizes. [onedrive.live.com], [index | HTML]
+Recommendation: improve smaller-screen behaviour:
+
+bottom tab bar for Watchlist / Indicators / Drawings
+collapsible topbar groups
+full-screen active chart mode
+touch-friendly drawing handles
+larger hit targets
+long-press context menu
+
+Crypto users often check charts on tablets or phones, so this would expand usability significantly.
+
+- WebSocket connection manager
+The current app uses WebSockets for live prices, panel klines, and order book where supported. [onedrive.live.com], [index | HTML]
+Recommendation: centralise WebSocket management:
+
+reconnect with exponential backoff
+show connection status
+avoid duplicate subscriptions
+pause streams for hidden panels
+close streams on tab hidden, resume on visible
+display stale data warning
+
+Why it matters: multiple panels plus watchlist plus order book can create many live connections. A connection manager improves stability.
+
+- ~~Data cache per symbol/timeframe~~ ✅ Done in v3.0 (`state.klineCache`, `getCachedKlines()`, 1-min TTL)
+
+- Reduce inline event handlers
+index contains inline event handlers in generated HTML such as onclick for fullscreen/close panel and retry logic. [index | HTML]
+Recommendation: move inline handlers to delegated event listeners.
+Why it matters: improves maintainability, reduces accidental global coupling, and makes the code safer if user-generated content expands.
+
+- Split into modules eventually
+The current app is intentionally a single-file HTML app with no build step.  That is convenient, but index is now large and contains styling, markup, state, data fetching, indicators, drawing tools, persistence, alerts, settings, order book, and UI logic together. [onedrive.live.com] [index | HTML]
+Recommendation: keep the single-file distribution, but internally organise code sections more cleanly or create an optional modular source version:
+Plain Textsrc/  app-state.js  exchanges/  indicators/  drawings/  watchlists/  alerts/  persistence/  ui/dist/  index.htmlMeer regels weergeven
+Then build back into one index.html if the “single file” requirement remains.
+
+- Drawing groups and visibility layers
+Recommendation: add layers:
+
+Support/resistance
+Fibonacci
+Trade setup
+Notes
+Alerts
+HTF levels
+
+Each layer could have show/hide and lock toggles.
+Why it matters: as users build complex analyses, charts can become cluttered. Layers give structure without deleting work.
+
+- Drawing edit mode: drag, resize, style controls
+The current app has many drawing tools: trend line, ray, extended line, horizontal/vertical lines, rectangle, parallel channel, Fibonacci retracement/extension, text, measure, eraser, import/export, and persistent drawings. [onedrive.live.com], [index | HTML]
+Recommendation: add true object editing:
+
+select drawing
+drag drawing
+drag endpoints
+change colour/width/style after creation
+lock drawing
+hide drawing
+duplicate drawing
+send drawing to back/front
+drawing list panel
+
+Why it matters: the drawing toolset is already broad, but without edit handles and object management it may feel less polished than TradingView-like tools.
+
+- More overlays and oscillators (partially done in v3)
+  - ✅ Stoch RSI, Heikin Ashi, HTF Levels, MA Ribbon added in v3
+  - Still to add: Anchored VWAP, EMA Cloud, Ultimate Oscillator, CMF, Elder Force Index, TSI, DMI ±DI, market structure labels
+
+- ~~Indicator templates / strategy presets~~ ✅ Done in v3.0 (Templates button with 4 presets)
+
+- ~~Indicator settings editing after adding~~ ✅ Done in v3.0 (click chip body = edit modal with current params)
+
+- Symbol format mapping per exchange
+The current code uses symbols such as BTCUSDT, and OKX conversion appears to transform BTCUSDT into BTC-USDT. [index | HTML]
+Recommendation: add a symbol-normalisation layer:
+JavaScripttoExchangeSymbol('BTCUSDT', 'okx')      // BTC-USDTtoExchangeSymbol('BTCUSDT', 'binance')  // BTCUSDTfromExchangeSymbol('BTC-USDT', 'okx')   // BTCUSDTMeer regels weergeven
+
+Why it matters: this avoids brittle string replacements and will become essential if Hyperliquid, dYdX, Gate.io, Coinbase, or Kraken support is expanded.
+
+- Complete exchange support consistency
+The settings page currently lists Binance and Bybit as “Full support,” while OKX, Kraken, and Coinbase are marked REST-only or fallback-like in the documented changes.  In index, Binance has REST/WebSocket klines/order book support, Bybit has REST/WebSocket paths, OKX has candle fetching, and Kraken/Coinbase fall back in several places. [onedrive.live.com] [index | HTML]
+Recommendation: make exchange support explicit and safer in the UI:
+
+show exact support badges:
+
+Candles: Live / REST / Fallback
+Watchlist prices: Live / Polling / Fallback
+Order book: Live / Polling / Fallback
+Symbol search: Native / Fallback
+
+warn users when a selected exchange is falling back to another exchange’s data
+add a small exchange badge on every chart panel that updates dynamically
+
+Why it matters: if a user selects OKX/Kraken/Coinbase but receives Binance fallback data, they need clear visibility to avoid analytical mistakes.
+
+- ~~Market scanner / screener tab~~ ✅ Done in v3.0 (4th tab: Gainers/Losers/Volume/RSI/EMA scans)
+
+- Add a financial event calendar pane next to the watchlist. Makes it selectable or hideable. Also add a selector to add the events on the x-axis on the selected chart.
+

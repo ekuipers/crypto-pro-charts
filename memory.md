@@ -4,6 +4,15 @@ This file tracks every significant change made to `index.html` for future refere
 
 ---
 
+## 2026-06-14 — Git config: set commit email
+
+**Date:** 2026-06-14
+**Change:** Set local git `user.email` to `erik.kuipers@sogeti.com` for this project only.
+**Why:** User requested project-specific commit identity separate from global git config.
+**Verified:** `git config user.email` returned `erik.kuipers@sogeti.com` immediately after setting.
+
+---
+
 ## v1.0 — Initial build
 **Date:** 2026-06-13
 
@@ -358,6 +367,30 @@ Main (120 bars) + oscillator (34-bar warmup), synced + equal price-scale widths:
 - In `buildOscillator`, each sub-chart gets an invisible **spacer line series** (`priceScaleId:'spc'`, transparent, hidden scale) loaded with a whitespace point (`{time}`) for *every* candle time: `ind._spacer.setData(panel.data.map(c => ({time:c.time})))`. This makes every oscillator's time grid identical to the main chart's, so the logical-range sync lines up both edges regardless of warmup. The spacer is on a hidden overlay scale so it doesn't affect the oscillator's autoscale or the `'right'` width alignment.
 - `startKlineStream` now calls `ind._spacer.update({time: candle.time})` for every oscillator when a *new* bar arrives, so live ticks keep the grids in sync.
 - Works together with v3.2 stateless `alignPriceScales` (equal widths) — both are required for pixel-perfect alignment.
+
+---
+
+## v3.4 — Watchlist drag-reorder + drawing handles/resize + shape config dialog
+**Date:** 2026-06-14
+**Files:** `src/js/watchlist.js`, `src/js/drawings.js`, `src/js/state.js`, `public/index.html`, `public/css/style.css`
+
+### Watchlist: drag to reorder
+- Symbol rows are now `draggable`; a `⠿` drag handle column was added (visible on row hover).
+- HTML5 drag events reorder the underlying `state.watchlists[current]` array with an above/below drop indicator (`.drop-above` / `.drop-below` inset shadow).
+- Added a `'manual'` sort mode: `computeSorted()` preserves array order when `wlSort.col === 'manual'`; `ensureManualOrder()` freezes the current displayed (sorted) order into the array and switches to manual on first drag, so reordering starts from exactly what the user sees. Order persists via the existing autosave snapshot (no schema change).
+- Header markup updated to 7-col grid with two leading spacers + right-aligned numeric labels (`.col.num`), which also fixes the long-standing **Bug #2** (watchlist column labels not aligned on the right).
+
+### Drawings: selection, resize handles, move
+- `drawingState.selected` / `selectedPanel` added (state.js).
+- In select mode the drawing layer is `pointer-events:none` over empty space (chart still pans/zooms); a hover hit-test on the chart div flips it to `auto` only when the cursor is over a shape. Handles (8px squares) are drawn on the selected shape.
+- `hitTest`/`bodyHit` cover every shape (line distance, rect edges, fib levels, channel rails, hline/vline, text box). Drag a handle to resize/reshape (per-point, axis-aware for hline=price-only, vline=bar-only); drag the body to move all points together. Changes dispatch `drawings-changed` → autosave.
+
+### Drawings: live config popover
+- Non-modal popover (`#drawCfg`, top-right of the panel) appears on selection: edit **color**, **line width**, **line style** (solid/dashed, styleable shapes), **text** (text annotations), and each point's **Bar (X)** / **Price (Y)** coordinates. Edits apply live; coordinate fields auto-refresh as the chart pans or the shape is dragged (skipping the focused input). Includes a Delete button.
+- `lineStyle` field added to drawings (persists in the drawings array); `drawOne` now honors solid/dashed per shape (hline/vline still default dashed).
+
+### Verification
+- Headless Chromium unavailable beyond the charting tests; JS validated by full authoritative review of each edited file (balanced braces, template literals, handlers). NOTE: the Linux shell mount serves stale copies of these source files this session, so `node --check` there parses the OLD files — not a reliable post-edit check this session.
 
 ---
 

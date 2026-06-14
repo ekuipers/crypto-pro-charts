@@ -197,15 +197,20 @@ input:focus, select:focus { border-color: var(--accent); }
 .wl-tab { padding: 5px 10px; font-size: 12px; border-radius: 5px; color: var(--muted); white-space: nowrap; background: var(--panel2); }
 .wl-tab.active { background: var(--accent); color: #fff; }
 .sym-list-head, .sym-row {
-  display: grid; grid-template-columns: 14px 1fr 70px 56px 52px 18px; align-items: center; gap: 4px; padding: 5px 8px;
+  display: grid; grid-template-columns: 16px 14px 1fr 70px 56px 52px 18px; align-items: center; gap: 4px; padding: 5px 8px;
 }
 .sym-list-head { font-size: 10px; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
-.sym-list-head .col { cursor: pointer; grid-column: span 1; }
-.sym-list-head .col[data-col="name"] { grid-column: 1 / 3; }
+.sym-list-head .col { cursor: pointer; }
+.sym-list-head .col.num { text-align: right; }
 .sym-list-head .col.sorted { color: var(--accent); }
 .sym-list { flex: 1; overflow-y: auto; }
 .sym-row { font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
 .sym-row:hover { background: var(--hover); }
+.sym-drag { color: transparent; cursor: grab; font-size: 11px; line-height: 1; text-align: center; user-select: none; }
+.sym-row:hover .sym-drag { color: var(--muted); }
+.sym-row.dragging { opacity: 0.45; }
+.sym-row.drop-above { box-shadow: inset 0 2px 0 0 var(--accent); }
+.sym-row.drop-below { box-shadow: inset 0 -2px 0 0 var(--accent); }
 .sym-dot { width: 8px; height: 8px; border-radius: 50%; }
 .sym-name { font-weight: 600; }
 .sym-price { text-align: right; }
@@ -285,6 +290,27 @@ input:focus, select:focus { border-color: var(--accent); }
 .layout-item-actions { display: flex; gap: 6px; }
 .layout-item-btn { padding: 5px 10px; border-radius: 5px; background: var(--panel2); font-size: 12px; }
 .layout-item-btn.load { background: var(--accent); color: #fff; }
+
+/* ---------- Drawing config popover ---------- */
+.draw-cfg {
+  position: fixed; z-index: 90; width: 232px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.45); font-size: 12px; overflow: hidden;
+}
+.draw-cfg .dc-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--panel2); border-bottom: 1px solid var(--border); font-weight: 600; }
+.draw-cfg .dc-head button { color: var(--muted); font-size: 13px; }
+.draw-cfg .dc-head button:hover { color: var(--text); }
+.draw-cfg .dc-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.draw-cfg .dc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); }
+.draw-cfg .dc-row input, .draw-cfg .dc-row select { color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; }
+.draw-cfg .dc-row input[type="color"] { padding: 0; width: 36px; height: 24px; border: none; background: none; cursor: pointer; }
+.draw-cfg .dc-row input[type="number"], .draw-cfg .dc-row input[type="text"] { width: 110px; }
+.draw-cfg .dc-coords { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+.draw-cfg .dc-coord { display: grid; grid-template-columns: 1fr 64px 64px; align-items: center; gap: 5px; }
+.draw-cfg .dc-coord span { color: var(--muted); }
+.draw-cfg .dc-coord input { width: 100%; color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 4px; }
+.draw-cfg .dc-actions { padding: 8px 10px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+.draw-cfg .dc-del { padding: 6px 12px; border-radius: 5px; background: var(--panel2); color: var(--red); }
+.draw-cfg .dc-del:hover { background: var(--red); color: #fff; }
 
 /* ---------- Context menu ---------- */
 .ctx-menu { position: fixed; z-index: 200; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); min-width: 130px; }

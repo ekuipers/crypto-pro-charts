@@ -69,13 +69,12 @@ function wlContextMenu(e, name) {
   ]);
 }
 
-export function renderSymbolList() {
-  const list = document.getElementById('symList');
-  const wl = state.watchlists[state.currentWatchlist] || [];
-  let items = wl.slice();
-  // sort
+// Sorted view of a watchlist. col === 'manual' preserves the stored array
+// order (used for drag-to-reorder).
+function computeSorted(wl) {
   const { col, dir } = state.wlSort;
-  items.sort((a, b) => {
+  if (col === 'manual') return wl.slice();
+  return wl.slice().sort((a, b) => {
     let av, bv;
     if (col === 'name') { av = a.symbol; bv = b.symbol; }
     else { av = state.prices[a.symbol]?.[col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change'] ?? 0; bv = state.prices[b.symbol]?.[col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change'] ?? 0; }
@@ -83,14 +82,46 @@ export function renderSymbolList() {
     if (av > bv) return dir === 'asc' ? 1 : -1;
     return 0;
   });
+}
+
+// Freeze the current displayed order into the stored array and switch to
+// manual sort, so a drag-reorder starts from exactly what the user sees.
+function ensureManualOrder() {
+  if (state.wlSort.col === 'manual') return;
+  state.watchlists[state.currentWatchlist] = computeSorted(state.watchlists[state.currentWatchlist] || []);
+  state.wlSort = { col: 'manual', dir: 'asc' };
+}
+
+function reorderSymbol(fromSym, toSym, after) {
+  if (fromSym === toSym) return;
+  const wl = state.watchlists[state.currentWatchlist];
+  const fromIdx = wl.findIndex(s => s.symbol === fromSym);
+  if (fromIdx < 0) return;
+  const [item] = wl.splice(fromIdx, 1);
+  let toIdx = wl.findIndex(s => s.symbol === toSym);
+  if (toIdx < 0) wl.push(item);
+  else wl.splice(after ? toIdx + 1 : toIdx, 0, item);
+  renderSymbolList(); scheduleAutosave();
+}
+
+let _dragSym = null;
+
+export function renderSymbolList() {
+  const list = document.getElementById('symList');
+  const wl = state.watchlists[state.currentWatchlist] || [];
+  const items = computeSorted(wl);
+  const { col, dir } = state.wlSort;
   list.innerHTML = '';
   items.forEach(s => {
     const p = state.prices[s.symbol] || {};
     const up = (p.change ?? 0) >= 0;
     const row = document.createElement('div');
     row.className = 'sym-row';
+    row.draggable = true;
+    row.dataset.sym = s.symbol;
     const dotColor = state.symColors[s.symbol] || 'transparent';
     row.innerHTML = `
+      <span class="sym-drag" title="Drag to reorder">⠿</span>
       <span class="sym-dot" style="background:${dotColor}"></span>
       <span class="sym-name">${esc(baseAsset(s.symbol))}</span>
       <span class="sym-price">${fmtPrice(p.price)}</span>
@@ -100,6 +131,38 @@ export function renderSymbolList() {
     row.addEventListener('click', e => {
       if (e.target.classList.contains('sym-del')) { removeSymbol(s.symbol); return; }
       if (state.activePanel) changeSymbol(state.activePanel, s.symbol, s.name);
+    });
+
+    // ---- drag to reorder ----
+    row.addEventListener('dragstart', e => {
+      ensureManualOrder();
+      _dragSym = s.symbol;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', s.symbol); } catch {}
+    });
+    row.addEventListener('dragend', () => {
+      _dragSym = null;
+      list.querySelectorAll('.sym-row').forEach(r => r.classList.remove('dragging', 'drop-above', 'drop-below'));
+    });
+    row.addEventListener('dragover', e => {
+      if (!_dragSym || _dragSym === s.symbol) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const r = row.getBoundingClientRect();
+      const below = e.clientY > r.top + r.height / 2;
+      row.classList.toggle('drop-below', below);
+      row.classList.toggle('drop-above', !below);
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drop-above', 'drop-below'));
+    row.addEventListener('drop', e => {
+      if (!_dragSym) return;
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      const from = _dragSym;
+      row.classList.remove('drop-above', 'drop-below');
+      reorderSymbol(from, s.symbol, after);
     });
     row.querySelector('.sym-dot').addEventListener('contextmenu', e => {
       e.preventDefault();

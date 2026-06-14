@@ -1,6 +1,8 @@
 // ============================================================
 // DRAWINGS — canvas overlay drawing engine (per panel)
 // Points stored as { logical, price } in chart logical/price space
+// Supports: creation, selection, resize handles, move, and a live
+// configuration popover (color / width / line style / coordinates).
 // ============================================================
 import { state, drawingState } from './state.js';
 import { fmtPrice } from './utils.js';
@@ -8,8 +10,22 @@ import { fmtPrice } from './utils.js';
 const FIB_RET = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_EXT = [0, 0.618, 1, 1.618, 2.618];
 
+const HANDLE_HIT = 9;   // px radius to grab a handle
+const BODY_HIT = 6;     // px distance to select a shape body
+
+const TYPE_LABELS = {
+  hline: 'Horizontal line', vline: 'Vertical line', trend: 'Trend line',
+  ray: 'Ray', extended: 'Extended line', rect: 'Rectangle', channel: 'Parallel channel',
+  fibret: 'Fib retracement', fibext: 'Fib extension', measure: 'Measure', text: 'Text',
+};
+// Which shapes expose a solid/dashed style control
+const STYLEABLE = new Set(['hline', 'vline', 'trend', 'ray', 'extended', 'rect', 'channel', 'measure']);
+
+let dragInfo = null;   // active handle/body drag
+
 export function initDrawingsForPanel(panel) {
   const layer = panel.el.querySelector('.drawing-layer');
+  const mainDiv = panel.el.querySelector('.main-chart-div');
   const canvas = document.createElement('canvas');
   canvas.className = 'draw-canvas';
   layer.appendChild(canvas);
@@ -17,25 +33,17 @@ export function initDrawingsForPanel(panel) {
 
   let tempPts = [];
 
-  function ptFromEvent(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left, y = e.clientY - rect.top;
-    const logical = panel.chart.timeScale().coordinateToLogical(x);
-    const price = panel.candleSeries.coordinateToPrice(y);
-    return { logical, price, x, y };
-  }
-
   layer.addEventListener('mousedown', e => {
     const tool = drawingState.tool;
-    if (tool === 'select') return;
+    if (tool === 'select') { handleSelectDown(panel, e); return; }
     e.preventDefault();
-    const pt = ptFromEvent(e);
+    const pt = ptFromEvent(panel, e);
 
     if (tool === 'eraser') { eraseNearest(panel, pt); renderDrawings(panel); return; }
 
     if (tool === 'text') {
       const txt = prompt('Annotation text:');
-      if (txt) { panel.drawings.push({ type: 'text', p1: pt, text: txt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); }
+      if (txt) { panel.drawings.push({ type: 'text', p1: pt, text: txt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); fin(); }
       return;
     }
     if (tool === 'hline') { panel.drawings.push({ type: 'hline', p1: pt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); fin(); return; }
@@ -54,14 +62,19 @@ export function initDrawingsForPanel(panel) {
   });
 
   layer.addEventListener('mousemove', e => {
-    if (drawingState.tool === 'select' || !tempPts.length) return;
-    const pt = ptFromEvent(e);
+    if (drawingState.tool === 'select') { updateSelectHover(panel, e); return; }
+    if (!tempPts.length) return;
+    const pt = ptFromEvent(panel, e);
     renderDrawings(panel, { type: drawingState.tool, p1: tempPts[0], p2: tempPts[1] || pt, p3: tempPts[2] || (tempPts.length === 2 ? pt : null), color: drawingState.color, width: drawingState.width });
   });
 
-  function fin() {
-    document.dispatchEvent(new CustomEvent('drawings-changed'));
-  }
+  // In select mode the layer is click-through (pointer-events:none) over empty
+  // space so the chart still pans/zooms — hover detection on the chart div
+  // turns the layer interactive only when the cursor is over a shape.
+  mainDiv.addEventListener('mousemove', e => { if (drawingState.tool === 'select') updateSelectHover(panel, e); });
+  mainDiv.addEventListener('mousedown', () => { if (drawingState.tool === 'select' && !dragInfo) deselect(); });
+
+  function fin() { document.dispatchEvent(new CustomEvent('drawings-changed')); }
   panel._cancelDraw = () => { tempPts = []; renderDrawings(panel); };
 
   updateLayerInteractivity(panel);
@@ -69,18 +82,36 @@ export function initDrawingsForPanel(panel) {
 
 export function updateLayerInteractivity(panel) {
   const layer = panel.el.querySelector('.drawing-layer');
-  layer.style.pointerEvents = (drawingState.tool === 'select') ? 'none' : 'auto';
-  layer.style.cursor = (drawingState.tool === 'select') ? 'default' : 'crosshair';
+  if (drawingState.tool === 'select') {
+    layer.style.pointerEvents = 'none';   // hover handler flips this to 'auto' over shapes
+    layer.style.cursor = 'default';
+  } else {
+    layer.style.pointerEvents = 'auto';
+    layer.style.cursor = 'crosshair';
+  }
 }
 
 export function setTool(tool) {
+  if (tool !== 'select') deselect();
   drawingState.tool = tool;
   state.panels.forEach(updateLayerInteractivity);
 }
 
+// ---------- coordinate helpers ----------
+function canvasXY(panel, e) {
+  const rect = panel._drawCanvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+function ptFromEvent(panel, e) {
+  const { x, y } = canvasXY(panel, e);
+  const logical = panel.chart.timeScale().coordinateToLogical(x);
+  const price = panel.candleSeries.coordinateToPrice(y);
+  return { logical, price, x, y };
+}
 function X(panel, pt) { return panel.chart.timeScale().logicalToCoordinate(pt.logical); }
 function Y(panel, pt) { return panel.candleSeries.priceToCoordinate(pt.price); }
 
+// ---------- rendering ----------
 export function renderDrawings(panel, preview) {
   const canvas = panel._drawCanvas;
   if (!canvas || !panel.chart) return;
@@ -93,24 +124,30 @@ export function renderDrawings(panel, preview) {
 
   const all = preview ? [...panel.drawings, preview] : panel.drawings;
   for (const d of all) drawOne(panel, ctx, d, w, h);
+
+  const sel = drawingState.selected;
+  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) drawHandles(panel, ctx, sel);
+
+  refreshConfigCoords();
 }
+
+function dashFor(d) { return d.lineStyle ? (d.lineStyle === 'dashed') : (d.type === 'hline' || d.type === 'vline'); }
 
 function drawOne(panel, ctx, d, w, h) {
   ctx.save();
   ctx.strokeStyle = d.color; ctx.fillStyle = d.color; ctx.lineWidth = d.width || 1;
+  ctx.setLineDash(dashFor(d) ? [6, 4] : []);
   const p1 = d.p1, p2 = d.p2, p3 = d.p3;
   const x1 = p1 ? X(panel, p1) : null, y1 = p1 ? Y(panel, p1) : null;
   const x2 = p2 ? X(panel, p2) : null, y2 = p2 ? Y(panel, p2) : null;
 
   switch (d.type) {
     case 'hline': {
-      ctx.setLineDash([6, 4]);
       ctx.beginPath(); ctx.moveTo(0, y1); ctx.lineTo(w, y1); ctx.stroke();
       label(ctx, w - 60, y1, fmtPrice(p1.price), d.color);
       break;
     }
     case 'vline': {
-      ctx.setLineDash([6, 4]);
       ctx.beginPath(); ctx.moveTo(x1, 0); ctx.lineTo(x1, h); ctx.stroke();
       break;
     }
@@ -137,6 +174,7 @@ function drawOne(panel, ctx, d, w, h) {
       line(ctx, x1, y1, x2, y2);
       const dp = p2.price - p1.price, pct = (dp / p1.price) * 100;
       const col = dp >= 0 ? '#26a69a' : '#ef5350';
+      ctx.setLineDash([]);
       ctx.fillStyle = col;
       ctx.fillRect(Math.min(x1, x2), Math.min(y1, y2) - 34, 120, 30);
       ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif';
@@ -144,6 +182,7 @@ function drawOne(panel, ctx, d, w, h) {
       break;
     }
     case 'text': {
+      ctx.setLineDash([]);
       ctx.font = '13px sans-serif';
       ctx.fillText(d.text, x1 + 4, y1);
       break;
@@ -153,26 +192,275 @@ function drawOne(panel, ctx, d, w, h) {
 }
 
 function fib(panel, ctx, d, levels, w) {
-  const x1 = X(panel, d.p1), y1 = Y(panel, d.p1), x2 = X(panel, d.p2), y2 = Y(panel, d.p2);
+  const x1 = X(panel, d.p1), x2 = X(panel, d.p2);
   const pr1 = d.p1.price, pr2 = d.p2.price;
   ctx.font = '10px sans-serif';
-  levels.forEach((lv, i) => {
+  ctx.setLineDash([]);
+  levels.forEach(lv => {
     const price = pr1 + (pr2 - pr1) * lv;
     const y = panel.candleSeries.priceToCoordinate(price);
     if (y == null) return;
     ctx.strokeStyle = d.color; ctx.globalAlpha = 0.8;
     ctx.beginPath(); ctx.moveTo(Math.min(x1, x2), y); ctx.lineTo(w, y); ctx.stroke();
-    if (lv >= 0.382 && lv <= 0.618) { ctx.globalAlpha = 0.06; ctx.fillStyle = d.color; }
     ctx.globalAlpha = 1; ctx.fillStyle = d.color;
     ctx.fillText(`${lv} (${fmtPrice(price)})`, Math.min(x1, x2) + 2, y - 2);
   });
   ctx.globalAlpha = 1;
 }
 
+function drawHandles(panel, ctx, d) {
+  ctx.save();
+  ctx.setLineDash([]);
+  getHandles(panel, d).forEach(hd => {
+    const x = X(panel, hd.pt), y = Y(panel, hd.pt);
+    let hx = x, hy = y;
+    if (hd.axis === 'y') hx = panel._drawCanvas.width - 60;   // hline handle sits at the price label
+    if (hd.axis === 'x') hy = 16;                              // vline handle near the top
+    if (hx == null || hy == null) return;
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#2962ff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.rect(hx - 4, hy - 4, 8, 8); ctx.fill(); ctx.stroke();
+  });
+  ctx.restore();
+}
+
+// Handles to expose per shape. axis: 'both' | 'x' (logical only) | 'y' (price only)
+function getHandles(panel, d) {
+  switch (d.type) {
+    case 'hline': return [{ pt: d.p1, axis: 'y', label: 'Level' }];
+    case 'vline': return [{ pt: d.p1, axis: 'x', label: 'Time' }];
+    case 'text': return [{ pt: d.p1, axis: 'both', label: 'Anchor' }];
+    case 'channel': return [
+      { pt: d.p1, axis: 'both', label: 'Point 1' },
+      { pt: d.p2, axis: 'both', label: 'Point 2' },
+      ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Width' }] : []),
+    ];
+    default: return [
+      { pt: d.p1, axis: 'both', label: 'Point 1' },
+      ...(d.p2 ? [{ pt: d.p2, axis: 'both', label: 'Point 2' }] : []),
+    ];
+  }
+}
+
+// ---------- selection + hit testing ----------
+function updateSelectHover(panel, e) {
+  if (drawingState.tool !== 'select') return;
+  const layer = panel.el.querySelector('.drawing-layer');
+  const { x, y } = canvasXY(panel, e);
+  const hit = hitTest(panel, x, y);
+  if (hit) {
+    layer.style.pointerEvents = 'auto';
+    layer.style.cursor = hit.handleIdx >= 0 ? 'crosshair' : 'move';
+  } else if (!dragInfo) {
+    layer.style.pointerEvents = 'none';
+    layer.style.cursor = 'default';
+  }
+}
+
+function hitTest(panel, x, y) {
+  const w = panel.el.querySelector('.main-chart-div').clientWidth;
+  // Prefer handles of the currently selected shape so they stay grabbable.
+  const sel = drawingState.selected;
+  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) {
+    const hs = getHandles(panel, sel);
+    for (let i = 0; i < hs.length; i++) {
+      let hx = X(panel, hs[i].pt), hy = Y(panel, hs[i].pt);
+      if (hs[i].axis === 'y') hx = panel._drawCanvas.width - 60;
+      if (hs[i].axis === 'x') hy = 16;
+      if (hx != null && hy != null && Math.hypot(x - hx, y - hy) <= HANDLE_HIT) return { drawing: sel, handleIdx: i };
+    }
+  }
+  for (let i = panel.drawings.length - 1; i >= 0; i--) {
+    if (bodyHit(panel, panel.drawings[i], x, y, w)) return { drawing: panel.drawings[i], handleIdx: -1 };
+  }
+  return null;
+}
+
+function bodyHit(panel, d, x, y, w) {
+  const p1 = d.p1, p2 = d.p2, p3 = d.p3;
+  const x1 = p1 ? X(panel, p1) : null, y1 = p1 ? Y(panel, p1) : null;
+  const x2 = p2 ? X(panel, p2) : null, y2 = p2 ? Y(panel, p2) : null;
+  if (x1 == null) return false;
+  switch (d.type) {
+    case 'hline': return Math.abs(y - y1) <= BODY_HIT;
+    case 'vline': return Math.abs(x - x1) <= BODY_HIT;
+    case 'text': return Math.abs(x - x1) < 46 && Math.abs(y - y1) < 14;
+    case 'trend': case 'measure': return distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT;
+    case 'ray': { const [ex, ey] = extend(x1, y1, x2, y2, w, 1); return distToSeg(x, y, x1, y1, ex, ey) <= BODY_HIT; }
+    case 'extended': { const [ax, ay] = extend(x2, y2, x1, y1, w, 1); const [bx, by] = extend(x1, y1, x2, y2, w, 1); return distToSeg(x, y, ax, ay, bx, by) <= BODY_HIT; }
+    case 'rect': return nearRect(x, y, x1, y1, x2, y2, BODY_HIT);
+    case 'channel': {
+      if (!p3) return distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT;
+      const dy = Y(panel, p3) - y1;
+      return distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT || distToSeg(x, y, x1, y1 + dy, x2, y2 + dy) <= BODY_HIT;
+    }
+    case 'fibret': case 'fibext': {
+      const levels = d.type === 'fibret' ? FIB_RET : FIB_EXT;
+      const minX = Math.min(x1, x2 ?? x1);
+      if (x < minX - BODY_HIT) return false;
+      return levels.some(lv => {
+        const yy = panel.candleSeries.priceToCoordinate(p1.price + (p2.price - p1.price) * lv);
+        return yy != null && Math.abs(y - yy) <= BODY_HIT;
+      });
+    }
+  }
+  return false;
+}
+
+function handleSelectDown(panel, e) {
+  e.preventDefault(); e.stopPropagation();
+  const { x, y } = canvasXY(panel, e);
+  const hit = hitTest(panel, x, y);
+  if (!hit) { deselect(); return; }
+  select(panel, hit.drawing);
+  const d = hit.drawing;
+  const startPt = ptFromEvent(panel, e);
+  const orig = { p1: clonePt(d.p1), p2: clonePt(d.p2), p3: clonePt(d.p3) };
+  dragInfo = { panel, d, handleIdx: hit.handleIdx, startPt, orig };
+
+  const move = ev => {
+    if (!dragInfo) return;
+    const cur = ptFromEvent(panel, ev);
+    if (cur.logical == null || cur.price == null) return;
+    if (dragInfo.handleIdx >= 0) {
+      const hnd = getHandles(panel, d)[dragInfo.handleIdx];
+      if (!hnd) return;
+      if (hnd.axis !== 'y') hnd.pt.logical = cur.logical;
+      if (hnd.axis !== 'x') hnd.pt.price = cur.price;
+    } else {
+      const dLog = cur.logical - startPt.logical;
+      const dPrice = cur.price - startPt.price;
+      ['p1', 'p2', 'p3'].forEach(k => { if (orig[k] && d[k]) { d[k].logical = orig[k].logical + dLog; d[k].price = orig[k].price + dPrice; } });
+    }
+    renderDrawings(panel);
+  };
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    dragInfo = null;
+    document.dispatchEvent(new CustomEvent('drawings-changed'));
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
+function select(panel, d) {
+  const prevPanel = drawingState.selectedPanel;
+  drawingState.selected = d;
+  drawingState.selectedPanel = panel;
+  if (prevPanel && prevPanel !== panel) renderDrawings(prevPanel);
+  renderDrawings(panel);
+  showConfig(panel, d);
+}
+function deselect() {
+  const panel = drawingState.selectedPanel;
+  drawingState.selected = null;
+  drawingState.selectedPanel = null;
+  hideConfig();
+  if (panel) renderDrawings(panel);
+}
+
+// ---------- config popover ----------
+function hideConfig() { document.getElementById('drawCfg')?.remove(); }
+
+function showConfig(panel, d) {
+  hideConfig();
+  const el = document.createElement('div');
+  el.id = 'drawCfg';
+  el.className = 'draw-cfg';
+
+  const styleRow = STYLEABLE.has(d.type) ? `
+    <label class="dc-row">Line style
+      <select id="dcStyle">
+        <option value="solid"${!dashFor(d) ? ' selected' : ''}>Solid</option>
+        <option value="dashed"${dashFor(d) ? ' selected' : ''}>Dashed</option>
+      </select>
+    </label>` : '';
+
+  const textRow = d.type === 'text' ? `
+    <label class="dc-row">Text<input id="dcText" type="text" value="${(d.text || '').replace(/"/g, '&quot;')}"></label>` : '';
+
+  const coordRows = getHandles(panel, d).map((hd, i) => {
+    const showBar = hd.axis !== 'y';
+    const showPrice = hd.axis !== 'x';
+    return `<div class="dc-coord">
+      <span>${hd.label}</span>
+      ${showBar ? `<input class="dc-bar" data-i="${i}" type="number" step="1" title="Bar (X)" value="${Math.round(hd.pt.logical)}">` : ''}
+      ${showPrice ? `<input class="dc-price" data-i="${i}" type="number" step="any" title="Price (Y)" value="${trimNum(hd.pt.price)}">` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="dc-head"><span>${TYPE_LABELS[d.type] || 'Shape'}</span><button id="dcClose" title="Close">✕</button></div>
+    <div class="dc-body">
+      <label class="dc-row">Color<input id="dcColor" type="color" value="${toHex(d.color)}"></label>
+      <label class="dc-row">Width<input id="dcWidth" type="number" min="1" max="10" step="1" value="${d.width || 1}"></label>
+      ${styleRow}
+      ${textRow}
+      <div class="dc-coords">${coordRows}</div>
+    </div>
+    <div class="dc-actions"><button id="dcDelete" class="dc-del">Delete</button></div>`;
+  document.body.appendChild(el);
+  positionConfig(panel, el);
+
+  const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); };
+  el.querySelector('#dcClose').addEventListener('click', deselect);
+  el.querySelector('#dcColor').addEventListener('input', e => { d.color = e.target.value; changed(); });
+  el.querySelector('#dcWidth').addEventListener('input', e => { d.width = Math.max(1, +e.target.value || 1); changed(); });
+  el.querySelector('#dcStyle')?.addEventListener('change', e => { d.lineStyle = e.target.value; changed(); });
+  el.querySelector('#dcText')?.addEventListener('input', e => { d.text = e.target.value; changed(); });
+  el.querySelectorAll('.dc-bar').forEach(inp => inp.addEventListener('input', () => {
+    const h = getHandles(panel, d)[+inp.dataset.i]; if (h) { h.pt.logical = +inp.value; changed(); }
+  }));
+  el.querySelectorAll('.dc-price').forEach(inp => inp.addEventListener('input', () => {
+    const h = getHandles(panel, d)[+inp.dataset.i]; if (h) { h.pt.price = +inp.value; changed(); }
+  }));
+  el.querySelector('#dcDelete').addEventListener('click', () => {
+    const idx = panel.drawings.indexOf(d);
+    if (idx >= 0) panel.drawings.splice(idx, 1);
+    deselect();
+    document.dispatchEvent(new CustomEvent('drawings-changed'));
+  });
+}
+
+function positionConfig(panel, el) {
+  const r = panel.el.getBoundingClientRect();
+  const wdt = 232;
+  el.style.left = Math.max(8, r.right - wdt - 12) + 'px';
+  el.style.top = (r.top + 46) + 'px';
+}
+
+// Keep the coordinate fields live as the chart pans/zooms or the shape is dragged.
+function refreshConfigCoords() {
+  const el = document.getElementById('drawCfg');
+  const d = drawingState.selected, panel = drawingState.selectedPanel;
+  if (!el || !d || !panel) return;
+  const hs = getHandles(panel, d);
+  el.querySelectorAll('.dc-bar').forEach(inp => { if (document.activeElement !== inp) { const h = hs[+inp.dataset.i]; if (h) inp.value = Math.round(h.pt.logical); } });
+  el.querySelectorAll('.dc-price').forEach(inp => { if (document.activeElement !== inp) { const h = hs[+inp.dataset.i]; if (h) inp.value = trimNum(h.pt.price); } });
+}
+
+// ---------- geometry helpers ----------
+function distToSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function nearRect(x, y, x1, y1, x2, y2, T) {
+  const lo = Math.min(x1, x2), hi = Math.max(x1, x2), top = Math.min(y1, y2), bot = Math.max(y1, y2);
+  const onV = (y >= top - T && y <= bot + T) && (Math.abs(x - lo) <= T || Math.abs(x - hi) <= T);
+  const onH = (x >= lo - T && x <= hi + T) && (Math.abs(y - top) <= T || Math.abs(y - bot) <= T);
+  return onV || onH;
+}
+function clonePt(p) { return p ? { logical: p.logical, price: p.price } : null; }
+function trimNum(v) { if (v == null) return ''; const a = Math.abs(v); const dp = a >= 1000 ? 2 : a >= 1 ? 4 : 8; return +v.toFixed(dp); }
+function toHex(c) { if (!c) return '#2962ff'; if (c[0] === '#' && c.length === 7) return c; const m = c.match(/\d+/g); if (!m) return '#2962ff'; return '#' + m.slice(0, 3).map(n => (+n).toString(16).padStart(2, '0')).join(''); }
+
 function line(ctx, x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
-function dot(ctx, x, y) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
+function dot(ctx, x, y) { ctx.save(); ctx.setLineDash([]); ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
 function label(ctx, x, y, text, color) {
-  ctx.save(); ctx.font = '10px sans-serif'; ctx.fillStyle = color;
+  ctx.save(); ctx.setLineDash([]); ctx.font = '10px sans-serif'; ctx.fillStyle = color;
   ctx.fillText(text, x, y - 2); ctx.restore();
 }
 function extend(x1, y1, x2, y2, w, dir) {
@@ -191,11 +479,15 @@ function eraseNearest(panel, pt) {
     if (d.p2) { const x2 = X(panel, d.p2), y2 = Y(panel, d.p2); dist = Math.min(dist, Math.hypot(px - x2, py - y2)); }
     if (dist < bestD) { bestD = dist; best = i; }
   });
-  if (best >= 0) panel.drawings.splice(best, 1);
+  if (best >= 0) {
+    if (panel.drawings[best] === drawingState.selected) deselect();
+    panel.drawings.splice(best, 1);
+  }
   document.dispatchEvent(new CustomEvent('drawings-changed'));
 }
 
 export function clearDrawings(panel) {
+  if (drawingState.selectedPanel === panel) deselect();
   panel.drawings = [];
   renderDrawings(panel);
   document.dispatchEvent(new CustomEvent('drawings-changed'));

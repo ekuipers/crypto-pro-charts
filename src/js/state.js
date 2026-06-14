@@ -38,6 +38,8 @@ let drawingState = {
   phase: 0,
   p1: null, p2: null, p3: null,
   pendingType: null,
+  selected: null,        // currently selected drawing object (for handles/config)
+  selectedPanel: null,   // panel that owns the selected drawing
 };
 
 export { state, drawingState };

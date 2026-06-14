@@ -1,0 +1,94 @@
+// ============================================================
+// UTILS — formatting + fetch helpers
+// ============================================================
+
+const LOG = '[CryptoPro]';
+export function log(...a) { console.log(LOG, ...a); }
+export function warn(...a) { console.warn(LOG, ...a); }
+export function err(...a) { console.error(LOG, ...a); }
+
+// fetch with timeout (default 15s)
+export async function fetchJSON(url, opts = {}, timeout = 15000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Format a price intelligently based on magnitude
+export function fmtPrice(p) {
+  if (p == null || isNaN(p)) return '--';
+  const a = Math.abs(p);
+  if (a >= 1000) return p.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  if (a >= 1)    return p.toFixed(2);
+  if (a >= 0.01) return p.toFixed(4);
+  if (a >= 0.0001) return p.toFixed(6);
+  return p.toFixed(8);
+}
+
+// Format large volume numbers with K/M/B suffixes
+export function fmtVol(v) {
+  if (v == null || isNaN(v)) return '--';
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+  if (a >= 1e3) return (v / 1e3).toFixed(2) + 'K';
+  return v.toFixed(2);
+}
+
+export function fmtPct(p) {
+  if (p == null || isNaN(p)) return '--';
+  return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+}
+
+// Base asset from a symbol, e.g. BTCUSDT -> BTC
+export function baseAsset(symbol) {
+  return symbol.replace(/USDT$|USDC$|BUSD$|USD$/, '');
+}
+
+// debounce
+export function debounce(fn, ms) {
+  let t;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
+// Unique id helper
+let _idc = 0;
+export function uid(prefix = 'id') { return `${prefix}_${Date.now()}_${_idc++}`; }
+
+// Clamp
+export function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+
+// Escape HTML
+export function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// Toast notifications
+let toastContainer = null;
+export function toast(msg, type = 'info', ms = 3500) {
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toastContainer';
+    document.body.appendChild(toastContainer);
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  toastContainer.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, ms);
+}

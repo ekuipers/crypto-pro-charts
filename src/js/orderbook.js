@@ -22,20 +22,59 @@ export function refreshOrderBook() {
   }
 }
 
+const SPREAD_LEVELS = ['auto', 0.0001, 0.001, 0.01, 0.1, 0.5, 1, 5, 10, 50, 100];
+
+// Aggregate raw levels into buckets of `inc`. Bids floor, asks ceil.
+function groupLevels(levels, inc, side) {
+  if (!inc || inc <= 0) return levels;
+  const map = new Map();
+  levels.forEach(o => {
+    const bucket = side === 'bid'
+      ? Math.floor(o.price / inc) * inc
+      : Math.ceil(o.price / inc) * inc;
+    const key = bucket.toFixed(8);
+    map.set(key, (map.get(key) || 0) + o.qty);
+  });
+  const out = [...map.entries()].map(([p, qty]) => ({ price: +p, qty }));
+  out.sort((a, b) => side === 'bid' ? b.price - a.price : a.price - b.price);
+  return out;
+}
+
 function renderOrderBook() {
   const el = document.getElementById('obContent');
   if (!el) return;
-  const { bids, asks } = state.obData;
-  if (!bids?.length && !asks?.length) { el.innerHTML = '<div class="muted">No order book data</div>'; return; }
+  let { bids, asks } = state.obData;
+  if (!bids?.length && !asks?.length) {
+    el.innerHTML = `${spreadSelectorHtml()}<div class="muted">No order book data</div>`;
+    wireSpreadSelector();
+    return;
+  }
+  const inc = state.obGrouping === 'auto' ? 0 : +state.obGrouping;
+  if (inc) { bids = groupLevels(bids, inc, 'bid'); asks = groupLevels(asks, inc, 'ask'); }
+
   const maxQty = Math.max(...bids.map(b => b.qty), ...asks.map(a => a.qty), 1);
   const askRows = asks.slice(0, 15).reverse().map(a => row(a, maxQty, 'ask')).join('');
   const bidRows = bids.slice(0, 15).map(b => row(b, maxQty, 'bid')).join('');
   const spread = asks[0] && bids[0] ? asks[0].price - bids[0].price : 0;
   const spreadPct = bids[0] ? (spread / bids[0].price) * 100 : 0;
   el.innerHTML = `
+    ${spreadSelectorHtml()}
     <div class="ob-table">${askRows}</div>
     <div class="ob-spread">Spread ${fmtPrice(spread)} (${spreadPct.toFixed(3)}%)</div>
     <div class="ob-table">${bidRows}</div>`;
+  wireSpreadSelector();
+}
+
+function spreadSelectorHtml() {
+  const opts = SPREAD_LEVELS.map(l =>
+    `<option value="${l}" ${String(l) === String(state.obGrouping) ? 'selected' : ''}>${l === 'auto' ? 'Auto' : l}</option>`).join('');
+  return `<div class="ob-controls"><label>Spread</label><select id="obGroup">${opts}</select></div>`;
+}
+
+function wireSpreadSelector() {
+  const sel = document.getElementById('obGroup');
+  if (!sel) return;
+  sel.addEventListener('change', () => { state.obGrouping = sel.value; renderOrderBook(); });
 }
 function row(o, maxQty, side) {
   const pct = (o.qty / maxQty) * 100;

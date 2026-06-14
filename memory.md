@@ -297,6 +297,70 @@ Side panels (indicators list, symbol list) have `overflow-y: auto` and scroll na
 - Drawing toolbar now built by `buildDrawingToolbar()` (no inline HTML)
 - `loadPanelData()` now returns a Promise for use in `restorePanels()`
 
+---
+
+## v3.1 — Price-scale / time-axis alignment fix
+**Date:** 2026-06-14
+**File:** `src/js/charts.js`
+
+### Problem
+The main price chart and each oscillator sub-pane (MACD, RSI, etc.) are independent LightweightCharts instances stacked vertically. Their time axes only line up when every right-hand price scale has the same pixel width. The old code measured that width once (on load/resize) and never again, so scrolling, zooming, or dragging the vertical price axis — which changes price-label widths (e.g. RSI `51.04` vs price `0.17`) — pushed the panes out of sync, most visibly at the right edge.
+
+### Fix
+- `alignPriceScales(panel)` rewritten to re-detect the widest right scale across the main chart + all oscillator sub-charts and pad every pane's `minimumWidth` to match. Made idempotent via `panel._scaleTarget` cache — only applies `applyOptions` when the target width actually changes, avoiding relayout churn.
+- Now called on the main chart's `subscribeVisibleLogicalRangeChange` (covers scroll/zoom), in addition to existing load/resize call sites.
+- Added `startAlignMonitor(panel)` / `stopAlignMonitor(panel)`: a cheap 200ms `setInterval` watchdog that catches **vertical price-axis scaling**, which fires no range event at all. Reading `priceScale().width()` is inexpensive; charts are only touched when the widest scale changes. Started in `initChart()`, cleared in `destroyPanel()`.
+- `layoutOscillators(panel)` now resets `panel._scaleTarget = null` and drops all scales back to `PRICE_SCALE_MIN_WIDTH` (68px) when the indicator set changes, so panes shrink back instead of staying padded to the width of a since-removed oscillator.
+
+### Result
+Main chart and indicator panes stay right-edge aligned through scrolling, zooming, scaling, and adding/removing oscillators.
+
+### Environment note
+During this session the Linux shell mount served a stale, partially-flushed copy of `src/js/charts.js` (truncated mid-statement around line 468), causing phantom `node --check` syntax errors. The file tool view was authoritative and correct. If terminal-based lint/build shows a syntax error in the oscillator code that the editor doesn't, suspect mount lag, not the file.
+
+---
+
+## v3.2 — Oscillator-to-oscillator alignment (stateless) + theme-toggle fix
+**Date:** 2026-06-14
+**File:** `src/js/charts.js`
+
+### Problem
+After v3.1, oscillator panes (MACD, RSI, …) could still end up misaligned with each other at the right edge. Root cause found via a headless render harness: `alignPriceScales` cached the aligned width in `panel._scaleTarget` and skipped re-applying whenever `target === _scaleTarget`. But `applyThemeToCharts()` re-applies `chartTheme()` (which sets `rightPriceScale.minimumWidth: 68`) to **every** chart on a light/dark toggle, resetting the floors behind the aligner's back. The cached-target guard then thought it was still aligned and never corrected the divergence — panes stuck at e.g. `[78, 68, 68]` permanently.
+
+### Verification (headless puppeteer + lightweight-charts 4.1.3)
+Stacked main + 2 oscillators with very different label magnitudes (124k price / 1-digit RSI / long-decimal MACD):
+- Old guarded logic: aligned `[78,78,78]` OK, but after a simulated theme toggle → `[78,68,68]` **MISALIGNED** and never recovered.
+- New stateless logic: after theme toggle → `[78,78,78]` **OK**.
+(Confirmed `minimumWidth` is supported in 4.1.3 and is the library-sanctioned mechanism for equal price-scale widths across vertically-stacked charts.)
+
+### Fix
+- `alignPriceScales` rewritten to be **stateless**: each call reads all panes' live `priceScale('right').width()`, computes `target = max`, and re-applies `minimumWidth: target` to every pane whenever any pane's width ≠ target. No cached target, so it self-heals after theme toggles, recomputes, symbol changes — anything that resets the floor. Removed `panel._scaleTarget` entirely.
+- Single-chart panels now early-return (nothing to align); `layoutOscillators` still drops all floors to baseline (68) on indicator-set changes so panes can shrink back.
+- `applyThemeToCharts()` now calls `alignPriceScales(p)` in a rAF after re-theming, so panes re-align immediately instead of waiting for the 200ms watchdog.
+
+---
+
+## v3.3 — Oscillator line ends now align with the last candle (time-grid fix)
+**Date:** 2026-06-14
+**File:** `src/js/charts.js`
+
+### Problem
+The oscillator lines (RSI/MACD/ATR) ended at different x positions, none matching the last candle. Price-scale widths were already equal (v3.1/3.2), so this was a TIME-axis bug, not a width bug.
+
+Root cause: each oscillator series has a warmup gap (RSI ~14 bars, MACD ~34, ATR ~14), so each sub-chart's time scale held *fewer* bars than the main candle chart. The panes are synced by **logical index** (`setVisibleLogicalRange`), but logical index N maps to a different *time* on each chart when their bar counts differ — so every oscillator's right edge drifted left by its own warmup length.
+
+### Verification (headless puppeteer + lightweight-charts 4.1.3)
+Main (120 bars) + oscillator (34-bar warmup), synced + equal price-scale widths:
+- Before: last-candle x = 521, oscillator line ends at x = 373 → **misaligned** by ~148px.
+- After spacer fix: oscillator line ends at x = 521 → **pixel-perfect** (first bar also 5 == 5).
+
+### Fix
+- In `buildOscillator`, each sub-chart gets an invisible **spacer line series** (`priceScaleId:'spc'`, transparent, hidden scale) loaded with a whitespace point (`{time}`) for *every* candle time: `ind._spacer.setData(panel.data.map(c => ({time:c.time})))`. This makes every oscillator's time grid identical to the main chart's, so the logical-range sync lines up both edges regardless of warmup. The spacer is on a hidden overlay scale so it doesn't affect the oscillator's autoscale or the `'right'` width alignment.
+- `startKlineStream` now calls `ind._spacer.update({time: candle.time})` for every oscillator when a *new* bar arrives, so live ticks keep the grids in sync.
+- Works together with v3.2 stateless `alignPriceScales` (equal widths) — both are required for pixel-perfect alignment.
+
+---
+
 ## Future improvement ideas
 - More exchange support: Hyperliquid, dYdX, Gate.io
 - Add order book timeframe selector

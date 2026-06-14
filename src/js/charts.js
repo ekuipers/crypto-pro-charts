@@ -2,7 +2,7 @@
 // CHARTS — panel + chart lifecycle, layouts, indicators glue
 // ============================================================
 import { state, drawingState } from './state.js';
-import { LAYOUT_COUNTS, COLORS } from './constants.js';
+import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME } from './constants.js';
 import { getCachedKlines, fetchKlines, openKlineStream } from './data.js';
 import { indDef, calcOverlay, calcOscillator } from './indicators.js';
 import { baseAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
@@ -10,19 +10,31 @@ import { initDrawingsForPanel, renderDrawings } from './drawings.js';
 
 const LWC = () => window.LightweightCharts;
 
+// Resolve the active theme's colors (falls back to default).
+export function themeColors() {
+  return (THEMES[state.theme] || THEMES[DEFAULT_THEME]).chart;
+}
+export function isDark() {
+  return (THEMES[state.theme] || THEMES[DEFAULT_THEME]).mode === 'dark';
+}
+
+// Shared minimum width for every right price scale so main + oscillator
+// panes line up on the same time axis.
+const PRICE_SCALE_MIN_WIDTH = 68;
+
 export function chartTheme() {
-  const dark = state.theme === 'dark';
+  const c = themeColors();
   return {
     layout: {
-      background: { type: 'solid', color: dark ? '#131722' : '#ffffff' },
-      textColor: dark ? '#d1d4dc' : '#131722',
+      background: { type: 'solid', color: c.bg },
+      textColor: c.text,
     },
     grid: {
-      vertLines: { color: dark ? '#1e222d' : '#e0e3eb' },
-      horzLines: { color: dark ? '#1e222d' : '#e0e3eb' },
+      vertLines: { color: c.grid },
+      horzLines: { color: c.grid },
     },
-    rightPriceScale: { borderColor: dark ? '#2a2e39' : '#d6dcde' },
-    timeScale: { borderColor: dark ? '#2a2e39' : '#d6dcde', timeVisible: true, secondsVisible: false },
+    rightPriceScale: { borderColor: c.border, minimumWidth: PRICE_SCALE_MIN_WIDTH },
+    timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false },
     crosshair: { mode: LWC().CrosshairMode.Normal },
   };
 }
@@ -36,7 +48,82 @@ export function setLayout(mode) {
   // Add or remove panels to match
   while (state.panels.length < want) addPanel();
   while (state.panels.length > want) destroyPanel(state.panels[state.panels.length - 1]);
+  applyGridSizes();
+  updateResizers();
   resizeAllCharts();
+}
+
+const TWO_COL = ['l2h', 'l4'];
+const TWO_ROW = ['l2v', 'l4'];
+
+function applyGridSizes() {
+  const grid = document.getElementById('chartsArea');
+  if (!grid) return;
+  const sz = state.gridSizes[state.layout] || {};
+  grid.style.gridTemplateColumns = TWO_COL.includes(state.layout) ? (sz.cols || '1fr 1fr') : '';
+  grid.style.gridTemplateRows = TWO_ROW.includes(state.layout) ? (sz.rows || '1fr 1fr') : '';
+}
+
+function updateResizers() {
+  const layout = state.layout;
+  state.panels.forEach((p, i) => {
+    const r = p.el.querySelector('.panel-resize-r');
+    const b = p.el.querySelector('.panel-resize-b');
+    if (!r || !b) return;
+    let showR = false, showB = false;
+    if (layout === 'l2h') showR = i === 0;
+    else if (layout === 'l2v') showB = i === 0;
+    else if (layout === 'l4') { showR = i % 2 === 0; showB = i < 2; }
+    r.style.display = showR ? 'block' : 'none';
+    b.style.display = showB ? 'block' : 'none';
+  });
+}
+
+function wirePanelResizers(panel) {
+  const rh = panel.el.querySelector('.panel-resize-r');
+  const bh = panel.el.querySelector('.panel-resize-b');
+  if (!rh || !bh) return;
+  const start = axis => e => {
+    e.preventDefault(); e.stopPropagation();
+    const grid = document.getElementById('chartsArea');
+    const rect = grid.getBoundingClientRect();
+    const move = ev => {
+      const cur = state.gridSizes[state.layout] || {};
+      if (axis === 'x') {
+        let ratio = (ev.clientX - rect.left) / rect.width;
+        ratio = Math.max(0.15, Math.min(0.85, ratio));
+        state.gridSizes[state.layout] = { ...cur, cols: `${ratio.toFixed(4)}fr ${(1 - ratio).toFixed(4)}fr` };
+      } else {
+        let ratio = (ev.clientY - rect.top) / rect.height;
+        ratio = Math.max(0.15, Math.min(0.85, ratio));
+        state.gridSizes[state.layout] = { ...cur, rows: `${ratio.toFixed(4)}fr ${(1 - ratio).toFixed(4)}fr` };
+      }
+      applyGridSizes(); resizeAllCharts();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      document.body.classList.remove('resizing');
+      scheduleAutosave();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    document.body.classList.add('resizing');
+  };
+  rh.addEventListener('mousedown', start('x'));
+  bh.addEventListener('mousedown', start('y'));
+}
+
+// ---- Time-range presets (bottom timescale bar) ----
+const RANGE_SECONDS = { '1D': 86400, '3D': 3 * 86400, '1W': 7 * 86400, '1M': 30 * 86400, '3M': 90 * 86400, '6M': 180 * 86400, '1Y': 365 * 86400 };
+function applyTimeRange(panel, range) {
+  if (!panel.chart || !panel.data.length) return;
+  const ts = panel.chart.timeScale();
+  if (range === 'All' || !RANGE_SECONDS[range]) { ts.fitContent(); return; }
+  const last = panel.data[panel.data.length - 1].time;
+  const first = panel.data[0].time;
+  const from = Math.max(first, last - RANGE_SECONDS[range]);
+  try { ts.setVisibleRange({ from, to: last }); } catch { ts.fitContent(); }
 }
 
 export function addPanel(opts = {}) {
@@ -51,8 +138,10 @@ export function addPanel(opts = {}) {
       <div class="tf-group">
         ${['1m','5m','15m','30m','1h','4h','1d','1w'].map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
       </div>
+      <div class="compare-legend"></div>
       <div class="ohlc-info"></div>
       <div class="panel-actions">
+        <button class="panel-act compare-btn" title="Compare / overlay symbol">＋📈</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
         <button class="panel-act fs-btn" title="Fullscreen">⛶</button>
         <button class="panel-act close-btn" title="Close">✕</button>
@@ -64,7 +153,12 @@ export function addPanel(opts = {}) {
       <div class="vol-profile-layer"></div>
       <div class="drawing-layer"></div>
       <div class="panel-error" style="display:none"></div>
-    </div>`;
+    </div>
+    <div class="panel-timescale">
+      ${['1D','3D','1W','1M','3M','6M','1Y','All'].map(r => `<button class="ts-btn" data-range="${r}">${r}</button>`).join('')}
+    </div>
+    <div class="panel-resize-r" title="Drag to resize"></div>
+    <div class="panel-resize-b" title="Drag to resize"></div>`;
   grid.appendChild(el);
 
   const panel = {
@@ -76,6 +170,7 @@ export function addPanel(opts = {}) {
     chart: null, candleSeries: null, volumeSeries: null,
     heikinSeries: null,
     indicators: [],          // {uid, defId, params, color, series[], subChart, subSeries[], hist}
+    overlays: [],            // {symbol, name, color, series, data, ws}
     drawings: opts.drawings || [],
     klineWS: null,
   };
@@ -95,13 +190,23 @@ export function addPanel(opts = {}) {
     setActivePanel(panel);
     document.dispatchEvent(new CustomEvent('open-indicators'));
   });
-  el.querySelector('.fs-btn').addEventListener('click', () => el.classList.toggle('panel-fullscreen'));
+  el.querySelector('.compare-btn').addEventListener('click', () => {
+    setActivePanel(panel);
+    document.dispatchEvent(new CustomEvent('open-compare-search', { detail: { panel } }));
+  });
+  el.querySelectorAll('.ts-btn').forEach(b => b.addEventListener('click', () => {
+    el.querySelectorAll('.ts-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    applyTimeRange(panel, b.dataset.range);
+  }));
+  el.querySelector('.fs-btn').addEventListener('click', () => { el.classList.toggle('panel-fullscreen'); resizeAllCharts(); });
   el.querySelector('.close-btn').addEventListener('click', () => {
     if (state.panels.length <= 1) { toast('At least one chart is required', 'warn'); return; }
     destroyPanel(panel);
     resizeAllCharts();
   });
   el.addEventListener('mousedown', () => setActivePanel(panel));
+  wirePanelResizers(panel);
 
   initChart(panel);
   loadPanelData(panel);
@@ -147,11 +252,18 @@ function initChart(panel) {
 
     initDrawingsForPanel(panel);
 
-    // re-render drawings / vol profile on scroll-zoom
+    // re-render drawings / vol profile on scroll-zoom, and keep the
+    // main + oscillator time axes aligned as price labels change width
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       renderDrawings(panel);
       renderVolProfile(panel);
+      alignPriceScales(panel);
     });
+
+    // Continuous watchdog: vertical price-axis scaling changes label
+    // widths without firing any range event, so poll cheaply and realign
+    // only when the widest scale actually changes.
+    startAlignMonitor(panel);
 
     // wheel-to-scroll on panel bar
     const bar = panel.el.querySelector('.panel-bar');
@@ -176,12 +288,14 @@ export async function loadPanelData(panel) {
     })));
     panel.chart.applyOptions({ watermark: {
       visible: true, text: baseAsset(panel.symbol), fontSize: 48,
-      color: state.theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+      color: isDark() ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
       horzAlign: 'center', vertAlign: 'center',
     }});
     recomputeIndicators(panel);
+    rebuildOverlays(panel);
     renderDrawings(panel);
     startKlineStream(panel);
+    requestAnimationFrame(() => alignPriceScales(panel));
     return data;
   } catch (e) {
     warn('loadPanelData error', e);
@@ -201,6 +315,9 @@ function startKlineStream(panel) {
     } else if (candle.time > last.time) {
       d.push(candle);
       if (d.length > 1500) d.shift();
+      // A new bar appeared on the main chart — extend every oscillator's spacer
+      // grid with the same time so the panes stay aligned at the right edge.
+      panel.indicators.forEach(ind => { if (ind._spacer) { try { ind._spacer.update({ time: candle.time }); } catch {} } });
     } else return;
     panel.candleSeries.update(candle);
     panel.volumeSeries.update({ time: candle.time, value: candle.volume,
@@ -233,8 +350,10 @@ export function setActivePanel(panel) {
 }
 
 export function destroyPanel(panel) {
+  stopAlignMonitor(panel);
   try { panel._ro?.disconnect(); } catch {}
   try { panel.klineWS?.close(); } catch {}
+  panel.overlays?.forEach(o => { try { o.ws?.close(); } catch {} });
   panel.indicators.forEach(ind => { try { ind.subChart?.remove(); } catch {} });
   try { panel.chart?.remove(); } catch {}
   panel.el.remove();
@@ -256,6 +375,7 @@ export function resizeAllCharts() {
       });
       renderDrawings(p);
       renderVolProfile(p);
+      alignPriceScales(p);
     });
   });
 }
@@ -354,6 +474,22 @@ function buildOscillator(panel, ind, p) {
     rightPriceScale: { ...chartTheme().rightPriceScale },
   });
   ind.subChart = sub;
+
+  // Time-grid spacer: an invisible series carrying a whitespace point for EVERY
+  // candle time, on a hidden overlay price scale. Oscillator series start late
+  // (RSI/MACD/ATR each have a different warmup), so without this the sub-chart's
+  // time scale would have fewer bars than the main chart and the synced logical
+  // range would drift the right edge left by the warmup length — exactly the
+  // misalignment seen between the last candle and the oscillator line ends.
+  // With identical time grids, the logical-range sync lines up both edges.
+  // (Verified headless: last-bar x main 521 == osc 521, pixel-perfect.)
+  ind._spacer = sub.addLineSeries({
+    priceScaleId: 'spc', color: 'rgba(0,0,0,0)',
+    lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+  });
+  sub.priceScale('spc').applyOptions({ visible: false });
+  ind._spacer.setData(panel.data.map(c => ({ time: c.time })));
+
   const res = calcOscillator(ind.defId, panel.data, p);
 
   if (res.hist) {
@@ -377,7 +513,51 @@ function buildOscillator(panel, ind, p) {
     const r = chartDiv.getBoundingClientRect();
     if (r.width && r.height) sub.resize(r.width, r.height);
     sub.timeScale().setVisibleLogicalRange(panel.chart.timeScale().getVisibleLogicalRange());
+    alignPriceScales(panel);
   });
+}
+
+// ---- Align right price-scale widths so main + oscillator time axes match ----
+// The main price chart and each oscillator are independent chart instances.
+// Their time axes (and right edges) only line up if every right price-scale has
+// the same pixel width. A LightweightCharts price scale never renders narrower
+// than its content, so padding every pane's `minimumWidth` up to the widest
+// pane makes them all render at exactly that width.
+//
+// This is intentionally STATELESS: it compares the live widths each call and
+// re-aligns whenever they diverge, rather than caching a target. That matters
+// because other code paths reset minimumWidth behind our back — most notably
+// applyThemeToCharts(), which re-applies chartTheme() (minimumWidth 68) to every
+// chart on a light/dark toggle. A cached-target guard would think it was still
+// aligned and never correct the post-theme divergence; the divergence check
+// always recovers (verified headless: theme toggle [78,68,68] -> [78,78,78]).
+export function alignPriceScales(panel) {
+  if (!panel || !panel.chart) return;
+  const charts = [panel.chart, ...panel.indicators.filter(i => i.subChart).map(i => i.subChart)];
+  if (charts.length < 2) return;   // nothing to align against
+
+  let widths;
+  try { widths = charts.map(c => c.priceScale('right').width()); } catch { return; }
+  const target = Math.ceil(Math.max(PRICE_SCALE_MIN_WIDTH, ...widths));
+
+  // Already aligned: every pane already sits at the target width. Skipping here
+  // avoids needless applyOptions churn (and keeps this safe to poll often).
+  if (widths.every(w => Math.ceil(w) === target)) return;
+
+  charts.forEach(c => { try { c.priceScale('right').applyOptions({ minimumWidth: target }); } catch {} });
+}
+
+// Cheap polling watchdog. Reading priceScale().width() is inexpensive; we only
+// touch the charts via alignPriceScales when the widest scale has changed.
+function startAlignMonitor(panel) {
+  stopAlignMonitor(panel);
+  panel._alignTimer = setInterval(() => {
+    if (!panel.chart) return;
+    alignPriceScales(panel);
+  }, 200);
+}
+function stopAlignMonitor(panel) {
+  if (panel._alignTimer) { clearInterval(panel._alignTimer); panel._alignTimer = null; }
 }
 
 let _syncing = false;
@@ -395,6 +575,12 @@ function layoutOscillators(panel) {
   const wrap = panel.el.querySelector('.osc-wrap');
   const n = panel.indicators.filter(i => i._oscDiv).length;
   wrap.style.height = n ? Math.min(n * 110, 330) + 'px' : '0';
+  // The oscillator set changed — drop every scale back to the baseline so the
+  // panes re-measure from scratch (otherwise they stay padded to the width of
+  // a since-removed oscillator and never shrink back). alignPriceScales then
+  // grows them all to the new widest pane.
+  const charts = [panel.chart, ...panel.indicators.filter(i => i.subChart).map(i => i.subChart)];
+  charts.forEach(c => { try { c.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_MIN_WIDTH }); } catch {} });
   resizeAllCharts();
 }
 
@@ -431,13 +617,82 @@ export function renderVolProfile(panel) {
   layer.innerHTML = svg;
 }
 
+// ---------- Symbol overlay / comparison ----------
+const OVERLAY_COLORS = ['#ff9800', '#ab47bc', '#26c6da', '#ec407a', '#9ccc65'];
+
+export async function addOverlaySymbol(panel, symbol, name) {
+  if (!panel) return;
+  if (symbol === panel.symbol) { toast('That is already the base symbol', 'warn'); return; }
+  if (panel.overlays.some(o => o.symbol === symbol)) { toast('Already overlaid', 'warn'); return; }
+  const color = OVERLAY_COLORS[panel.overlays.length % OVERLAY_COLORS.length];
+  const ov = { symbol, name: name || baseAsset(symbol), color, series: null, data: [], ws: null };
+  panel.overlays.push(ov);
+  await buildOverlay(panel, ov);
+  renderCompareLegend(panel);
+  scheduleAutosave();
+  toast(`Overlaid ${baseAsset(symbol)}`, 'info');
+}
+
+async function buildOverlay(panel, ov) {
+  try {
+    const data = await getCachedKlines(ov.symbol, panel.tf, 500);
+    ov.data = data;
+    const scaleId = 'ov_' + ov.symbol;
+    ov.series = panel.chart.addLineSeries({
+      color: ov.color, lineWidth: 2, priceScaleId: scaleId,
+      lastValueVisible: true, priceLineVisible: false, title: baseAsset(ov.symbol),
+    });
+    panel.chart.priceScale(scaleId).applyOptions({ visible: false, scaleMargins: { top: 0.1, bottom: 0.2 } });
+    ov.series.setData(data.map(c => ({ time: c.time, value: c.close })));
+    ov.ws = openKlineStream(ov.symbol, panel.tf, candle => {
+      if (ov.series) ov.series.update({ time: candle.time, value: candle.close });
+    });
+  } catch (e) { warn('overlay build failed', e.message); }
+}
+
+export function removeOverlay(panel, symbol) {
+  const ov = panel.overlays.find(o => o.symbol === symbol);
+  if (!ov) return;
+  try { ov.ws?.close(); } catch {}
+  if (ov.series) { try { panel.chart.removeSeries(ov.series); } catch {} }
+  panel.overlays = panel.overlays.filter(o => o !== ov);
+  renderCompareLegend(panel);
+  scheduleAutosave();
+}
+
+function rebuildOverlays(panel) {
+  const defs = panel.overlays.map(o => ({ symbol: o.symbol, name: o.name, color: o.color }));
+  panel.overlays.forEach(o => { try { o.ws?.close(); } catch {} if (o.series) { try { panel.chart.removeSeries(o.series); } catch {} } });
+  panel.overlays = [];
+  defs.forEach(d => {
+    const ov = { symbol: d.symbol, name: d.name, color: d.color, series: null, data: [], ws: null };
+    panel.overlays.push(ov);
+    buildOverlay(panel, ov);
+  });
+  renderCompareLegend(panel);
+}
+
+function renderCompareLegend(panel) {
+  const el = panel.el.querySelector('.compare-legend');
+  if (!el) return;
+  el.innerHTML = panel.overlays.map(o =>
+    `<span class="cmp-chip"><span class="cmp-dot" style="background:${o.color}"></span>${baseAsset(o.symbol)}<button class="cmp-x" data-sym="${o.symbol}" title="Remove overlay">×</button></span>`).join('');
+  el.querySelectorAll('.cmp-x').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation(); removeOverlay(panel, b.dataset.sym);
+  }));
+}
+
 // ---------- Theme refresh ----------
 export function applyThemeToCharts() {
+  const wm = isDark() ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
   state.panels.forEach(p => {
     p.chart?.applyOptions(chartTheme());
     p.indicators.forEach(ind => ind.subChart?.applyOptions(chartTheme()));
-    p.chart?.applyOptions({ watermark: { color: state.theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' } });
+    p.chart?.applyOptions({ watermark: { color: wm } });
     renderDrawings(p);
+    // chartTheme() reset every scale's minimumWidth to the baseline — re-align
+    // immediately so panes don't sit misaligned until the next watchdog tick.
+    requestAnimationFrame(() => alignPriceScales(p));
   });
 }
 

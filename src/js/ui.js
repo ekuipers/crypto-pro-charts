@@ -2,7 +2,7 @@
 // UI — topbar, indicators panel, drawing toolbar, modals, tabs
 // ============================================================
 import { state, drawingState } from './state.js';
-import { INDICATORS_DEF, COLORS } from './constants.js';
+import { INDICATORS_DEF, COLORS, THEMES } from './constants.js';
 import { indDef } from './indicators.js';
 import {
   setLayout, addIndicator, removeIndicator, recomputeIndicators,
@@ -168,16 +168,42 @@ function wireTopbar() {
     setLayout(b.dataset.layout); scheduleAutosave();
   }));
 
-  document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+  document.getElementById('themeToggle').addEventListener('click', showThemeMenu);
   document.getElementById('saveBtn').addEventListener('click', showSaveLayoutModal);
   document.getElementById('layoutsBtn').addEventListener('click', showLayoutsModal);
   document.getElementById('templatesBtn').addEventListener('click', showTemplatesModal);
 }
 
-function toggleTheme() {
-  state.theme = state.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = state.theme;
-  applyThemeToCharts(); scheduleAutosave();
+export function applyTheme(key) {
+  if (!THEMES[key]) return;
+  state.theme = key;
+  document.documentElement.dataset.theme = key;
+  applyThemeToCharts();
+  scheduleAutosave();
+}
+
+function showThemeMenu() {
+  const cards = Object.entries(THEMES).map(([key, t]) => {
+    const c = t.chart;
+    const sel = key === state.theme ? ' sel' : '';
+    return `<button class="theme-card${sel}" data-key="${key}">
+      <span class="theme-swatch" style="background:${c.bg};border-color:${c.border}">
+        <span style="background:${c.accent}"></span>
+        <span style="background:${c.text}"></span>
+        <span style="background:${c.grid}"></span>
+      </span>
+      <span class="theme-name">${esc(t.label)}</span>
+      <span class="theme-mode">${t.mode}</span>
+    </button>`;
+  }).join('');
+  showModal(`<h3>Color Theme</h3><div class="theme-grid">${cards}</div>
+    <div class="modal-actions"><button id="thClose">Close</button></div>`, m => {
+    m.querySelector('#thClose').addEventListener('click', closeModal);
+    m.querySelectorAll('.theme-card').forEach(b => b.addEventListener('click', () => {
+      applyTheme(b.dataset.key);
+      m.querySelectorAll('.theme-card').forEach(x => x.classList.toggle('sel', x === b));
+    }));
+  });
 }
 
 function showTemplatesModal() {

@@ -2,6 +2,7 @@
 // PERSISTENCE — autosave + named layouts (localStorage)
 // ============================================================
 import { state } from './state.js';
+import { LEGACY_THEME, THEMES, DEFAULT_THEME } from './constants.js';
 import { debounce, toast, esc } from './utils.js';
 import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
@@ -16,6 +17,8 @@ export function snapshot() {
     version: VERSION,
     theme: state.theme,
     layout: state.layout,
+    gridSizes: state.gridSizes,
+    obGrouping: state.obGrouping,
     watchlists: state.watchlists,
     currentWatchlist: state.currentWatchlist,
     wlSort: state.wlSort,
@@ -25,6 +28,7 @@ export function snapshot() {
     panels: state.panels.map(p => ({
       symbol: p.symbol, symbolName: p.symbolName, tf: p.tf,
       indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color })),
+      overlays: (p.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, color: o.color })),
       drawings: p.drawings,
     })),
   };
@@ -45,7 +49,9 @@ export function loadAutosave() {
 
 export function applyLayoutData(data) {
   if (!data) return;
-  if (data.theme) state.theme = data.theme;
+  if (data.theme) state.theme = LEGACY_THEME[data.theme] || (THEMES[data.theme] ? data.theme : DEFAULT_THEME);
+  if (data.gridSizes) state.gridSizes = data.gridSizes;
+  if (data.obGrouping) state.obGrouping = data.obGrouping;
   if (data.watchlists) state.watchlists = data.watchlists;
   if (data.currentWatchlist) state.currentWatchlist = data.currentWatchlist;
   if (data.wlSort) state.wlSort = data.wlSort;
@@ -65,6 +71,7 @@ export function applyLayoutData(data) {
     if (!pd) return;
     panel.symbol = pd.symbol; panel.symbolName = pd.symbolName; panel.tf = pd.tf;
     panel.drawings = pd.drawings || [];
+    panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, color: o.color, series: null, data: [], ws: null }));
     panel.el.querySelector('.sym-btn').innerHTML = `${pd.symbol.replace(/USDT$/, '')}<span class="sym-quote">USDT</span>`;
     panel.el.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === pd.tf));
     loadPanelData(panel).then(() => {

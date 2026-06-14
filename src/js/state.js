@@ -1,11 +1,13 @@
 // ============================================================
 // APP STATE — singleton; import state everywhere
 // ============================================================
-import { WATCHLISTS_INIT } from './constants.js';
+import { WATCHLISTS_INIT, DEFAULT_THEME } from './constants.js';
 
 let state = {
-  theme: 'dark',
+  theme: DEFAULT_THEME,
   layout: 'l1',
+  gridSizes: {},     // { l2h: '1fr 1fr', ... } custom drag-resized grid templates
+  obGrouping: 'auto',// order book price-grouping level
   panels: [],
   activePanel: null,
   watchlists: JSON.parse(JSON.stringify(WATCHLISTS_INIT)),

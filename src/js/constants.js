@@ -140,4 +140,24 @@ const EXCHANGES = {
 
 const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4 };
 
-export { BINANCE, COLORS, WATCHLISTS_INIT, INDICATORS_DEF, EXCHANGES, LAYOUT_COUNTS };
+// ---- Themes (2 light + 4 dark). `chart` holds Lightweight-Charts colors;
+//      the matching CSS variables live in style.css keyed by [data-theme]. ----
+const THEMES = {
+  'dark-classic': { label: 'Dark Classic', mode: 'dark',
+    chart: { bg: '#131722', text: '#d1d4dc', grid: '#1e222d', border: '#2a2e39', accent: '#2962ff' } },
+  'dark-midnight': { label: 'Midnight Blue', mode: 'dark',
+    chart: { bg: '#0c1a2b', text: '#cdd9e5', grid: '#13283f', border: '#1d3a57', accent: '#3b82f6' } },
+  'dark-matrix': { label: 'Matrix Green', mode: 'dark',
+    chart: { bg: '#0a0f0a', text: '#c8f7c5', grid: '#10210f', border: '#1c361a', accent: '#22c55e' } },
+  'dark-carbon': { label: 'Carbon', mode: 'dark',
+    chart: { bg: '#16181d', text: '#cfd2d8', grid: '#222530', border: '#33373f', accent: '#a78bfa' } },
+  'light-classic': { label: 'Light Classic', mode: 'light',
+    chart: { bg: '#ffffff', text: '#131722', grid: '#e0e3eb', border: '#d6dcde', accent: '#2962ff' } },
+  'light-warm': { label: 'Warm Sand', mode: 'light',
+    chart: { bg: '#fbf7f0', text: '#3b3022', grid: '#ece2d2', border: '#d9cab2', accent: '#c2761c' } },
+};
+const DEFAULT_THEME = 'dark-classic';
+// Map legacy persisted values to new theme keys
+const LEGACY_THEME = { dark: 'dark-classic', light: 'light-classic' };
+
+export { BINANCE, COLORS, WATCHLISTS_INIT, INDICATORS_DEF, EXCHANGES, LAYOUT_COUNTS, THEMES, DEFAULT_THEME, LEGACY_THEME };

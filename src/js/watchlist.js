@@ -4,7 +4,8 @@
 import { state } from './state.js';
 import { baseAsset, fmtPrice, fmtPct, esc, toast } from './utils.js';
 import { fetchAllPairs, validateSymbol } from './data.js';
-import { changeSymbol, scheduleAutosave } from './charts.js';
+import { changeSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
+import { showModal, closeModal } from './alerts.js';
 
 export function initWatchlist() {
   renderTabs();
@@ -15,6 +16,13 @@ export function initWatchlist() {
 
   document.getElementById('newWatchlistBtn').addEventListener('click', addWatchlist);
   document.getElementById('addSymbolBtn').addEventListener('click', addSymbolPrompt);
+
+  // overlay/comparison picker (triggered from a chart pane)
+  document.addEventListener('open-compare-search', e => {
+    const panel = e.detail?.panel || state.activePanel;
+    if (!panel) return;
+    showSymbolPicker('Overlay a symbol on this chart', (sym, name) => addOverlaySymbol(panel, sym, name));
+  });
 
   // sort headers
   document.querySelectorAll('#symListHead .col').forEach(c => {
@@ -116,18 +124,42 @@ function removeSymbol(symbol) {
   renderSymbolList(); scheduleAutosave();
 }
 
-async function addSymbolPrompt() {
-  let sym = prompt('Add symbol (e.g. BTC or BTCUSDT):');
-  if (!sym) return;
-  sym = sym.toUpperCase().trim();
-  if (!sym.endsWith('USDT')) sym += 'USDT';
-  const ok = await validateSymbol(sym);
-  if (!ok) { toast(`${sym} not found on Binance`, 'error'); return; }
-  const wl = state.watchlists[state.currentWatchlist];
-  if (wl.some(s => s.symbol === sym)) { toast('Already in watchlist', 'warn'); return; }
-  wl.push({ symbol: sym, name: baseAsset(sym) });
-  renderSymbolList(); scheduleAutosave();
-  toast(`Added ${baseAsset(sym)}`, 'info');
+function addSymbolPrompt() {
+  showSymbolPicker('Add symbol to watchlist', (sym, name) => {
+    const wl = state.watchlists[state.currentWatchlist];
+    if (wl.some(s => s.symbol === sym)) { toast('Already in watchlist', 'warn'); return; }
+    wl.push({ symbol: sym, name: name || baseAsset(sym) });
+    renderSymbolList(); scheduleAutosave();
+    toast(`Added ${baseAsset(sym)}`, 'info');
+  });
+}
+
+// Reusable searchable dropdown of available symbols. onPick(symbol, name).
+export async function showSymbolPicker(title, onPick) {
+  showModal(`
+    <h3>${esc(title)}</h3>
+    <input id="spSearch" class="panel-search" placeholder="Search symbols…" autocomplete="off" style="width:100%;margin:0 0 10px">
+    <div id="spList" class="sym-picker-list"><div class="muted">Loading symbols…</div></div>
+    <div class="modal-actions"><button id="spCancel">Cancel</button></div>`, async m => {
+    m.querySelector('#spCancel').addEventListener('click', closeModal);
+    const search = m.querySelector('#spSearch');
+    const listEl = m.querySelector('#spList');
+    const pairs = await fetchAllPairs();
+    const render = () => {
+      const q = (search.value || '').toUpperCase().trim();
+      const results = (q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs).slice(0, 60);
+      if (!results.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
+      listEl.innerHTML = results.map(r =>
+        `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>USDT</span></button>`).join('');
+      listEl.querySelectorAll('.sym-picker-item').forEach(b => b.addEventListener('click', () => {
+        onPick(b.dataset.sym, b.dataset.name);
+        closeModal();
+      }));
+    };
+    search.addEventListener('input', render);
+    render();
+    search.focus();
+  });
 }
 
 function addWatchlist() {

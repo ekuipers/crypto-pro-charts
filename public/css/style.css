@@ -2,15 +2,42 @@
    Crypto Charting Pro — styles (dark + light themes)
    ============================================================ */
 :root {
-  --bg: #131722; --panel: #1e222d; --panel2: #2a2e39; --border: #2a2e39;
-  --text: #d1d4dc; --muted: #787b86; --accent: #2962ff;
-  --green: #26a69a; --red: #ef5350; --hover: #2a2e39;
   --topbar-h: 44px;
+  --green: #26a69a; --red: #ef5350;
 }
-html[data-theme="light"] {
+
+/* ----- Dark themes ----- */
+html[data-theme="dark-classic"] {
+  --bg: #131722; --panel: #1e222d; --panel2: #2a2e39; --border: #2a2e39;
+  --text: #d1d4dc; --muted: #787b86; --accent: #2962ff; --accent-strong: #1a44b8;
+  --hover: #2a2e39;
+}
+html[data-theme="dark-midnight"] {
+  --bg: #0c1a2b; --panel: #102338; --panel2: #173451; --border: #1d3a57;
+  --text: #cdd9e5; --muted: #6f86a0; --accent: #3b82f6; --accent-strong: #1d5bcc;
+  --hover: #173451;
+}
+html[data-theme="dark-matrix"] {
+  --bg: #0a0f0a; --panel: #101a10; --panel2: #162615; --border: #1c361a;
+  --text: #c8f7c5; --muted: #5e8a5b; --accent: #22c55e; --accent-strong: #15843c;
+  --hover: #162615;
+}
+html[data-theme="dark-carbon"] {
+  --bg: #16181d; --panel: #1d1f26; --panel2: #282b34; --border: #33373f;
+  --text: #cfd2d8; --muted: #80858f; --accent: #a78bfa; --accent-strong: #6d4fd6;
+  --hover: #282b34;
+}
+
+/* ----- Light themes ----- */
+html[data-theme="light-classic"] {
   --bg: #f0f3fa; --panel: #ffffff; --panel2: #f0f3fa; --border: #e0e3eb;
-  --text: #131722; --muted: #787b86; --accent: #2962ff;
-  --green: #26a69a; --red: #ef5350; --hover: #eef0f4;
+  --text: #131722; --muted: #787b86; --accent: #2962ff; --accent-strong: #1a44b8;
+  --hover: #eef0f4;
+}
+html[data-theme="light-warm"] {
+  --bg: #fbf7f0; --panel: #fffdf8; --panel2: #f3ecdf; --border: #d9cab2;
+  --text: #3b3022; --muted: #998a72; --accent: #c2761c; --accent-strong: #8f520e;
+  --hover: #f1e7d6;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -277,6 +304,55 @@ input:focus, select:focus { border-color: var(--accent); }
 ::-webkit-scrollbar-thumb { background: var(--panel2); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Darker Apply / primary buttons inside dialogs ---------- */
+.modal-actions .primary-btn { background: var(--accent-strong); color: #fff; }
+.modal-actions .primary-btn:hover { background: var(--accent-strong); filter: brightness(1.15); }
+
+/* ---------- Compare / overlay legend ---------- */
+.compare-legend { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
+.cmp-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 6px; font-size: 11px; white-space: nowrap; }
+.cmp-dot { width: 8px; height: 8px; border-radius: 50%; }
+.cmp-x { color: var(--muted); font-size: 13px; line-height: 1; }
+.cmp-x:hover { color: var(--red); }
+
+/* ---------- Bottom timescale / range bar ---------- */
+.panel-timescale {
+  height: 28px; min-height: 28px; display: flex; align-items: center; gap: 2px;
+  padding: 0 6px; background: var(--panel); border-top: 1px solid var(--border); overflow-x: auto;
+}
+.ts-btn { padding: 3px 9px; font-size: 11px; border-radius: 4px; color: var(--muted); white-space: nowrap; }
+.ts-btn:hover { background: var(--hover); color: var(--text); }
+.ts-btn.active { background: var(--accent); color: #fff; }
+
+/* ---------- Pane resize handles ---------- */
+.panel-resize-r, .panel-resize-b { position: absolute; z-index: 12; display: none; }
+.panel-resize-r { top: 0; bottom: 0; right: -3px; width: 7px; cursor: col-resize; }
+.panel-resize-b { left: 0; right: 0; bottom: -3px; height: 7px; cursor: row-resize; }
+.panel-resize-r:hover, .panel-resize-b:hover { background: var(--accent); opacity: .5; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing * { pointer-events: none; }
+
+/* ---------- Theme picker ---------- */
+.theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.theme-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; text-align: left; }
+.theme-card:hover { border-color: var(--accent); background: var(--hover); }
+.theme-card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.theme-swatch { display: flex; gap: 3px; width: 100%; height: 30px; border-radius: 5px; border: 1px solid; align-items: center; padding: 0 6px; }
+.theme-swatch span { width: 14px; height: 14px; border-radius: 3px; }
+.theme-name { font-weight: 600; font-size: 12px; }
+.theme-mode { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+/* ---------- Symbol picker (add / overlay) ---------- */
+.sym-picker-list { max-height: 320px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; }
+.sym-picker-item { display: flex; align-items: baseline; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-align: left; }
+.sym-picker-item:hover { background: var(--hover); border-color: var(--accent); }
+.sym-picker-item span { color: var(--muted); font-size: 10px; }
+
+/* ---------- Order book controls ---------- */
+.ob-controls { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }
+.ob-controls label { font-size: 11px; color: var(--muted); }
+.ob-controls select { flex: 1; padding: 4px 6px; font-size: 12px; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {

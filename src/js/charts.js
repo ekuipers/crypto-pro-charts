@@ -296,6 +296,8 @@ export async function loadPanelData(panel) {
     renderDrawings(panel);
     startKlineStream(panel);
     requestAnimationFrame(() => alignPriceScales(panel));
+    // Let the events module (re)place its x-axis markers for the new data range.
+    document.dispatchEvent(new CustomEvent('panel-data-loaded', { detail: { panel } }));
     return data;
   } catch (e) {
     warn('loadPanelData error', e);
@@ -322,6 +324,8 @@ function startKlineStream(panel) {
     panel.candleSeries.update(candle);
     panel.volumeSeries.update({ time: candle.time, value: candle.volume,
       color: candle.close >= candle.open ? state.settings.upColor + '80' : state.settings.downColor + '80' });
+    // A closed bar can finalise a fresh MA crossing — refresh the markers.
+    if (candle.closed) rebuildCrossMarkers(panel);
     document.dispatchEvent(new CustomEvent('panel-live', { detail: { panel, price: candle.close } }));
   });
 }
@@ -392,6 +396,7 @@ export function addIndicator(panel, defId, params, color) {
   def.params.forEach(p => { if (ind.params[p.n] == null) ind.params[p.n] = p.d; });
   panel.indicators.push(ind);
   buildIndicator(panel, ind);
+  rebuildCrossMarkers(panel);
   document.dispatchEvent(new CustomEvent('indicators-changed', { detail: { panel } }));
   scheduleAutosave();
   return ind;
@@ -405,6 +410,7 @@ export function removeIndicator(panel, ind) {
   if (ind.defId === 'volprofile') panel.el.querySelector('.vol-profile-layer').innerHTML = '';
   panel.indicators = panel.indicators.filter(i => i !== ind);
   layoutOscillators(panel);
+  rebuildCrossMarkers(panel);
   document.dispatchEvent(new CustomEvent('indicators-changed', { detail: { panel } }));
   scheduleAutosave();
 }
@@ -421,6 +427,7 @@ export function recomputeIndicators(panel) {
   if (panel.heikinSeries) { try { panel.chart.removeSeries(panel.heikinSeries); } catch {} panel.heikinSeries = null; }
   panel.el.querySelector('.vol-profile-layer').innerHTML = '';
   panel.indicators.forEach(ind => buildIndicator(panel, ind));
+  rebuildCrossMarkers(panel);
 }
 
 function buildIndicator(panel, ind) {
@@ -680,6 +687,64 @@ function renderCompareLegend(panel) {
   el.querySelectorAll('.cmp-x').forEach(b => b.addEventListener('click', e => {
     e.stopPropagation(); removeOverlay(panel, b.dataset.sym);
   }));
+}
+
+// ---------- Moving-average crossings (golden / death cross) ----------
+// When two or more SMA/EMA overlays are on a panel we mark where adjacent
+// (by period) averages cross: a faster MA crossing ABOVE a slower one is
+// bullish ("golden"), crossing below is bearish ("death").
+const MA_CROSS_IDS = ['sma', 'ema'];
+
+export function rebuildCrossMarkers(panel) {
+  if (!panel || !panel.candleSeries) return;
+  const mas = panel.indicators.filter(i => MA_CROSS_IDS.includes(i.defId));
+  if (mas.length < 2 || !panel.data.length) {
+    panel._crossMarkers = [];
+    applyPanelMarkers(panel);
+    return;
+  }
+  // Build a time->value map for each MA from freshly-computed values.
+  const lines = mas.map(i => {
+    const res = calcOverlay(i.defId, panel.data, { ...i.params, _color: i.color });
+    const map = new Map((res[0]?.vals || []).map(v => [v.time, v.value]));
+    return { period: i.params.period ?? 0, label: i.defId.toUpperCase() + (i.params.period ?? ''), map };
+  }).sort((a, b) => a.period - b.period);
+
+  const up = state.settings.upColor, down = state.settings.downColor;
+  const markers = [];
+  for (let k = 0; k < lines.length - 1; k++) {
+    const fast = lines[k], slow = lines[k + 1];
+    if (fast.period === slow.period && fast.label === slow.label) continue;
+    let prevDiff = null;
+    for (const c of panel.data) {
+      const fv = fast.map.get(c.time), sv = slow.map.get(c.time);
+      if (fv == null || sv == null) { prevDiff = null; continue; }
+      const diff = fv - sv;
+      if (prevDiff != null && ((prevDiff < 0 && diff > 0) || (prevDiff > 0 && diff < 0))) {
+        const bull = diff > 0;
+        markers.push({
+          time: c.time,
+          position: bull ? 'belowBar' : 'aboveBar',
+          color: bull ? up : down,
+          shape: bull ? 'arrowUp' : 'arrowDown',
+          text: `${bull ? '↑' : '↓'} ${fast.label}/${slow.label}`,
+        });
+      }
+      if (diff !== 0) prevDiff = diff;
+    }
+  }
+  panel._crossMarkers = markers;
+  applyPanelMarkers(panel);
+}
+
+// Merge every marker source (MA crossings + market events) into one sorted
+// setMarkers() call, since LightweightCharts keeps a single marker list per
+// series and each setMarkers replaces the previous list.
+export function applyPanelMarkers(panel) {
+  if (!panel || !panel.candleSeries) return;
+  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || [])];
+  all.sort((a, b) => a.time - b.time);
+  try { panel.candleSeries.setMarkers(all); } catch {}
 }
 
 // ---------- Theme refresh ----------

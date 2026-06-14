@@ -1,0 +1,22 @@
+{
+  "updated": "2026-06-14",
+  "source": "Curated macro + crypto calendar (cryptocraft.com-style). Times are UTC.",
+  "events": [
+    { "id": "fomc-2026-01", "date": "2026-01-28T19:00:00Z", "title": "FOMC Rate Decision", "category": "Monetary Policy", "country": "US", "impact": "high", "detail": "Federal Reserve interest-rate decision and policy statement." },
+    { "id": "cpi-2026-02", "date": "2026-02-11T13:30:00Z", "title": "US CPI (Jan)", "category": "Inflation", "country": "US", "impact": "high", "detail": "US Consumer Price Index release — key inflation gauge." },
+    { "id": "fomc-2026-03", "date": "2026-03-18T18:00:00Z", "title": "FOMC Rate Decision + Projections", "category": "Monetary Policy", "country": "US", "impact": "high", "detail": "Rate decision with updated economic projections (dot plot) and press conference." },
+    { "id": "cpi-2026-04", "date": "2026-04-10T12:30:00Z", "title": "US CPI (Mar)", "category": "Inflation", "country": "US", "impact": "high", "detail": "US Consumer Price Index release." },
+    { "id": "fomc-2026-04", "date": "2026-04-29T18:00:00Z", "title": "FOMC Rate Decision", "category": "Monetary Policy", "country": "US", "impact": "high", "detail": "Federal Reserve interest-rate decision and policy statement." },
+    { "id": "nfp-2026-05", "date": "2026-05-01T12:30:00Z", "title": "US Non-Farm Payrolls (Apr)", "category": "Employment", "country": "US", "impact": "high", "detail": "Monthly US jobs report — affects rate expectations and risk assets." },
+    { "id": "cpi-2026-05", "date": "2026-05-12T12:30:00Z", "title": "US CPI (Apr)", "category": "Inflation", "country": "US", "impact": "high", "detail": "US Consumer Price Index release." },
+    { "id": "ecb-2026-06", "date": "2026-06-04T12:15:00Z", "title": "ECB Rate Decision", "category": "Monetary Policy", "country": "EU", "impact": "medium", "detail": "European Central Bank monetary policy decision." },
+    { "id": "nfp-2026-06", "date": "2026-06-05T12:30:00Z", "title": "US Non-Farm Payrolls (May)", "category": "Employment", "country": "US", "impact": "high", "detail": "Monthly US jobs report." },
+    { "id": "cpi-2026-06", "date": "2026-06-10T12:30:00Z", "title": "US CPI (May)", "category": "Inflation", "country": "US", "impact": "high", "detail": "US Consumer Price Index release — closely watched for Fed path." },
+    { "id": "fomc-2026-06", "date": "2026-06-17T18:00:00Z", "title": "FOMC Rate Decision + Projections", "category": "Monetary Policy", "country": "US", "impact": "high", "detail": "Rate decision with updated projections and Chair press conference." },
+    { "id": "opex-2026-06", "date": "2026-06-26T08:00:00Z", "title": "BTC/ETH Options Expiry", "category": "Crypto", "country": "Global", "impact": "medium", "detail": "Large monthly Deribit BTC and ETH options expiry — can drive volatility." },
+    { "id": "nfp-2026-07", "date": "2026-07-02T12:30:00Z", "title": "US Non-Farm Payrolls (Jun)", "category": "Employment", "country": "US", "impact": "high", "detail": "Monthly US jobs report." },
+    { "id": "cpi-2026-07", "date": "2026-07-14T12:30:00Z", "title": "US CPI (Jun)", "category": "Inflation", "country": "US", "impact": "high", "detail": "US Consumer Price Index release." },
+    { "id": "fomc-2026-07", "date": "2026-07-29T18:00:00Z", "title": "FOMC Rate Decision", "category": "Monetary Policy", "country": "US", "impact": "high", "detail": "Federal Reserve interest-rate decision and policy statement." },
+    { "id": "cpi-2026-08", "date": "2026-08-12T12:30:00Z", "title": "US CPI (Jul)", "category": "Inflation", "country": "US", "impact": "high", "detail": "US Consumer Price Index release." }
+  ]
+}

@@ -76,8 +76,11 @@ input:focus, select:focus { border-color: var(--accent); }
   font-size: 9px; min-width: 15px; height: 15px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
-.ws-status { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin: 0 4px; }
+.ws-conn { display: inline-flex; align-items: center; gap: 5px; padding: 0 4px; }
+.ws-exchange { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+.ws-status { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .ws-status.connected { background: var(--green); }
+.ws-conn:has(.ws-status.connected) .ws-exchange { color: var(--text); }
 .ws-status.error { background: var(--red); }
 
 /* ---------- App layout ---------- */
@@ -100,6 +103,17 @@ input:focus, select:focus { border-color: var(--accent); }
 .ind-tag.oscillator { background: #9c27b0; }
 .ind-name { font-weight: 600; }
 .ind-full { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Indicator hover tooltip (custom, floats over the chart area) */
+.ind-tooltip {
+  position: fixed; z-index: 1000; width: 250px; max-width: 80vw;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  pointer-events: none; opacity: 0; transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.ind-tooltip.show { opacity: 1; transform: translateY(0); }
+.ind-tt-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+.ind-tt-desc { font-size: 11px; line-height: 1.45; color: var(--muted); }
 .ind-chips { padding: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow-y: auto; }
 .ind-chip { display: flex; align-items: center; gap: 5px; background: var(--panel2); border: 1px solid var(--border); border-radius: 14px; padding: 3px 6px 3px 8px; font-size: 11px; }
 .chip-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; }
@@ -203,7 +217,11 @@ input:focus, select:focus { border-color: var(--accent); }
 .sym-list-head .col { cursor: pointer; }
 .sym-list-head .col.num { text-align: right; }
 .sym-list-head .col.sorted { color: var(--accent); }
-.sym-list { flex: 1; overflow-y: auto; }
+/* Reserve a stable scrollbar gutter so the rows never shift left under the
+   header when a vertical scrollbar appears. The header is padded to match the
+   gutter width via --sb-w (measured in JS) so numeric columns stay right-aligned. */
+.sym-list { flex: 1; overflow-y: auto; scrollbar-gutter: stable; }
+.sym-list-head { padding-right: calc(8px + var(--sb-w, 0px)); }
 .sym-row { font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
 .sym-row:hover { background: var(--hover); }
 .sym-drag { color: transparent; cursor: grab; font-size: 11px; line-height: 1; text-align: center; user-select: none; }
@@ -374,6 +392,28 @@ body.resizing * { pointer-events: none; }
 .sym-picker-item { display: flex; align-items: baseline; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-align: left; }
 .sym-picker-item:hover { background: var(--hover); border-color: var(--accent); }
 .sym-picker-item span { color: var(--muted); font-size: 10px; }
+.sym-picker-more { grid-column: 1 / -1; padding: 8px; border: 1px dashed var(--border); border-radius: 6px; color: var(--accent); font-size: 12px; font-weight: 600; }
+.sym-picker-more:hover { background: var(--hover); }
+.sym-picker-count { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 10px; padding: 2px 0; }
+
+/* Events pane */
+.events-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.events-filter { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 400; color: var(--muted); cursor: pointer; }
+.events-list { flex: 1; overflow-y: auto; padding: 4px; }
+.evt-row { display: grid; grid-template-columns: 10px 1fr; align-items: start; gap: 8px; width: 100%; text-align: left; padding: 8px 8px; border-radius: 6px; border-bottom: 1px solid var(--border); }
+.evt-row:hover { background: var(--hover); }
+.evt-row.past { opacity: 0.55; }
+.evt-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 3px; }
+.evt-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.evt-title { font-size: 12px; font-weight: 600; }
+.evt-meta { font-size: 10px; color: var(--muted); }
+.evt-detail { margin: 4px 0 10px; }
+.evt-detail-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.evt-detail-meta { font-size: 11px; color: var(--muted); margin: 4px 0; }
+.evt-impact { margin-left: auto; font-size: 10px; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
+.evt-impact.high { background: rgba(239,83,80,0.18); color: #ef5350; }
+.evt-impact.medium { background: rgba(247,166,0,0.18); color: #f7a600; }
+.evt-impact.low { background: var(--panel2); color: var(--muted); }
 
 /* ---------- Order book controls ---------- */
 .ob-controls { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }

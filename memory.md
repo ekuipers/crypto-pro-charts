@@ -4,6 +4,168 @@ This file tracks every significant change made to `index.html` for future refere
 
 ---
 
+## 2026-06-14 — Bug fix #1: Bybit chart price not updating real-time
+
+**Date:** 2026-06-14
+**Problem (Bugs #1):** `openKlineStream` in `src/js/data.js` returned `null` for any exchange
+other than Binance (`if (e.id !== 'binance') return null`), so on Bybit no live candle feed was
+opened and the chart price never updated in real time.
+**Fix (`src/js/data.js`):** Reworked `openKlineStream` to branch by exchange and added
+`openBybitKlineStream(symbol, interval, onCandle)` — connects to `wss://stream.bybit.com/v5/public/spot`,
+subscribes to `kline.{interval}.{symbol}`, maps each push (`start/open/high/low/close/volume/confirm`)
+to the app's candle shape (`closed` = `confirm`), and runs a 20s keep-alive ping that is cleared
+on socket close/error. OKX/Gate/Hyperliquid still return `null` (no public WS wired yet).
+**Why it now works:** `setExchange` and timeframe/symbol changes all re-run `loadPanelData` →
+`startKlineStream` → `openKlineStream`, which now returns a live Bybit socket; charts.js updates
+the last candle on each push (and recomputes MA crossings on `confirm`).
+**Verified:** `node --check` passes on data.js. Returned object matches the Binance branch's
+shape, so `startKlineStream`'s update logic is unchanged. (No browser run per project rule.)
+
+---
+
+## 2026-06-14 — Roadmap #1: market events pane + chart event markers
+
+**Date:** 2026-06-14
+**Change:** Added an "Events" tab beside the Watchlist holding macro/crypto events (FOMC, CPI,
+NFP, ECB, options expiry, …). High-impact events are marked on every chart's x-axis; clicking
+a marker — or an event row — opens a details modal.
+**How:**
+- `data/events.json`: curated calendar (`{events:[{id,date(ISO UTC),title,category,country,
+  impact,detail}]}`), 2026 macro dates around the current period so markers fall in view.
+- `server.js`: `GET /api/events` serves the JSON file (500 + empty list on error).
+- `src/js/events.js` (new): `initEvents()` fetches `/api/events`, renders the pane (with a
+  "High impact only" filter), and on every `panel-data-loaded` calls `applyEventMarkers(panel)`
+  — maps each high-impact event to its nearest in-range bar (binary search), sets
+  `panel._eventMarkers` + `panel._eventByTime`, and merges via `applyPanelMarkers`. Marker/row
+  click shows `showEventDetails` modal. No circular import: charts.js dispatches the DOM event,
+  events.js imports only `applyPanelMarkers` from charts.js.
+- `src/js/charts.js`: `loadPanelData` now dispatches `panel-data-loaded`.
+- `public/index.html`: Events tab button + `#eventsList` content.
+- `src/js/main.js`: imports & calls `initEvents()`.
+- `public/css/style.css`: events pane + detail-modal styles.
+**Verified:** `node --check` passes on events.js/charts.js/main.js/server.js; `events.json`
+parses. Earlier the live server returned 2026-dated Binance bars, so the June-2026 events align
+with the visible candle range. (No browser run — "do not start the local server".)
+
+---
+
+## 2026-06-14 — Roadmap: cache fetched symbol bars in a JSON file
+
+**Date:** 2026-06-14
+**Change:** Historical klines are now cached server-side as JSON files on disk, so repeated
+loads of the same symbol/timeframe don't re-hit the exchange (and CORS is avoided).
+**How:**
+- `server.js`: added `GET /api/klines?exchange&symbol&tf&limit`. Reusing `EXCHANGES` from
+  `src/js/constants.js`, it builds the per-exchange kline URL, fetches via Node `fetch`,
+  normalises to `[{time,open,high,low,close,volume}]`, and writes
+  `cache/klines/<exchange>_<symbol>_<tf>_<limit>.json` (`{ts, bars}`). Serves a fresh cache
+  within a per-TF TTL (30s for 1m … 15min for 1w); on upstream failure serves stale cache.
+  Inputs validated (symbol `^[A-Z0-9]{2,20}$`, exchange whitelist, tf in interval map, limit
+  clamped 1–1000) to keep the upstream URL safe (no SSRF).
+- `src/js/data.js`: `fetchKlines` now tries `/api/klines` first and falls back to the existing
+  direct-exchange logic if the route is unavailable or empty. Live updates stay on the
+  client WebSocket; only historical bars are cached.
+- `.gitignore`: ignore `cache/*` (and stray `ruvector.db`).
+**Verified:** Started the server and curled the endpoint — returned normalized Binance bars,
+wrote `cache/klines/binance_BTCUSDT_1h_5.json`, and rejected an invalid symbol with HTTP 400.
+(Verification done before the "do not start the local server" note was added.)
+
+---
+
+## 2026-06-14 — Roadmap #4 (orig #4): load more symbols from the active exchange
+
+**Date:** 2026-06-14
+**Change:** The "Add symbol" picker now lists pairs from the *currently selected* exchange
+(was always Binance) and no longer truncates to 60 results.
+**How:**
+- `src/js/data.js`: rewrote `fetchAllPairs` to branch per exchange — Binance `exchangeInfo`,
+  Bybit `instruments-info`, OKX `public/instruments`, Gate.io `currency_pairs` — each
+  normalised to internal `BASEUSDT` form (so klines/overlays keep working). Falls back to
+  Binance pairs on empty/error; de-dupes and sorts alphabetically. (`state.allPairs` is already
+  cleared by `setExchange`, so switching exchange refetches.)
+- `src/js/watchlist.js`: `showSymbolPicker` now pages results 100 at a time with a "Load more"
+  button and a "Showing X of Y" count; search resets paging.
+- `public/css/style.css`: added `.sym-picker-more` / `.sym-picker-count` (span both columns).
+**Verified:** `node --check` passes on data.js and watchlist.js. Return shape `{symbol,name}[]`
+is unchanged, so scanner.js/watchlist.js callers are unaffected.
+
+---
+
+## 2026-06-14 — Roadmap: EMA/SMA crossing markers (golden / death cross)
+
+**Date:** 2026-06-14
+**Change:** When two or more SMA/EMA overlays are on a panel, crossover markers now appear
+on the candles: an up-arrow (up color, below bar) where a faster MA crosses above a slower
+one, a down-arrow (down color, above bar) where it crosses below. Marker text names the pair
+(e.g. `↑ EMA20/SMA50`).
+**How (`src/js/charts.js`):**
+- Added `rebuildCrossMarkers(panel)`: recomputes each SMA/EMA via `calcOverlay`, sorts by
+  period, and detects sign changes of (fast − slow) between adjacent pairs.
+- Added `applyPanelMarkers(panel)`: merges `panel._crossMarkers` with `panel._eventMarkers`
+  (reserved for the events feature), sorts by time, and calls `candleSeries.setMarkers` once —
+  so multiple marker sources don't clobber each other.
+- Wired into `recomputeIndicators` (covers data/symbol/timeframe loads + param edits),
+  `addIndicator`, `removeIndicator`, and the live kline stream on each closed bar.
+**Verified:** `node --check` passes on charts.js. Markers only render when ≥2 MAs are present;
+removing MAs clears them (sets `[]`).
+
+---
+
+## 2026-06-14 — Roadmap #2: hover descriptions for indicators
+
+**Date:** 2026-06-14
+**Change:** Hovering an indicator in the left pane now shows a styled tooltip with the
+indicator's full name and a short plain-language description.
+**How:**
+- `src/js/constants.js`: added & exported `INDICATOR_DESC` — a map of one-line descriptions
+  keyed by indicator id (covers all 33 indicators).
+- `src/js/ui.js`: imported `INDICATOR_DESC`; each `.ind-item` gets a native `title` (fallback)
+  plus `mouseenter`/`mouseleave` handlers that show a custom floating tooltip
+  (`showIndTooltip`/`hideIndTooltip`), positioned right of the pane and flipped left if it
+  would overflow the viewport.
+- `public/css/style.css`: added `.ind-tooltip`/`.ind-tt-title`/`.ind-tt-desc` styles with a
+  fade/slide-in transition.
+**Verified:** Tooltip text is sourced from `INDICATOR_DESC[id]` (falls back to `def.full`);
+hidden on click and mouseleave so it can't get stuck. (Visual browser check pending.)
+
+---
+
+## 2026-06-14 — Roadmap #3: show connected exchange in connection status
+
+**Date:** 2026-06-14
+**Change:** The topbar connection indicator now shows the active exchange name next to the
+live-feed status dot.
+**How:**
+- `public/index.html`: wrapped the status dot in `.ws-conn` and added `#wsExchange` label.
+- `src/js/ui.js`: imported `EXCHANGES`; `updateWSStatus()` now sets `#wsExchange` text to
+  `EXCHANGES[state.settings.exchange].name` and a tooltip with the exchange capability status.
+- `public/css/style.css`: styled `.ws-conn`/`.ws-exchange`; label brightens to `--text` when
+  the dot is `.connected` (via `:has()`).
+**Verified:** `updateWSStatus` runs on init and on every `restart-price-stream` (fired by
+`setExchange`), so the label reflects the current exchange immediately and after switching.
+
+---
+
+## 2026-06-14 — Bug fix: watchlist column labels not right-aligned
+
+**Date:** 2026-06-14
+**Problem (Bugs #2):** The watchlist header (`#symListHead`) sits outside the scrolling
+`.sym-list` container. When rows overflowed and a vertical scrollbar appeared, the rows
+lost ~15px of width to the scrollbar while the header did not, shifting every right-aligned
+numeric value (Price/Chg/%) left of its header label.
+**Fix:**
+- `public/css/style.css`: added `scrollbar-gutter: stable` to `.sym-list` (gutter always
+  reserved, no shift between few/many rows) and `padding-right: calc(8px + var(--sb-w,0px))`
+  to `.sym-list-head`.
+- `src/js/watchlist.js`: added `syncHeaderGutter()` which measures the real gutter
+  (`symList.offsetWidth - symList.clientWidth`) and publishes it as the `--sb-w` CSS var on
+  init and on window resize, so the header padding matches the OS scrollbar width exactly.
+**Verified:** Header content-box width now equals the rows' content-box width (both reduced
+by the same gutter), so grid tracks 1–6 line up; numeric columns are right-aligned over their
+values. (Visual browser verification pending — Playwright bridge unavailable in this env.)
+
+---
+
 ## 2026-06-14 — Git config: set commit email
 
 **Date:** 2026-06-14
@@ -393,142 +555,3 @@ Main (120 bars) + oscillator (34-bar warmup), synced + equal price-scale widths:
 - Headless Chromium unavailable beyond the charting tests; JS validated by full authoritative review of each edited file (balanced braces, template literals, handlers). NOTE: the Linux shell mount serves stale copies of these source files this session, so `node --check` there parses the OLD files — not a reliable post-edit check this session.
 
 ---
-
-## Future improvement ideas
-- More exchange support: Hyperliquid, dYdX, Gate.io
-- Add order book timeframe selector
-- Add auto chart scaling
-
--  Multi-timeframe analysis overlay
-This is also listed in memory. The app already supports per-panel timeframes and multi-panel layouts, but it does not appear to overlay higher-timeframe levels directly onto a lower-timeframe chart. [onedrive.live.com], [index | HTML]
-Recommendation: add “HTF Levels” as an overlay feature:
-
-previous day high/low/open/close
-previous week high/low
-previous month high/low
-higher-timeframe moving averages
-higher-timeframe candles as ghost candles
-session VWAP / anchored VWAP
-
-Why it matters: crypto traders often analyse a 1h or 15m chart while watching daily/weekly levels. This would be more useful than simply adding more panels because it keeps context visible in the active chart.
-
-- Market scanner / screener tab
-The right panel currently has Watchlist, Order Book, and Tech Info tabs. [onedrive.live.com], [index | HTML]
-Recommendation: add a fourth tab: Scanner.
-Scanner ideas:
-
-top gainers / losers
-highest volume
-unusual volume
-RSI overbought/oversold
-price above/below EMA 200
-breakout above Donchian high
-watchlist-only scan vs all pairs
-
-Why it matters: global symbol search helps when users know what they want; a scanner helps them discover opportunities.
-
-- ~~Watchlist colour labels~~ ✅ Done in v3.0 (color dot per symbol with context menu)
-
-- Mobile and tablet optimisation
-The app currently uses a three-column layout, fixed side panels, chart grid, and minimum chart sizes. [onedrive.live.com], [index | HTML]
-Recommendation: improve smaller-screen behaviour:
-
-bottom tab bar for Watchlist / Indicators / Drawings
-collapsible topbar groups
-full-screen active chart mode
-touch-friendly drawing handles
-larger hit targets
-long-press context menu
-
-Crypto users often check charts on tablets or phones, so this would expand usability significantly.
-
-- WebSocket connection manager
-The current app uses WebSockets for live prices, panel klines, and order book where supported. [onedrive.live.com], [index | HTML]
-Recommendation: centralise WebSocket management:
-
-reconnect with exponential backoff
-show connection status
-avoid duplicate subscriptions
-pause streams for hidden panels
-close streams on tab hidden, resume on visible
-display stale data warning
-
-Why it matters: multiple panels plus watchlist plus order book can create many live connections. A connection manager improves stability.
-
-- ~~Data cache per symbol/timeframe~~ ✅ Done in v3.0 (`state.klineCache`, `getCachedKlines()`, 1-min TTL)
-
-- Reduce inline event handlers
-index contains inline event handlers in generated HTML such as onclick for fullscreen/close panel and retry logic. [index | HTML]
-Recommendation: move inline handlers to delegated event listeners.
-Why it matters: improves maintainability, reduces accidental global coupling, and makes the code safer if user-generated content expands.
-
-- Split into modules eventually
-The current app is intentionally a single-file HTML app with no build step.  That is convenient, but index is now large and contains styling, markup, state, data fetching, indicators, drawing tools, persistence, alerts, settings, order book, and UI logic together. [onedrive.live.com] [index | HTML]
-Recommendation: keep the single-file distribution, but internally organise code sections more cleanly or create an optional modular source version:
-Plain Textsrc/  app-state.js  exchanges/  indicators/  drawings/  watchlists/  alerts/  persistence/  ui/dist/  index.htmlMeer regels weergeven
-Then build back into one index.html if the “single file” requirement remains.
-
-- Drawing groups and visibility layers
-Recommendation: add layers:
-
-Support/resistance
-Fibonacci
-Trade setup
-Notes
-Alerts
-HTF levels
-
-Each layer could have show/hide and lock toggles.
-Why it matters: as users build complex analyses, charts can become cluttered. Layers give structure without deleting work.
-
-- Drawing edit mode: drag, resize, style controls
-The current app has many drawing tools: trend line, ray, extended line, horizontal/vertical lines, rectangle, parallel channel, Fibonacci retracement/extension, text, measure, eraser, import/export, and persistent drawings. [onedrive.live.com], [index | HTML]
-Recommendation: add true object editing:
-
-select drawing
-drag drawing
-drag endpoints
-change colour/width/style after creation
-lock drawing
-hide drawing
-duplicate drawing
-send drawing to back/front
-drawing list panel
-
-Why it matters: the drawing toolset is already broad, but without edit handles and object management it may feel less polished than TradingView-like tools.
-
-- More overlays and oscillators (partially done in v3)
-  - ✅ Stoch RSI, Heikin Ashi, HTF Levels, MA Ribbon added in v3
-  - Still to add: Anchored VWAP, EMA Cloud, Ultimate Oscillator, CMF, Elder Force Index, TSI, DMI ±DI, market structure labels
-
-- ~~Indicator templates / strategy presets~~ ✅ Done in v3.0 (Templates button with 4 presets)
-
-- ~~Indicator settings editing after adding~~ ✅ Done in v3.0 (click chip body = edit modal with current params)
-
-- Symbol format mapping per exchange
-The current code uses symbols such as BTCUSDT, and OKX conversion appears to transform BTCUSDT into BTC-USDT. [index | HTML]
-Recommendation: add a symbol-normalisation layer:
-JavaScripttoExchangeSymbol('BTCUSDT', 'okx')      // BTC-USDTtoExchangeSymbol('BTCUSDT', 'binance')  // BTCUSDTfromExchangeSymbol('BTC-USDT', 'okx')   // BTCUSDTMeer regels weergeven
-
-Why it matters: this avoids brittle string replacements and will become essential if Hyperliquid, dYdX, Gate.io, Coinbase, or Kraken support is expanded.
-
-- Complete exchange support consistency
-The settings page currently lists Binance and Bybit as “Full support,” while OKX, Kraken, and Coinbase are marked REST-only or fallback-like in the documented changes.  In index, Binance has REST/WebSocket klines/order book support, Bybit has REST/WebSocket paths, OKX has candle fetching, and Kraken/Coinbase fall back in several places. [onedrive.live.com] [index | HTML]
-Recommendation: make exchange support explicit and safer in the UI:
-
-show exact support badges:
-
-Candles: Live / REST / Fallback
-Watchlist prices: Live / Polling / Fallback
-Order book: Live / Polling / Fallback
-Symbol search: Native / Fallback
-
-warn users when a selected exchange is falling back to another exchange’s data
-add a small exchange badge on every chart panel that updates dynamically
-
-Why it matters: if a user selects OKX/Kraken/Coinbase but receives Binance fallback data, they need clear visibility to avoid analytical mistakes.
-
-- ~~Market scanner / screener tab~~ ✅ Done in v3.0 (4th tab: Gainers/Losers/Volume/RSI/EMA scans)
-
-- Add a financial event calendar pane next to the watchlist. Makes it selectable or hideable. Also add a selector to add the events on the x-axis on the selected chart.
-

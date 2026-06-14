@@ -22,6 +22,15 @@ export function toExchangeSymbol(sym, exId = state.settings.exchange) {
 export async function fetchKlines(symbol, tf, limit = 500) {
   const e = ex();
   const interval = e.intervals[tf] || tf;
+  // Prefer the server-side JSON-file cache/proxy (persists bars to disk and
+  // avoids exchange CORS). Falls through to direct exchange fetch if the server
+  // route is unavailable (e.g. opened from file://) or returns nothing.
+  try {
+    const j = await fetchJSON(`/api/klines?exchange=${e.id}&symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=${limit}`, {}, 16000);
+    if (j && Array.isArray(j.bars) && j.bars.length) return j.bars;
+  } catch (e0) {
+    warn('server kline cache unavailable, fetching exchange directly', e0.message);
+  }
   try {
     if (e.id === 'binance') {
       const url = `${e.rest}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
@@ -102,19 +111,59 @@ export async function fetchPrice(symbol) {
   };
 }
 
-// ---- All tradeable USDT pairs -----------------------------
+// ---- All tradeable USDT pairs (from the active exchange) --------
+// Every pair is normalised to the app's internal `BASEUSDT` symbol form so the
+// rest of the app (klines, overlays, toExchangeSymbol) keeps working unchanged.
+async function fetchBinancePairs() {
+  const j = await fetchJSON(`${EXCHANGES.binance.rest}/exchangeInfo`);
+  return j.symbols
+    .filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
+    .map(s => ({ symbol: s.symbol, name: s.baseAsset }));
+}
+
+async function fetchExchangePairs(exId) {
+  switch (exId) {
+    case 'bybit': {
+      const j = await fetchJSON('https://api.bybit.com/v5/market/instruments-info?category=spot');
+      return (j.result?.list || [])
+        .filter(s => s.quoteCoin === 'USDT' && (s.status === 'Trading' || !s.status))
+        .map(s => ({ symbol: `${s.baseCoin}USDT`, name: s.baseCoin }));
+    }
+    case 'okx': {
+      const j = await fetchJSON('https://www.okx.com/api/v5/public/instruments?instType=SPOT');
+      return (j.data || [])
+        .filter(s => s.quoteCcy === 'USDT' && s.state === 'live')
+        .map(s => ({ symbol: `${s.baseCcy}USDT`, name: s.baseCcy }));
+    }
+    case 'gate': {
+      const j = await fetchJSON('https://api.gateio.ws/api/v4/spot/currency_pairs');
+      return (j || [])
+        .filter(s => s.quote === 'USDT' && (s.trade_status === 'tradable' || !s.trade_status))
+        .map(s => ({ symbol: `${s.base}USDT`, name: s.base }));
+    }
+    default: // binance + hyperliquid (which falls back to Binance data)
+      return fetchBinancePairs();
+  }
+}
+
 export async function fetchAllPairs() {
   if (state.allPairs) return state.allPairs;
+  const exId = state.settings.exchange;
   try {
-    const j = await fetchJSON(`${EXCHANGES.binance.rest}/exchangeInfo`);
-    const pairs = j.symbols
-      .filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
-      .map(s => ({ symbol: s.symbol, name: s.baseAsset }));
+    let pairs = await fetchExchangePairs(exId);
+    // Some exchanges occasionally return an empty/odd payload — fall back so the
+    // symbol picker is never empty.
+    if (!pairs.length && exId !== 'binance') pairs = await fetchBinancePairs();
+    // De-dupe by symbol and sort alphabetically for a stable picker order.
+    const seen = new Set();
+    pairs = pairs.filter(p => p.symbol && !seen.has(p.symbol) && seen.add(p.symbol))
+                 .sort((a, b) => a.symbol.localeCompare(b.symbol));
     state.allPairs = pairs;
     return pairs;
   } catch (e) {
     warn('fetchAllPairs failed', e.message);
-    return [];
+    try { state.allPairs = await fetchBinancePairs(); return state.allPairs; }
+    catch { return []; }
   }
 }
 
@@ -182,26 +231,56 @@ export function closePriceStream() {
 // Returns the ws; onCandle({time, open, high, low, close, volume, closed})
 export function openKlineStream(symbol, tf, onCandle) {
   const e = ex();
-  if (e.id !== 'binance') return null; // live klines only for binance here
   const interval = e.intervals[tf] || tf;
   try {
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${interval}`);
-    ws.onmessage = ev => {
-      let m;
-      try { m = JSON.parse(ev.data); } catch { return; }
-      const k = m.k;
-      if (!k) return;
-      onCandle({
-        time: Math.floor(k.t / 1000),
-        open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v,
-        closed: k.x,
-      });
-    };
-    return ws;
+    if (e.id === 'binance') {
+      const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${interval}`);
+      ws.onmessage = ev => {
+        let m;
+        try { m = JSON.parse(ev.data); } catch { return; }
+        const k = m.k;
+        if (!k) return;
+        onCandle({
+          time: Math.floor(k.t / 1000),
+          open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v,
+          closed: k.x,
+        });
+      };
+      return ws;
+    }
+    if (e.id === 'bybit') return openBybitKlineStream(symbol, interval, onCandle);
+    return null; // okx / gate / hyperliquid: no public kline WS wired here yet
   } catch (e2) {
     warn('openKlineStream failed', e2.message);
     return null;
   }
+}
+
+// Bybit v5 public spot kline stream. Returns a WebSocket whose .close() also
+// stops the keep-alive ping (Bybit drops idle sockets after ~30s).
+function openBybitKlineStream(symbol, interval, onCandle) {
+  const ws = new WebSocket('wss://stream.bybit.com/v5/public/spot');
+  let ping = null;
+  ws.addEventListener('open', () => {
+    try { ws.send(JSON.stringify({ op: 'subscribe', args: [`kline.${interval}.${symbol}`] })); } catch {}
+    ping = setInterval(() => { try { ws.send(JSON.stringify({ op: 'ping' })); } catch {} }, 20000);
+  });
+  ws.addEventListener('message', ev => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch { return; }
+    if (!m.topic || !m.topic.startsWith('kline.') || !Array.isArray(m.data)) return;
+    const k = m.data[0];
+    if (!k) return;
+    onCandle({
+      time: Math.floor(+k.start / 1000),
+      open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volume,
+      closed: !!k.confirm,
+    });
+  });
+  const stop = () => { if (ping) { clearInterval(ping); ping = null; } };
+  ws.addEventListener('close', stop);
+  ws.addEventListener('error', stop);
+  return ws;
 }
 
 // ---- WebSocket: order book stream -------------------------

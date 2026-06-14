@@ -35,6 +35,22 @@ export function initWatchlist() {
   });
 
   fetchAllPairs();
+
+  // Keep the header's right padding equal to the list's scrollbar gutter so
+  // numeric columns line up on the right whether or not a scrollbar is shown.
+  syncHeaderGutter();
+  window.addEventListener('resize', syncHeaderGutter);
+}
+
+// Measure the reserved scrollbar gutter on the symbol list and publish it as a
+// CSS variable so the (non-scrolling) header can pad itself to match.
+function syncHeaderGutter() {
+  requestAnimationFrame(() => {
+    const list = document.getElementById('symList');
+    if (!list) return;
+    const gutter = Math.max(0, list.offsetWidth - list.clientWidth);
+    document.documentElement.style.setProperty('--sb-w', gutter + 'px');
+  });
 }
 
 function renderTabs() {
@@ -208,18 +224,27 @@ export async function showSymbolPicker(title, onPick) {
     const search = m.querySelector('#spSearch');
     const listEl = m.querySelector('#spList');
     const pairs = await fetchAllPairs();
+    const PAGE = 100;
+    let shown = PAGE;
     const render = () => {
       const q = (search.value || '').toUpperCase().trim();
-      const results = (q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs).slice(0, 60);
-      if (!results.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
-      listEl.innerHTML = results.map(r =>
-        `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>USDT</span></button>`).join('');
+      const matches = q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs;
+      if (!matches.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
+      const slice = matches.slice(0, shown);
+      const hidden = matches.length - slice.length;
+      listEl.innerHTML =
+        slice.map(r =>
+          `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>USDT</span></button>`).join('') +
+        (hidden > 0 ? `<button class="sym-picker-more" id="spMore">Load ${Math.min(PAGE, hidden)} more</button>` : '') +
+        `<div class="sym-picker-count">Showing ${slice.length} of ${matches.length}</div>`;
       listEl.querySelectorAll('.sym-picker-item').forEach(b => b.addEventListener('click', () => {
         onPick(b.dataset.sym, b.dataset.name);
         closeModal();
       }));
+      const more = listEl.querySelector('#spMore');
+      if (more) more.addEventListener('click', () => { shown += PAGE; render(); });
     };
-    search.addEventListener('input', render);
+    search.addEventListener('input', () => { shown = PAGE; render(); });
     render();
     search.focus();
   });

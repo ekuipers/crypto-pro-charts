@@ -2,7 +2,7 @@
 // UI — topbar, indicators panel, drawing toolbar, modals, tabs
 // ============================================================
 import { state, drawingState } from './state.js';
-import { INDICATORS_DEF, COLORS, THEMES } from './constants.js';
+import { INDICATORS_DEF, INDICATOR_DESC, COLORS, THEMES, EXCHANGES } from './constants.js';
 import { indDef } from './indicators.js';
 import {
   setLayout, addIndicator, removeIndicator, recomputeIndicators,
@@ -61,7 +61,12 @@ function buildIndicatorPanel() {
       const b = document.createElement('button');
       b.className = 'ind-item';
       b.innerHTML = `<span class="ind-tag ${d.type}">${d.type === 'overlay' ? 'O' : 'S'}</span><span class="ind-name">${d.name}</span><span class="ind-full">${esc(d.full)}</span>`;
+      const desc = INDICATOR_DESC[d.id] || d.full;
+      b.title = desc; // native fallback
+      b.addEventListener('mouseenter', () => showIndTooltip(b, d.full, desc));
+      b.addEventListener('mouseleave', hideIndTooltip);
       b.addEventListener('click', () => {
+        hideIndTooltip();
         if (!state.activePanel) return;
         if (d.params.length) showIndicatorModal(d.id);
         else addIndicator(state.activePanel, d.id);
@@ -71,6 +76,28 @@ function buildIndicatorPanel() {
   };
   filter.addEventListener('input', render);
   render();
+}
+
+// ---------- Indicator hover tooltip ----------
+let _indTip = null;
+function showIndTooltip(anchor, title, desc) {
+  hideIndTooltip();
+  _indTip = document.createElement('div');
+  _indTip.className = 'ind-tooltip';
+  _indTip.innerHTML = `<div class="ind-tt-title">${esc(title)}</div><div class="ind-tt-desc">${esc(desc)}</div>`;
+  document.body.appendChild(_indTip);
+  const a = anchor.getBoundingClientRect();
+  const t = _indTip.getBoundingClientRect();
+  // Prefer to the right of the indicator pane; flip left if it would overflow.
+  let left = a.right + 10;
+  if (left + t.width > window.innerWidth - 8) left = Math.max(8, a.left - t.width - 10);
+  let top = Math.min(a.top, window.innerHeight - t.height - 8);
+  _indTip.style.left = left + 'px';
+  _indTip.style.top = Math.max(8, top) + 'px';
+  requestAnimationFrame(() => _indTip && _indTip.classList.add('show'));
+}
+function hideIndTooltip() {
+  if (_indTip) { _indTip.remove(); _indTip = null; }
 }
 
 export function renderIndChips() {
@@ -237,7 +264,14 @@ export function updateWSStatus(s) {
   const dot = document.getElementById('wsStatus');
   if (!dot) return;
   dot.className = 'ws-status ' + (s || '');
-  dot.title = 'WebSocket: ' + (s || 'idle');
+  const ex = EXCHANGES[state.settings.exchange] || EXCHANGES.binance;
+  const stateLabel = s || 'idle';
+  dot.title = `${ex.name}: ${stateLabel}`;
+  const exLabel = document.getElementById('wsExchange');
+  if (exLabel) {
+    exLabel.textContent = ex.name;
+    exLabel.title = `${ex.name} — ${ex.status}`;
+  }
 }
 
 // ---------- Keyboard ----------

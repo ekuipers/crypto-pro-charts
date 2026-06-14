@@ -9,6 +9,7 @@ import { initWatchlist, updatePriceRows } from './watchlist.js';
 import { initAlerts } from './alerts.js';
 import { initSettings } from './settings.js';
 import { initScanner } from './scanner.js';
+import { initEvents } from './events.js';
 import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
 import { autosave, loadAutosave } from './persistence.js';
 import { debounce, log, toast } from './utils.js';
@@ -45,6 +46,7 @@ function init() {
   initAlerts();
   initSettings();
   initScanner();
+  initEvents();
 
   startPriceStream();
   document.addEventListener('restart-price-stream', startPriceStream);

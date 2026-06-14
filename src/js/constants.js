@@ -138,6 +138,44 @@ const EXCHANGES = {
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' } },
 };
 
+// Short, plain-language descriptions shown as a hover tooltip in the indicator
+// pane. Keyed by indicator id (see INDICATORS_DEF).
+const INDICATOR_DESC = {
+  sma: 'Average closing price over N bars — smooths price to reveal the underlying trend.',
+  ema: 'Exponential moving average — like SMA but weights recent bars more, so it reacts faster.',
+  wma: 'Weighted moving average — linearly favors the most recent bars over older ones.',
+  bb: 'Bollinger Bands — an SMA with ±N standard-deviation bands that widen on volatility and flag extremes.',
+  vwap: 'Volume Weighted Average Price — the volume-weighted average, reset each day; a key intraday fair-value line.',
+  ich: 'Ichimoku Cloud — a multi-line system showing trend, momentum and support/resistance with a forward "cloud".',
+  psar: 'Parabolic SAR — trailing dots that flag trend direction and potential reversal points.',
+  dema: 'Double EMA — a reduced-lag EMA that turns faster than a standard EMA.',
+  tema: 'Triple EMA — even less lag than DEMA for quicker trend response.',
+  pivot: 'Pivot Points — classic support/resistance levels derived from the prior bar’s high, low and close.',
+  supertrend: 'SuperTrend — an ATR-based trailing stop that colors with the prevailing trend direction.',
+  keltner: 'Keltner Channels — an EMA envelope whose width is set by ATR; gauges trend and breakouts.',
+  donchian: 'Donchian Channels — the highest high and lowest low over N bars; classic breakout bands.',
+  volprofile: 'Volume Profile — a horizontal histogram of how much volume traded at each price level.',
+  heikinashi: 'Heikin Ashi — smoothed candles that filter noise and make trends easier to read.',
+  htflevels: 'HTF Levels — previous day and week high/low reference lines from higher timeframes.',
+  maribbon: 'MA Ribbon — eight stacked EMAs; their spread and order show trend strength and direction.',
+  avwap: 'Anchored VWAP — a VWAP measured from a chosen anchor bar instead of the daily reset.',
+  rsi: 'Relative Strength Index — momentum from 0–100; above 70 is overbought, below 30 oversold.',
+  macd: 'MACD — the gap between two EMAs with a signal line and histogram; tracks momentum shifts.',
+  stoch: 'Stochastic — where price closes within its recent range; %K/%D flag overbought/oversold.',
+  atr: 'Average True Range — measures volatility (size of moves), not direction.',
+  adx: 'Average Directional Index — trend strength from 0–100; above 25 means a strong trend.',
+  cci: 'Commodity Channel Index — deviation from the average price; ±100 marks extremes.',
+  obv: 'On-Balance Volume — running total of volume that rises/falls with price to confirm trend.',
+  willr: 'Williams %R — momentum from −100 to 0; near 0 overbought, near −100 oversold.',
+  mfi: 'Money Flow Index — a volume-weighted RSI from 0–100 measuring buying/selling pressure.',
+  roc: 'Rate of Change — percentage price change over N bars; a simple momentum gauge.',
+  stochrsi: 'Stochastic RSI — the Stochastic formula applied to RSI for a more sensitive oscillator.',
+  dmi: 'Directional Movement Index — +DI vs −DI with ADX to show direction and trend strength.',
+  cmf: 'Chaikin Money Flow — volume-weighted accumulation/distribution over N bars.',
+  tsi: 'True Strength Index — a double-smoothed momentum oscillator that filters noise.',
+  uo: 'Ultimate Oscillator — blends three timeframes into one 0–100 momentum reading.',
+};
+
 const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4 };
 
 // ---- Themes (2 light + 4 dark). `chart` holds Lightweight-Charts colors;
@@ -160,4 +198,4 @@ const DEFAULT_THEME = 'dark-classic';
 // Map legacy persisted values to new theme keys
 const LEGACY_THEME = { dark: 'dark-classic', light: 'light-classic' };
 
-export { BINANCE, COLORS, WATCHLISTS_INIT, INDICATORS_DEF, EXCHANGES, LAYOUT_COUNTS, THEMES, DEFAULT_THEME, LEGACY_THEME };
+export { BINANCE, COLORS, WATCHLISTS_INIT, INDICATORS_DEF, INDICATOR_DESC, EXCHANGES, LAYOUT_COUNTS, THEMES, DEFAULT_THEME, LEGACY_THEME };

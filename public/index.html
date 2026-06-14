@@ -27,7 +27,10 @@
       <button id="templatesBtn" class="tb-btn">Templates</button>
       <button id="saveBtn" class="tb-btn">Save</button>
       <button id="layoutsBtn" class="tb-btn">Layouts</button>
-      <span id="wsStatus" class="ws-status" title="WebSocket"></span>
+      <span class="ws-conn" title="Connected exchange / live feed">
+        <span id="wsExchange" class="ws-exchange"></span>
+        <span id="wsStatus" class="ws-status" title="WebSocket"></span>
+      </span>
       <button id="alertsBtn" class="tb-btn alerts">🔔<span id="alertBadge" class="badge" style="display:none">0</span></button>
       <button id="settingsBtn" class="tb-btn">⚙</button>
       <button id="themeToggle" class="tb-btn" title="Toggle theme">◐</button>
@@ -57,6 +60,7 @@
     <aside id="rightPanel" class="right-panel">
       <div class="right-tabs">
         <button class="right-tab active" data-tab="watchlist">Watchlist</button>
+        <button class="right-tab" data-tab="events">Events</button>
         <button class="right-tab" data-tab="orderbook">Book</button>
         <button class="right-tab" data-tab="techinfo">Info</button>
         <button class="right-tab" data-tab="scanner">Scanner</button>
@@ -81,6 +85,14 @@
           <button id="newWatchlistBtn">+ Watchlist</button>
           <button id="addSymbolBtn">+ Symbol</button>
         </div>
+      </div>
+
+      <div class="right-tab-content" data-tab="events">
+        <div class="events-head">
+          <span>Market Events</span>
+          <label class="events-filter"><input type="checkbox" id="evtHighOnly"> High impact only</label>
+        </div>
+        <div id="eventsList" class="events-list"><div class="muted">Loading events…</div></div>
       </div>
 
       <div class="right-tab-content" data-tab="orderbook">

@@ -1,5 +1,5 @@
 // ============================================================
-// PERSISTENCE — autosave + named layouts (localStorage)
+// PERSISTENCE — autosave + named layouts (server JSON, localStorage fallback)
 // ============================================================
 import { state } from './state.js';
 import { LEGACY_THEME, THEMES, DEFAULT_THEME } from './constants.js';
@@ -8,8 +8,7 @@ import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPa
 import { showModal, closeModal } from './alerts.js';
 
 const AUTOSAVE_KEY = 'cryptopro_autosave';
-const LAYOUTS_KEY = 'cryptopro_layouts';
-const SETTINGS_KEY = 'cryptopro_settings';
+const LAYOUTS_KEY  = 'cryptopro_layouts';
 const VERSION = 3;
 
 export function snapshot() {
@@ -34,11 +33,47 @@ export function snapshot() {
   };
 }
 
-export const autosave = debounce(() => {
-  try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snapshot())); } catch {}
-}, 1500);
+// ---- Server API helpers ----
+async function apiGet(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+async function apiPut(path, data) {
+  const r = await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+async function apiDelete(path) {
+  const r = await fetch(path, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
 
-export function loadAutosave() {
+// ---- Autosave ----
+async function persistSession() {
+  const snap = snapshot();
+  try {
+    await apiPut('/api/session', snap);
+  } catch {
+    // Server unavailable — fall back to localStorage.
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap)); } catch {}
+  }
+}
+
+export const autosave = debounce(() => { persistSession(); }, 1500);
+
+export async function loadAutosave() {
+  // Try server first.
+  try {
+    const data = await apiGet('/api/session');
+    if (data && data.version) { applyLayoutData(data); return true; }
+  } catch {}
+  // Fall back to localStorage (e.g. when running without the server).
   try {
     const raw = localStorage.getItem(AUTOSAVE_KEY);
     if (!raw) return false;
@@ -61,7 +96,6 @@ export function applyLayoutData(data) {
 
   document.documentElement.dataset.theme = state.theme;
 
-  // rebuild panels
   state.panels.slice().forEach(destroyPanel);
   setLayout(data.layout || 'l1');
 
@@ -83,35 +117,52 @@ export function applyLayoutData(data) {
 }
 
 // ---- Named layouts ----
-export function getNamedLayouts() {
+export async function getNamedLayouts() {
+  try { return await apiGet('/api/layouts'); } catch {}
   try { return JSON.parse(localStorage.getItem(LAYOUTS_KEY) || '{}'); } catch { return {}; }
 }
-export function saveNamedLayout(name) {
-  const all = getNamedLayouts();
-  if (Object.keys(all).length >= 10 && !all[name]) { toast('Max 10 saved layouts', 'warn'); return; }
-  all[name] = { ...snapshot(), savedAt: Date.now() };
-  localStorage.setItem(LAYOUTS_KEY, JSON.stringify(all));
-  toast(`Saved layout "${name}"`, 'info');
+
+export async function saveNamedLayout(name) {
+  const data = { ...snapshot(), savedAt: Date.now() };
+  try {
+    const all = await getNamedLayouts();
+    if (Object.keys(all).length >= 10 && !all[name]) { toast('Max 10 saved layouts', 'warn'); return; }
+    await apiPut(`/api/layouts/${encodeURIComponent(name)}`, data);
+    toast(`Saved layout "${name}"`, 'info');
+    return;
+  } catch {}
+  // Fallback: localStorage.
+  try {
+    const all = JSON.parse(localStorage.getItem(LAYOUTS_KEY) || '{}');
+    if (Object.keys(all).length >= 10 && !all[name]) { toast('Max 10 saved layouts', 'warn'); return; }
+    all[name] = data;
+    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(all));
+    toast(`Saved layout "${name}"`, 'info');
+  } catch {}
 }
-export function deleteNamedLayout(name) {
-  const all = getNamedLayouts();
-  delete all[name];
-  localStorage.setItem(LAYOUTS_KEY, JSON.stringify(all));
+
+export async function deleteNamedLayout(name) {
+  try { await apiDelete(`/api/layouts/${encodeURIComponent(name)}`); return; } catch {}
+  try {
+    const all = JSON.parse(localStorage.getItem(LAYOUTS_KEY) || '{}');
+    delete all[name];
+    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 export function showSaveLayoutModal() {
   showModal(`<h3>Save Layout</h3><label>Name<input id="lyName" placeholder="My layout"></label>
     <div class="modal-actions"><button id="lyCancel">Cancel</button><button id="lySave" class="primary-btn">Save</button></div>`, m => {
     m.querySelector('#lyCancel').addEventListener('click', closeModal);
-    m.querySelector('#lySave').addEventListener('click', () => {
+    m.querySelector('#lySave').addEventListener('click', async () => {
       const n = m.querySelector('#lyName').value.trim();
-      if (n) { saveNamedLayout(n); closeModal(); }
+      if (n) { await saveNamedLayout(n); closeModal(); }
     });
   });
 }
 
-export function showLayoutsModal() {
-  const all = getNamedLayouts();
+export async function showLayoutsModal() {
+  const all = await getNamedLayouts();
   const keys = Object.keys(all);
   const body = keys.length ? keys.map(k => `
     <div class="layout-item">
@@ -127,7 +178,13 @@ export function showLayoutsModal() {
   showModal(`<h3>Saved Layouts</h3><div class="layout-list">${body}</div>
     <div class="modal-actions"><button id="lyClose">Close</button></div>`, m => {
     m.querySelector('#lyClose').addEventListener('click', closeModal);
-    m.querySelectorAll('.load').forEach(b => b.addEventListener('click', () => { applyLayoutData(getNamedLayouts()[b.dataset.k]); closeModal(); document.dispatchEvent(new CustomEvent('layout-restored')); }));
-    m.querySelectorAll('.del').forEach(b => b.addEventListener('click', () => { deleteNamedLayout(b.dataset.k); showLayoutsModal(); }));
+    m.querySelectorAll('.load').forEach(b => b.addEventListener('click', () => {
+      applyLayoutData(all[b.dataset.k]); closeModal();
+      document.dispatchEvent(new CustomEvent('layout-restored'));
+    }));
+    m.querySelectorAll('.del').forEach(b => b.addEventListener('click', async () => {
+      await deleteNamedLayout(b.dataset.k);
+      await showLayoutsModal();
+    }));
   });
 }

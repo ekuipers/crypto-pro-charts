@@ -10,6 +10,8 @@ const __dirname  = dirname(__filename);
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(express.json({ limit: '2mb' }));
+
 // ---- Server-side kline cache (persists fetched bars to JSON files) ----------
 const CACHE_DIR = join(__dirname, 'cache', 'klines');
 // Per-timeframe freshness: short TFs change fast, higher TFs rarely.
@@ -110,6 +112,74 @@ app.get('/api/events', async (_req, res) => {
     res.type('application/json').send(raw);
   } catch (e) {
     res.status(500).json({ error: 'events unavailable', events: [] });
+  }
+});
+
+// ---- Session & named layout persistence ------------------------------------
+const SESSION_FILE = join(__dirname, 'data', 'session.json');
+const LAYOUTS_DIR  = join(__dirname, 'data', 'layouts');
+
+// Reject names that could escape the layouts directory.
+function validLayoutName(name) {
+  return typeof name === 'string' && name.length > 0 && name.length <= 80
+    && !name.includes('..') && !/[/\\]/.test(name);
+}
+
+app.get('/api/session', async (_req, res) => {
+  try {
+    const raw = await fs.readFile(SESSION_FILE, 'utf8');
+    res.type('application/json').send(raw);
+  } catch {
+    res.status(404).json(null);
+  }
+});
+
+app.put('/api/session', async (req, res) => {
+  try {
+    await fs.writeFile(SESSION_FILE, JSON.stringify(req.body));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message) });
+  }
+});
+
+app.get('/api/layouts', async (_req, res) => {
+  try {
+    await fs.mkdir(LAYOUTS_DIR, { recursive: true });
+    const files = (await fs.readdir(LAYOUTS_DIR)).filter(f => f.endsWith('.json'));
+    const result = {};
+    for (const f of files) {
+      try {
+        const name = decodeURIComponent(f.slice(0, -5));
+        result[name] = JSON.parse(await fs.readFile(join(LAYOUTS_DIR, f), 'utf8'));
+      } catch { /* skip corrupt file */ }
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({});
+  }
+});
+
+app.put('/api/layouts/:name', async (req, res) => {
+  const name = req.params.name;
+  if (!validLayoutName(name)) return res.status(400).json({ error: 'invalid name' });
+  try {
+    await fs.mkdir(LAYOUTS_DIR, { recursive: true });
+    await fs.writeFile(join(LAYOUTS_DIR, encodeURIComponent(name) + '.json'), JSON.stringify(req.body));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message) });
+  }
+});
+
+app.delete('/api/layouts/:name', async (req, res) => {
+  const name = req.params.name;
+  if (!validLayoutName(name)) return res.status(400).json({ error: 'invalid name' });
+  try {
+    await fs.unlink(join(LAYOUTS_DIR, encodeURIComponent(name) + '.json'));
+    res.json({ ok: true });
+  } catch {
+    res.status(404).json({ error: 'not found' });
   }
 });
 

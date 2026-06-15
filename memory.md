@@ -1,5 +1,34 @@
 # Crypto Charting Pro — Change Memory
 
+---
+
+## 2026-06-15 — Roadmap: save layouts and session state in backend JSON
+
+**Date:** 2026-06-15
+**Roadmap item:** "Save layouts and sessions state in backend data. Preferably in JSON format."
+**Problem:** All layout and session persistence was client-side only (`localStorage`). Data was lost
+when the browser cleared its storage, and could not be shared across browsers or devices.
+**Fix:**
+- `server.js`: Added `express.json({ limit: '2mb' })` middleware. Added `SESSION_FILE`
+  (`data/session.json`) and `LAYOUTS_DIR` (`data/layouts/`) constants. Added 5 new routes:
+  `GET /api/session` (read autosave), `PUT /api/session` (write autosave),
+  `GET /api/layouts` (list all named layouts as `{name: data}` keyed by decoded filename),
+  `PUT /api/layouts/:name` (save layout — filename = `encodeURIComponent(name).json`),
+  `DELETE /api/layouts/:name` (delete layout). Name validation (`validLayoutName`) prevents
+  path traversal; max 80 chars, no `..`, `/`, or `\`.
+- `src/js/persistence.js`: Added `apiGet/apiPut/apiDelete` fetch helpers. `autosave` now
+  calls `persistSession()` (fire-and-forget debounced) which PUTs `/api/session`; falls back
+  to `localStorage` on error. `loadAutosave` is now `async` — GETs `/api/session` first,
+  falls back to `localStorage`. `getNamedLayouts`, `saveNamedLayout`, `deleteNamedLayout`
+  all async, using server API as primary and `localStorage` as fallback. `showLayoutsModal`
+  made async to await the server layouts list. Removed unused `SETTINGS_KEY` constant.
+- `src/js/main.js`: `init()` made `async`; `loadAutosave()` call is now `await`ed so
+  the rest of init runs only after the session is restored from the server.
+- `.gitignore`: Added `data/session.json` and `data/layouts/` (user runtime data, not for git).
+**Verified:** `node --check` passes on server.js, persistence.js, main.js. The API routes are
+placed before the static middleware so they take priority. Fallback to localStorage ensures the
+app still works when opened without the server running.
+
 This file tracks every significant change made to `index.html` for future reference.
 
 ---

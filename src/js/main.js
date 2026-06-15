@@ -29,7 +29,7 @@ function startPriceStream() {
   }
 }
 
-function init() {
+async function init() {
   if (!window.LightweightCharts) {
     document.getElementById('chartsArea').innerHTML = '<div class="panel-error" style="display:flex"><div><p>Charting library failed to load. Check your connection and reload.</p><button onclick="location.reload()" class="retry-btn">Reload</button></div></div>';
     return;
@@ -37,7 +37,7 @@ function init() {
   setAutosaveFn(autosave);
 
   // restore or default
-  const restored = loadAutosave();
+  const restored = await loadAutosave();
   document.documentElement.dataset.theme = state.theme;
   if (!restored) setLayout('l1');
 

@@ -635,7 +635,21 @@ function layoutOscillators(panel) {
 export function renderVolProfile(panel) {
   const ind = panel.indicators.find(i => i.defId === 'volprofile');
   const layer = panel.el.querySelector('.vol-profile-layer');
-  if (!ind || !panel.data.length || !panel.chart) { layer.innerHTML = ''; return; }
+  if (!ind || !panel.data.length || !panel.chart) { if (layer) layer.innerHTML = ''; return; }
+
+  // Use the main-chart-div height for y-coordinate alignment (priceToCoordinate
+  // returns coords relative to the chart canvas, not the full panel-body which
+  // also includes any oscillator panes below).
+  const chartDiv = panel.el.querySelector('.main-chart-div');
+  const w = layer.clientWidth || chartDiv?.clientWidth || 0;
+  const h = chartDiv?.clientHeight || layer.clientHeight || 0;
+
+  if (!w || !h) {
+    // Layout not computed yet — defer to next animation frame
+    requestAnimationFrame(() => renderVolProfile(panel));
+    return;
+  }
+
   const bins = ind.params.bins || 30;
   const range = panel.chart.timeScale().getVisibleLogicalRange();
   let visible = panel.data;
@@ -650,13 +664,13 @@ export function renderVolProfile(panel) {
     buckets[idx] += c.volume;
   });
   const maxV = Math.max(...buckets) || 1;
-  const h = layer.clientHeight, w = layer.clientWidth;
   const barMax = w * 0.18;
+  // SVG sized to the chart area so bar heights match priceToCoordinate units
   let svg = `<svg width="${w}" height="${h}" style="position:absolute;left:0;top:0;pointer-events:none">`;
   for (let i = 0; i < bins; i++) {
     const price = lo + step * (i + 0.5);
     const y = panel.candleSeries.priceToCoordinate(price);
-    if (y == null) continue;
+    if (y == null || y < 0 || y > h) continue;
     const bw = (buckets[i] / maxV) * barMax;
     svg += `<rect x="0" y="${y - (h / bins) / 2}" width="${bw}" height="${Math.max(1, h / bins - 1)}" fill="${ind.color}" opacity="0.35"/>`;
   }

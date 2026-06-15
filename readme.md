@@ -1,54 +1,86 @@
 # CryptoPro Charts
 
-A professional, TradingView-style crypto charting web app with multiple charts on a single
-page, 33 technical indicators, drawing tools, watchlists, an order book, a market scanner, and
-a macro/crypto **events calendar**. Vanilla JS (ES modules) on the front end, a small Express
-server for static hosting plus a kline cache and events API.
+**Version:** v1.4.0  
+**Creator:** Erik Kuipers
 
-_Creator: Erik Kuipers_
+Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
 
-## Run app
+---
+
+## Features
+
+- **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
+- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid
+- **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
+- **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA
+- **Oscillator panes** — RSI, MACD, Stochastic, ATR, ADX render in sub-panes below the main chart
+- **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
+- **Symbol overlay** — Compare multiple symbols on one chart with independent price scales
+- **Watchlist** — Multiple named watchlists, drag-to-reorder, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream
+- **Event markers** — High-impact economic events overlaid on the chart; past events snapped to the correct candle period, future events projected up to 2 weeks ahead
+- **Tech Info pane** — RSI speedometer, daily/monthly/yearly performance pills, day's/52-week range gauges, seasonals chart
+- **Order Book pane** — Live order book depth for the active symbol
+- **Scanner** — Configurable symbol scanner across the watchlist or top pairs
+- **Layout persistence** — Autosave + named layouts saved to server; layout selector dropdown in the toolbar
+- **Alerts** — Price alerts with browser notifications
+- **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
+- **Responsive footer** — Creator attribution and version number
+
+## Exchanges & Data Sources
+
+| Exchange | Pairs | Klines | Live Prices |
+|---|---|---|---|
+| Binance | USDT, USDC, EUR | REST + server cache | WebSocket (all pairs) |
+| Bybit | USDT, USDC, EUR | REST + server cache | REST polling fallback |
+| OKX | USDT, USDC, EUR | REST + server cache | REST polling fallback |
+| Gate.io | USDT, USDC, EUR | REST + server cache | REST polling fallback |
+| KuCoin | USDT, USDC, EUR | REST + server cache | REST polling fallback |
+| Hyperliquid | Perps | Binance fallback | — |
+
+Kline fetching uses an ordered fallback chain: **active exchange → Gate.io → Binance**.  
+Missing watchlist prices are refreshed via Binance batch ticker every 30 s, with per-exchange REST fallback for symbols not on Binance.
+
+## Tech Stack
+
+- **Frontend:** Vanilla ES modules (`type="module"`), no bundler
+- **Charts:** [LightweightCharts v4.1.3](https://tradingview.github.io/lightweight-charts/)
+- **Backend:** Node.js + Express — server-side kline cache (JSON files), session/layout persistence
+- **Styling:** Single CSS file with CSS custom properties for theming
+
+## Getting Started
 
 ```bash
 npm install
-npm start          # serves on http://localhost:3000 (set PORT to change)
-npm run dev        # same, with --watch
+npm start        # starts on http://localhost:3000
 ```
 
-Open the served URL in a browser. The charting library (lightweight-charts) loads from a CDN.
+## Project Structure
 
-## Architecture
+```
+crypto-pro-charts/
+├── public/
+│   ├── index.html
+│   └── css/style.css
+├── src/js/
+│   ├── main.js          # app entry point
+│   ├── charts.js        # panel creation, indicators, volume profile
+│   ├── data.js          # exchange REST/WS, kline fetching, pair lists
+│   ├── constants.js     # EXCHANGES, INDICATORS_DEF, THEMES
+│   ├── events.js        # market event markers
+│   ├── orderbook.js     # order book + tech info pane
+│   ├── persistence.js   # session/layout save & restore
+│   ├── scanner.js       # symbol scanner
+│   ├── settings.js      # exchange/color settings modal
+│   ├── state.js         # shared app state
+│   ├── ui.js            # toolbar, drawing tools, dropdowns
+│   ├── utils.js         # helpers (baseAsset, quoteAsset, fmtPrice…)
+│   └── watchlist.js     # watchlist UI + symbol picker
+├── server.js            # Express server + kline proxy/cache
+├── data/                # session.json, layouts/
+├── cache/klines/        # server-side bar cache
+└── memory.md            # running changelog
+```
 
-- `server.js` — Express. Serves `public/` and `src/js/`, plus two JSON APIs (below).
-- `public/index.html`, `public/css/style.css` — markup + styles.
-- `src/js/` — ES modules:
-  - `main.js` (entry), `state.js`, `constants.js`, `utils.js`
-  - `charts.js` (panels, layouts, indicators glue, MA-cross + event markers)
-  - `indicators.js` (indicator math), `data.js` (exchange REST/WS access)
-  - `ui.js`, `watchlist.js`, `events.js`, `orderbook.js`, `scanner.js`, `alerts.js`,
-    `settings.js`, `drawings.js`, `persistence.js`
+---
 
-Exchanges supported for data: Binance (full REST+WS), Bybit (full REST+WS), OKX, Gate.io,
-Hyperliquid. Symbols use the internal `BASEUSDT` form and are normalized per exchange.
-
-## Server APIs
-
-- `GET /api/klines?exchange&symbol&tf&limit` — fetches candles from the chosen exchange,
-  normalizes them, and **caches them to JSON files** under `cache/klines/` with a per-timeframe
-  TTL. Serves fresh cache when available, stale cache on upstream failure. Inputs are validated
-  (symbol `^[A-Z0-9]{2,20}$`, exchange whitelist, timeframe in the exchange's interval map,
-  limit clamped 1–1000). The client tries this first and falls back to direct exchange fetch.
-- `GET /api/events` — serves the curated market-events calendar from `data/events.json`.
-
-## Events calendar
-
-`data/events.json` holds curated macro/crypto events (FOMC, CPI, NFP, ECB, options expiry, …).
-The right-panel **Events** tab lists them (with a "high impact only" filter); high-impact events
-are marked on each chart's x-axis. Clicking a marker or a row shows the event details. Edit the
-JSON to add or update events.
-
-## Notes for contributors
-
-- Changelog lives in `memory.md` — append a dated entry for every code change (see
-  `CLAUDE.md` workflow rule).
-- `cache/` and `ruvector.db` are git-ignored.
+Created by **Erik Kuipers** · © 2026

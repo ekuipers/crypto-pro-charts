@@ -124,10 +124,14 @@ export function applyEventMarkers(panel) {
 
   const byTime = new Map();
 
-  // — Past events within the loaded data range (snapped to nearest real bar)
+  // — Past events within the loaded data range.
+  // Floor to the candle period that *contains* the event, then snap to the
+  // nearest real bar. This prevents events near midnight from sliding to the
+  // next day's candle when "nearest bar" logic would pick the wrong side.
   _events.filter(e => e.impact === 'high' && e.ts >= first && e.ts <= last)
     .forEach(e => {
-      const bar = nearestBarTime(panel.data, e.ts);
+      const candleStart = Math.floor(e.ts / tfSec) * tfSec;
+      const bar = nearestBarTime(panel.data, candleStart);
       const arr = byTime.get(bar) || [];
       arr.push({ ...e, future: false }); byTime.set(bar, arr);
     });

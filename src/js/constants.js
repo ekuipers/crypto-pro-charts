@@ -139,6 +139,8 @@ const EXCHANGES = {
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'7d' } },
   hyperliquid: { id:'hyperliquid', name:'Hyperliquid', rest:'https://api.hyperliquid.xyz/info', status:'Perps only',
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' } },
+  kucoin: { id:'kucoin', name:'KuCoin', rest:'https://api.kucoin.com/api/v1', status:'REST only',
+    intervals:{ '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','4h':'4hour','1d':'1day','1w':'1week' } },
 };
 
 // Short, plain-language descriptions shown as a hover tooltip in the indicator

@@ -2,7 +2,7 @@
 // MAIN — app entry point
 // ============================================================
 import { state } from './state.js';
-import { openPriceStream, closePriceStream } from './data.js';
+import { openPriceStream, closePriceStream, refreshMissingPrices } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
@@ -26,6 +26,17 @@ function startPriceStream() {
   // throttle row updates to ~1s
   if (!startPriceStream._timer) {
     startPriceStream._timer = setInterval(() => updatePriceRows(), 1500);
+  }
+  // poll REST for watchlist symbols that Binance stream doesn't carry (e.g. USDC
+  // pairs listed only on Gate.io/KuCoin). First run after 2 s, then every 30 s.
+  if (!startPriceStream._missingTimer) {
+    const pollMissing = async () => {
+      const wl = state.watchlists[state.currentWatchlist] || [];
+      const syms = wl.map(s => s.symbol);
+      if (syms.length) { await refreshMissingPrices(syms); updatePriceRows(); }
+    };
+    setTimeout(pollMissing, 2000);
+    startPriceStream._missingTimer = setInterval(pollMissing, 30000);
   }
 }
 

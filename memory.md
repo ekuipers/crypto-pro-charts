@@ -2,6 +2,61 @@
 
 ---
 
+## 2026-06-15 — Bug fixes: volume profile, USDC prices, event markers + KuCoin datasource
+
+### Bug 1 — Volume profile not showing on charts
+
+**Problem:** The `.vol-profile-layer` SVG overlay had no `z-index`, so it could be painted behind LightweightCharts' internal canvas elements. Additionally, `layer.clientHeight` was used for bar sizing instead of the main-chart-div height, causing coordinate misalignment when oscillator panes were open. Bars with `y == null` (off-screen) were never filtered.
+
+**Fix:**
+- `public/css/style.css`: Added `z-index: 4` to `.vol-profile-layer` so it renders above the LWC canvas (below the drawing layer at z-index 8).
+- `src/js/charts.js` `renderVolProfile`: Now uses `chartDiv.clientHeight` (from `.main-chart-div`) for both SVG height and bar sizing, instead of `layer.clientHeight`. Added guard: if `w` or `h` is 0, defers to `requestAnimationFrame` (handles timing issue on first load). Added `y < 0 || y > h` out-of-range guard.
+
+**Verification:** `node --check src/js/charts.js` passed.
+
+---
+
+### Bug 2 — Price data missing for USDC pairs (BRETTUSDC etc.)
+
+**Problem:** `state.prices` is populated only by the Binance mini-ticker WebSocket. Symbols that do not exist on Binance (e.g. BRETTUSDC only traded on Gate.io) never receive price updates, so the watchlist rows show "--".
+
+**Fix:**
+- `src/js/data.js` `fetchPrice`: Extended to properly handle Bybit (`/v5/market/tickers`), Gate.io (`/spot/tickers`), and KuCoin (`/market/stats`) before falling back to Binance. Each exchange uses its own API format.
+- `src/js/data.js`: Added exported `refreshMissingPrices(symbols)` — tries the Binance batch ticker first (`?symbols=[...]`) to cover all Binance pairs in one request, then individually fetches remaining symbols via `fetchPrice()` from the active exchange.
+- `src/js/main.js`: Imported `refreshMissingPrices`. Added `startPriceStream._missingTimer`: initial call after 2 s then every 30 s, fetches the current watchlist's symbols, updates `state.prices`, and calls `updatePriceRows()`.
+
+**Verification:** `node --check src/js/data.js` and `node --check src/js/main.js` passed.
+
+---
+
+### Bug 3 — Event markers aligned to wrong bar date
+
+**Problem:** `nearestBarTime(panel.data, e.ts)` picks the chronologically closest bar to the event timestamp. An event at 22:00 on Day 1 is only 2 hours from Day 2's midnight bar, so it snapped to Day 2 instead of Day 1 on daily charts.
+
+**Fix:**
+- `src/js/events.js` `applyEventMarkers`: Changed past-event snapping from `nearestBarTime(panel.data, e.ts)` to `nearestBarTime(panel.data, Math.floor(e.ts / tfSec) * tfSec)`. Computing the candle-period floor first ensures the search targets the correct bar that *contains* the event.
+
+**Verification:** `node --check src/js/events.js` passed.
+
+---
+
+### Roadmap — Add KuCoin as a data source (multi-exchange)
+
+**What changed:**
+- `src/js/constants.js`: Added `kucoin` entry to `EXCHANGES` (REST `https://api.kucoin.com/api/v1`, REST-only, correct interval names: `1min`, `5min`, … `1week`).
+- `src/js/data.js` `toExchangeSymbol`: Added `kucoin` case → `${base}-${quote}` format.
+- `src/js/data.js` `fetchKlines`: Added KuCoin case (routes through `/api/klines` server proxy to avoid CORS). Replaced the single Binance hardcoded fallback with an ordered fallback chain: Gate.io → Binance. If the active exchange fails, tries each fallback in order.
+- `src/js/data.js` `fetchExchangePairs`: Added `kucoin` case — fetches `/api/v1/symbols`, filters by `SUPPORTED_QUOTES`, maps to internal `{symbol, name, quote}` format.
+- `server.js` `toExSymbol`: Added `kucoin` → `${base}-${quote}`.
+- `server.js` `klineUrl`: Added KuCoin case → `/market/candles?symbol=BTC-USDC&type=1hour&pageSize=500`.
+- `server.js` `normalize`: Added KuCoin case — raw array format `[time, open, close, high, low, vol, turnover]` newest-first; reverses and maps correctly.
+
+KuCoin now appears in Settings → Exchange dropdown automatically (settings.js reads `Object.values(EXCHANGES)`).
+
+**Verification:** `node --check` passed for `constants.js`, `data.js`, `server.js`.
+
+---
+
 ## 2026-06-15 — Show full pairs in symbol list (BTCUSDT / ETHEUR / ADAUSDC)
 
 **Problem:** The watchlist rows showed only the base asset ("BTC", "ETH") and all USDT-related labels were hardcoded to "USDT", so USDC/EUR pairs were always labelled incorrectly.
@@ -457,8 +512,6 @@ F=fib, M=measure, Backspace/Delete=eraser, Esc=cancel/return to cursor.
 - LightweightCharts library presence check before init
 - `try/catch` around `initChart` in all call sites
 - Console logging with `[CryptoPro]` prefix
-
----
 
 ---
 

@@ -15,9 +15,10 @@ export function toExchangeSymbol(sym, exId = state.settings.exchange) {
   const base = baseAsset(sym);
   const quote = quoteAsset(sym);
   switch (exId) {
-    case 'okx':  return `${base}-${quote}`;
-    case 'gate': return `${base}_${quote}`;
-    default:     return sym; // binance, bybit
+    case 'okx':    return `${base}-${quote}`;
+    case 'gate':   return `${base}_${quote}`;
+    case 'kucoin': return `${base}-${quote}`;
+    default:       return sym; // binance, bybit
   }
 }
 
@@ -72,16 +73,35 @@ export async function fetchKlines(symbol, tf, limit = 500) {
         open: +k[5], high: +k[3], low: +k[4], close: +k[2], volume: +k[6] || +k[1],
       })).sort((a, b) => a.time - b.time);
     }
+    if (e.id === 'kucoin') {
+      // KuCoin klines are served via the server proxy (avoids CORS)
+      const j = await fetchJSON(`/api/klines?exchange=kucoin&symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=${limit}`, {}, 16000);
+      if (j && Array.isArray(j.bars) && j.bars.length) return j.bars;
+      throw new Error('kucoin proxy returned empty');
+    }
   } catch (e2) {
-    warn('fetchKlines failed, falling back to Binance', e2.message);
+    warn('fetchKlines failed, trying fallback chain', e2.message);
   }
-  // Fallback to Binance
-  const url = `${EXCHANGES.binance.rest}/klines?symbol=${symbol}&interval=${EXCHANGES.binance.intervals[tf] || tf}&limit=${limit}`;
-  const raw = await fetchJSON(url);
-  return raw.map(k => ({
-    time: Math.floor(k[0] / 1000),
-    open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5],
-  }));
+  // Ordered fallback chain: try Gate.io (good USDC coverage) then Binance
+  const fallbacks = [
+    async () => {
+      const inst = toExchangeSymbol(symbol, 'gate');
+      const gateInterval = EXCHANGES.gate.intervals[tf] || tf;
+      const raw = await fetchJSON(`${EXCHANGES.gate.rest}/candlesticks?currency_pair=${inst}&interval=${gateInterval}&limit=${Math.min(limit, 1000)}`);
+      if (!raw?.length) throw new Error('empty');
+      return raw.map(k => ({ time: Math.floor(+k[0]), open: +k[5], high: +k[3], low: +k[4], close: +k[2], volume: +k[6] || +k[1] })).sort((a, b) => a.time - b.time);
+    },
+    async () => {
+      const binInt = EXCHANGES.binance.intervals[tf] || tf;
+      const raw = await fetchJSON(`${EXCHANGES.binance.rest}/klines?symbol=${symbol}&interval=${binInt}&limit=${limit}`);
+      if (!raw?.length) throw new Error('empty');
+      return raw.map(k => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
+    },
+  ];
+  for (const attempt of fallbacks) {
+    try { return await attempt(); } catch {}
+  }
+  throw new Error(`No data source returned bars for ${symbol} ${tf}`);
 }
 
 // Cached wrapper (1 min TTL)
@@ -107,12 +127,62 @@ export async function fetchPrice(symbol) {
         change: +j.priceChangePercent, volume: +j.quoteVolume,
       };
     }
+    if (e.id === 'bybit') {
+      const j = await fetchJSON(`${e.rest}/tickers?category=spot&symbol=${symbol}`);
+      const t = j.result?.list?.[0];
+      if (!t) throw new Error('no bybit ticker');
+      const price = +t.lastPrice, open = +t.prevPrice24h || price;
+      return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +t.turnover24h || 0 };
+    }
+    if (e.id === 'gate') {
+      const inst = toExchangeSymbol(symbol, 'gate');
+      const j = await fetchJSON(`${e.rest}/tickers?currency_pair=${inst}`);
+      const t = Array.isArray(j) ? j[0] : j;
+      if (!t) throw new Error('no gate ticker');
+      const price = +t.last, open = +t.open_24h || price;
+      return { price, open, change: open ? ((price - open) / open) * 100 : +t.change_percentage || 0, chgVal: price - open, volume: +t.quote_volume || 0 };
+    }
+    if (e.id === 'kucoin') {
+      const inst = toExchangeSymbol(symbol, 'kucoin');
+      const j = await fetchJSON(`${e.rest}/market/stats?symbol=${inst}`);
+      const t = j.data;
+      if (!t) throw new Error('no kucoin ticker');
+      const price = +t.last, open = +t.open || price;
+      return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +t.volValue || 0 };
+    }
   } catch (e2) { warn('fetchPrice fallback', e2.message); }
+  // Final fallback: Binance
   const j = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbol=${symbol}`);
   return {
     price: +j.lastPrice, open: +j.openPrice, high: +j.highPrice, low: +j.lowPrice,
     change: +j.priceChangePercent, volume: +j.quoteVolume,
   };
+}
+
+// Refresh state.prices for watchlist symbols that lack data.
+// Tries the Binance batch ticker first (one request for all), then individual
+// per-exchange calls for any symbol Binance doesn't know about.
+export async function refreshMissingPrices(symbols) {
+  const missing = symbols.filter(s => !state.prices[s] || !state.prices[s].price);
+  if (!missing.length) return;
+  const found = new Set();
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(missing));
+    const arr = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbols=${encoded}`);
+    for (const t of (Array.isArray(arr) ? arr : [])) {
+      const price = +t.lastPrice, open = +t.openPrice;
+      state.prices[t.symbol] = { price, open, change: +t.priceChangePercent, chgVal: price - open };
+      found.add(t.symbol);
+    }
+  } catch (e2) { warn('refreshMissingPrices batch', e2.message); }
+  // Symbols not on Binance: fetch individually from the active exchange
+  const remaining = missing.filter(s => !found.has(s));
+  await Promise.allSettled(remaining.map(async sym => {
+    try {
+      const p = await fetchPrice(sym);
+      state.prices[sym] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
+    } catch {}
+  }));
 }
 
 // ---- All tradeable pairs (USDT + USDC + EUR) from the active exchange --------
@@ -142,6 +212,12 @@ async function fetchExchangePairs(exId) {
       return (j || [])
         .filter(s => SUPPORTED_QUOTES.includes(s.quote) && (s.trade_status === 'tradable' || !s.trade_status))
         .map(s => ({ symbol: `${s.base}${s.quote}`, name: s.base, quote: s.quote }));
+    }
+    case 'kucoin': {
+      const j = await fetchJSON('https://api.kucoin.com/api/v1/symbols');
+      return (j.data || [])
+        .filter(s => SUPPORTED_QUOTES.includes(s.quoteCurrency) && s.enableTrading)
+        .map(s => ({ symbol: `${s.baseCurrency}${s.quoteCurrency}`, name: s.baseCurrency, quote: s.quoteCurrency }));
     }
     default: // binance + hyperliquid (which falls back to Binance data)
       return fetchBinancePairs();

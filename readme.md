@@ -7,7 +7,7 @@ server for static hosting plus a kline cache and events API.
 
 _Creator: Erik Kuipers_
 
-## Run
+## Run app
 
 ```bash
 npm install

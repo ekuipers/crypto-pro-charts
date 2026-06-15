@@ -22,20 +22,24 @@ const TEMPLATES = {
   'Volume Focus': [['vwap', {}], ['volprofile', {}], ['obv', {}]],
 };
 
+// Inline SVG icon helper — 16×16 viewBox, stroke-based icons
+const _I = d => `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">${d}</svg>`;
+const _S = 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+
 const DRAW_TOOLS = [
-  { id: 'select', icon: '⤧', label: 'Cursor' },
-  { id: 'trend', icon: '╱', label: 'Trend Line' },
-  { id: 'ray', icon: '→', label: 'Ray' },
-  { id: 'extended', icon: '↔', label: 'Extended Line' },
-  { id: 'hline', icon: '─', label: 'Horizontal Line' },
-  { id: 'vline', icon: '│', label: 'Vertical Line' },
-  { id: 'rect', icon: '▭', label: 'Rectangle' },
-  { id: 'channel', icon: '▱', label: 'Parallel Channel' },
-  { id: 'fibret', icon: 'F', label: 'Fib Retracement' },
-  { id: 'fibext', icon: 'E', label: 'Fib Extension' },
-  { id: 'text', icon: 'T', label: 'Text' },
-  { id: 'measure', icon: '⊿', label: 'Measure' },
-  { id: 'eraser', icon: '⌫', label: 'Eraser' },
+  { id: 'select', label: 'Cursor', icon: _I(`<path d="M3.5 2L3.5 12.5L6.5 9.8L8.5 14.2L10.2 13.4L8.2 9L12 9Z" fill="currentColor"/>`) },
+  { id: 'trend', label: 'Trend Line', icon: _I(`<line x1="3" y1="13" x2="13" y2="3" ${_S}/><circle cx="3" cy="13" r="2" fill="currentColor"/><circle cx="13" cy="3" r="2" fill="currentColor"/>`) },
+  { id: 'ray', label: 'Ray', icon: _I(`<line x1="3" y1="13" x2="12.5" y2="3.5" ${_S}/><circle cx="3" cy="13" r="2" fill="currentColor"/><path d="M12.5 3.5L10 6.5L13.5 5.5Z" fill="currentColor"/>`) },
+  { id: 'extended', label: 'Extended Line', icon: _I(`<line x1="2" y1="14" x2="14" y2="2" ${_S}/><path d="M2 14L4.5 11.5L2.5 13.5Z" fill="currentColor"/><path d="M14 2L11.5 4.5L13.5 2.5Z" fill="currentColor"/>`) },
+  { id: 'hline', label: 'Horizontal Line', icon: _I(`<line x1="2" y1="8" x2="14" y2="8" ${_S}/><line x1="2" y1="5" x2="2" y2="11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/><line x1="14" y1="5" x2="14" y2="11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>`) },
+  { id: 'vline', label: 'Vertical Line', icon: _I(`<line x1="8" y1="2" x2="8" y2="14" ${_S}/><line x1="5" y1="2" x2="11" y2="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/><line x1="5" y1="14" x2="11" y2="14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>`) },
+  { id: 'rect', label: 'Rectangle', icon: _I(`<rect x="2" y="4" width="12" height="8" rx="0.5" stroke="currentColor" stroke-width="1.5"/>`) },
+  { id: 'channel', label: 'Parallel Channel', icon: _I(`<line x1="2" y1="5" x2="14" y2="3" ${_S}/><line x1="2" y1="11" x2="14" y2="9" ${_S}/><line x1="2" y1="5" x2="2" y2="11" stroke="currentColor" stroke-width="1" opacity="0.4"/><line x1="14" y1="3" x2="14" y2="9" stroke="currentColor" stroke-width="1" opacity="0.4"/>`) },
+  { id: 'fibret', label: 'Fib Retracement', icon: _I(`<text x="1.5" y="8.5" font-size="5.5" font-weight="700" fill="currentColor" font-family="sans-serif">FIB</text><line x1="1" y1="10.5" x2="15" y2="10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="7.5" x2="15" y2="7.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.5"/><line x1="1" y1="13" x2="15" y2="13" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.5"/>`) },
+  { id: 'fibext', label: 'Fib Extension', icon: _I(`<text x="1.5" y="7.5" font-size="5.5" font-weight="700" fill="currentColor" font-family="sans-serif">FIB</text><line x1="1" y1="10" x2="15" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="12.5" x2="15" y2="12.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.5"/><path d="M12.5 8.5L15 10L12.5 11.5" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/>`) },
+  { id: 'text', label: 'Text', icon: _I(`<text x="2.5" y="13" font-size="12" font-weight="700" fill="currentColor" font-family="serif">A</text><line x1="1" y1="14.5" x2="15" y2="14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`) },
+  { id: 'measure', label: 'Measure', icon: _I(`<line x1="3" y1="8" x2="13" y2="8" ${_S}/><line x1="3" y1="5.5" x2="3" y2="10.5" ${_S}/><line x1="13" y1="5.5" x2="13" y2="10.5" ${_S}/><path d="M3 8L6 6.5M3 8L6 9.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M13 8L10 6.5M13 8L10 9.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>`) },
+  { id: 'eraser', label: 'Eraser', icon: _I(`<path d="M9.5 2.5L13.5 6.5L8 12H4L2 10L7.5 4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="7.2" y1="5.8" x2="11.2" y2="9.8" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.4"/>`) },
 ];
 
 export function initUI() {
@@ -243,19 +247,22 @@ function buildDrawingToolbar() {
   DRAW_TOOLS.forEach(t => {
     const b = document.createElement('button');
     b.className = 'draw-tool' + (t.id === 'select' ? ' active' : '');
-    b.dataset.tool = t.id; b.title = t.label; b.textContent = t.icon;
+    b.dataset.tool = t.id; b.title = t.label; b.innerHTML = t.icon;
     b.addEventListener('click', () => selectTool(t.id));
     tb.appendChild(b);
   });
-  const exp = document.createElement('button'); exp.className = 'draw-tool'; exp.title = 'Export'; exp.textContent = '↓';
+  const exp = document.createElement('button'); exp.className = 'draw-tool'; exp.title = 'Export drawings';
+  exp.innerHTML = _I(`<path d="M8 3v7M5 8l3 3 3-3" ${_S}/><line x1="3" y1="13" x2="13" y2="13" ${_S}/>`);
   exp.addEventListener('click', () => state.activePanel && exportDrawings(state.activePanel));
-  const imp = document.createElement('button'); imp.className = 'draw-tool'; imp.title = 'Import'; imp.textContent = '↑';
+  const imp = document.createElement('button'); imp.className = 'draw-tool'; imp.title = 'Import drawings';
+  imp.innerHTML = _I(`<path d="M8 10V3M5 6l3-3 3 3" ${_S}/><line x1="3" y1="13" x2="13" y2="13" ${_S}/>`);
   imp.addEventListener('click', () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json';
     inp.onchange = () => inp.files[0] && state.activePanel && importDrawings(state.activePanel, inp.files[0]);
     inp.click();
   });
-  const clr = document.createElement('button'); clr.className = 'draw-tool clear'; clr.title = 'Clear All'; clr.textContent = '🗑';
+  const clr = document.createElement('button'); clr.className = 'draw-tool clear'; clr.title = 'Clear all drawings';
+  clr.innerHTML = _I(`<path d="M4 6h8v7a1 1 0 01-1 1H5a1 1 0 01-1-1V6z" ${_S}/><path d="M3 6h10" ${_S}/><path d="M6 6V4.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V6" ${_S}/>`);
   clr.addEventListener('click', () => state.activePanel && clearDrawings(state.activePanel));
   tb.append(exp, imp, clr);
 

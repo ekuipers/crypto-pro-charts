@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-06-15 — Footer bar + SVG drawing toolbar icons
+
+**Roadmap 1 — Footer bar**
+- `public/index.html`: Added `<footer class="app-footer">` between `app-main` and `alerts-overlay` containing: logo (📈 CryptoPro Charts), short description, creator (Erik Kuipers), and year (© 2026).
+- `public/css/style.css`: Added `.app-footer` (30px fixed height, flex, panel background with top border), `.footer-logo b` (accent colour), `.footer-sep` (border colour), responsive rule that hides description on narrow screens.
+
+**Roadmap 2 — SVG drawing toolbar icons**
+- `src/js/ui.js`: Replaced all Unicode placeholder characters in `DRAW_TOOLS` with clean 15×15 inline SVG icons (stroke-based, `currentColor`). Added `_I()` helper and `_S` stroke-attribute constant at module scope. All 13 drawing tools now have purpose-built SVG paths: cursor arrow, trend-line with endpoints, ray with arrowhead, extended line with double arrowhead, horizontal/vertical lines with end caps, rectangle, parallel channel, FIB retracement/extension with labelled horizontal lines, text A, measure bracket, eraser. The three action buttons (export/import/clear) also get SVG download, upload, and trash icons. Changed `b.textContent = t.icon` → `b.innerHTML = t.icon` so SVG renders.
+- `public/css/style.css`: Updated `.draw-tool` — removed `font-size: 15px`, set `color: var(--muted)` default, added `svg { display: block; }`. Hover now also sets `color: var(--text)`.
+
+**Verification:** `node --check src/js/ui.js` passed.
+
+---
+
 ## 2026-06-15 — Roadmap: Fancy Buttons, Enhanced Tech Info, Multi-Quote, Layout Dropdown
 
 **Roadmap 1 — Fancy buttons**

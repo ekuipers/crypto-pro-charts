@@ -21,12 +21,14 @@ const TTL_MS = {
 };
 
 function toExSymbol(sym, exId) {
-  const m = sym.match(/(USDT|USDC|BUSD|EUR|BTC|ETH|BNB|DAI)$/);
+  const m = sym.match(/(USDT|USDC|BUSD|EUR|USD|BTC|ETH|BNB|DAI)$/);
   const quote = m ? m[1] : 'USDT';
   const base = m ? sym.slice(0, -quote.length) : sym;
-  if (exId === 'okx')    return `${base}-${quote}`;
-  if (exId === 'gate')   return `${base}_${quote}`;
-  if (exId === 'kucoin') return `${base}-${quote}`;
+  if (exId === 'okx')           return `${base}-${quote}`;
+  if (exId === 'gate')          return `${base}_${quote}`;
+  if (exId === 'kucoin')        return `${base}-${quote}`;
+  if (exId === 'bitstamp')      return `${base.toLowerCase()}${quote.toLowerCase()}`;
+  if (exId === 'cryptocompare') return `${base}_${quote}`;
   return sym;
 }
 
@@ -43,6 +45,14 @@ function klineUrl(exId, symbol, tf, limit) {
     case 'kucoin':
       // KuCoin candles: returns array of [time(sec),open,close,high,low,vol,turnover] newest-first
       return `${e.rest}/market/candles?symbol=${toExSymbol(symbol, 'kucoin')}&type=${interval}&pageSize=${Math.min(limit, 1500)}`;
+    case 'bitstamp':
+      return `${e.rest}/ohlcdata/${toExSymbol(symbol, 'bitstamp')}/?step=${interval}&limit=${Math.min(limit, 1000)}`;
+    case 'cryptocompare': {
+      const [base, quote] = toExSymbol(symbol, 'cryptocompare').split('_');
+      const [endpoint, agg] = (interval || 'histohour').split('|');
+      const aggParam = agg ? `&aggregate=${agg}` : '';
+      return `${e.rest}/${endpoint}?fsym=${base}&tsym=${quote}&limit=${Math.min(limit, 2000)}${aggParam}`;
+    }
     default:
       return `${EXCHANGES.binance.rest}/klines?symbol=${symbol}&interval=${EXCHANGES.binance.intervals[tf] || tf}&limit=${limit}`;
   }
@@ -66,6 +76,16 @@ function normalize(exId, raw) {
     // data field holds the array (newest-first); [time,open,close,high,low,vol,turnover]
     const list = (raw?.data || []).slice().reverse();
     return list.map(k => ({ time: Math.floor(+k[0]), open: +k[1], high: +k[3], low: +k[4], close: +k[2], volume: +k[5] }));
+  }
+  if (exId === 'bitstamp') {
+    return (raw?.data?.ohlc || []).map(k => ({
+      time: Math.floor(+k.timestamp), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volume,
+    }));
+  }
+  if (exId === 'cryptocompare') {
+    return (raw?.Data?.Data || [])
+      .map(k => ({ time: Math.floor(+k.time), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volumefrom }))
+      .filter(k => k.close > 0);
   }
   // binance
   return (raw || []).map(k => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));

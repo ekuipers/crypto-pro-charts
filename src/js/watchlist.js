@@ -3,7 +3,7 @@
 // ============================================================
 import { state } from './state.js';
 import { baseAsset, quoteAsset, fmtPrice, fmtPct, esc, toast } from './utils.js';
-import { fetchAllPairs, validateSymbol } from './data.js';
+import { fetchAllPairs, validateSymbol, searchCoinGecko } from './data.js';
 import { changeSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
 
@@ -217,7 +217,7 @@ function addSymbolPrompt() {
 export async function showSymbolPicker(title, onPick) {
   showModal(`
     <h3>${esc(title)}</h3>
-    <input id="spSearch" class="panel-search" placeholder="Search symbols…" autocomplete="off" style="width:100%;margin:0 0 10px">
+    <input id="spSearch" class="panel-search" placeholder="Search symbols or coin name…" autocomplete="off" style="width:100%;margin:0 0 10px">
     <div id="spList" class="sym-picker-list"><div class="muted">Loading symbols…</div></div>
     <div class="modal-actions"><button id="spCancel">Cancel</button></div>`, async m => {
     m.querySelector('#spCancel').addEventListener('click', closeModal);
@@ -226,26 +226,50 @@ export async function showSymbolPicker(title, onPick) {
     const pairs = await fetchAllPairs();
     const PAGE = 100;
     let shown = PAGE;
-    const render = () => {
+    let _spCgTimer = null;
+
+    const pickItem = (sym, name) => { onPick(sym, name); closeModal(); };
+
+    const render = (cgCoins = []) => {
       const q = (search.value || '').toUpperCase().trim();
       const matches = q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs;
-      if (!matches.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
       const slice = matches.slice(0, shown);
       const hidden = matches.length - slice.length;
-      listEl.innerHTML =
-        slice.map(r =>
-          `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>${esc(quoteAsset(r.symbol))}</span></button>`).join('') +
-        (hidden > 0 ? `<button class="sym-picker-more" id="spMore">Load ${Math.min(PAGE, hidden)} more</button>` : '') +
-        `<div class="sym-picker-count">Showing ${slice.length} of ${matches.length}</div>`;
-      listEl.querySelectorAll('.sym-picker-item').forEach(b => b.addEventListener('click', () => {
-        onPick(b.dataset.sym, b.dataset.name);
-        closeModal();
-      }));
+      const exHtml = slice.map(r =>
+        `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>${esc(quoteAsset(r.symbol))}</span></button>`
+      ).join('');
+      const moreBtn = hidden > 0 ? `<button class="sym-picker-more" id="spMore">Load ${Math.min(PAGE, hidden)} more</button>` : '';
+      const countDiv = `<div class="sym-picker-count">Showing ${slice.length} of ${matches.length}</div>`;
+      const cgHtml = cgCoins.length
+        ? `<div class="search-sep">From CoinGecko</div>` + cgCoins.map(c => {
+            const sym = `${c.symbol}USDT`;
+            return `<button class="sym-picker-item sym-picker-cg" data-sym="${sym}" data-name="${esc(c.name)}"><b>${esc(c.name)}</b><span class="cg-badge">CG</span><span>${c.symbol}/USDT</span></button>`;
+          }).join('')
+        : '';
+      if (!matches.length && !cgCoins.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
+      listEl.innerHTML = exHtml + moreBtn + countDiv + cgHtml;
+      listEl.querySelectorAll('.sym-picker-item').forEach(b =>
+        b.addEventListener('click', () => pickItem(b.dataset.sym, b.dataset.name))
+      );
       const more = listEl.querySelector('#spMore');
-      if (more) more.addEventListener('click', () => { shown += PAGE; render(); });
+      if (more) more.addEventListener('click', () => { shown += PAGE; render(cgCoins); });
     };
-    search.addEventListener('input', () => { shown = PAGE; render(); });
-    render();
+
+    search.addEventListener('input', () => {
+      shown = PAGE;
+      render([]);
+      clearTimeout(_spCgTimer);
+      const q = search.value.trim();
+      if (q.length >= 2) {
+        _spCgTimer = setTimeout(async () => {
+          const cgResults = await searchCoinGecko(q);
+          const exSyms = new Set(pairs.map(p => p.symbol));
+          const fresh = cgResults.filter(c => !exSyms.has(`${c.symbol}USDT`));
+          render(fresh);
+        }, 400);
+      }
+    });
+    render([]);
     search.focus();
   });
 }
@@ -258,24 +282,48 @@ function addWatchlist() {
   renderTabs(); renderSymbolList(); scheduleAutosave();
 }
 
-// ---- Search (watchlist + all pairs) ----
+// ---- Search (watchlist + all pairs + CoinGecko discovery) ----
+let _cgSearchTimer = null;
 async function handleSearch(query) {
   const dd = document.getElementById('symSearchResults');
   if (!query) { dd.style.display = 'none'; dd.innerHTML = ''; renderSymbolList(); return; }
   const q = query.toUpperCase();
   const pairs = await fetchAllPairs();
-  const results = pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)).slice(0, 15);
-  dd.innerHTML = results.map(r => `<div class="search-res" data-sym="${r.symbol}" data-name="${r.name}">${esc(baseAsset(r.symbol))}<span>${esc(quoteAsset(r.symbol))}</span></div>`).join('');
-  dd.style.display = results.length ? 'block' : 'none';
-  dd.querySelectorAll('.search-res').forEach(el => el.addEventListener('click', () => {
-    const sym = el.dataset.sym, name = el.dataset.name;
-    if (state.activePanel) changeSymbol(state.activePanel, sym, name);
-    const wl = state.watchlists[state.currentWatchlist];
-    if (!wl.some(s => s.symbol === sym)) { wl.push({ symbol: sym, name }); }
-    document.getElementById('symSearch').value = '';
-    dd.style.display = 'none';
-    renderTabs(); renderSymbolList(); scheduleAutosave();
-  }));
+  const results = pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)).slice(0, 12);
+
+  const renderResults = (exchangeRows, cgRows) => {
+    const exHtml = exchangeRows.map(r =>
+      `<div class="search-res" data-sym="${r.symbol}" data-name="${esc(r.name)}">${esc(baseAsset(r.symbol))}<span>${esc(quoteAsset(r.symbol))}</span></div>`
+    ).join('');
+    const cgHtml = cgRows.length
+      ? `<div class="search-sep">CoinGecko</div>` + cgRows.map(c => {
+          const sym = `${c.symbol}USDT`;
+          return `<div class="search-res search-res-cg" data-sym="${sym}" data-name="${esc(c.name)}"><span class="cg-badge">CG</span>${esc(c.name)}<span>${c.symbol}/USDT</span></div>`;
+        }).join('')
+      : '';
+    dd.innerHTML = exHtml + cgHtml;
+    dd.style.display = exHtml || cgHtml ? 'block' : 'none';
+    dd.querySelectorAll('.search-res').forEach(el => el.addEventListener('click', () => {
+      const sym = el.dataset.sym, name = el.dataset.name;
+      if (state.activePanel) changeSymbol(state.activePanel, sym, name);
+      const wl = state.watchlists[state.currentWatchlist];
+      if (!wl.some(s => s.symbol === sym)) { wl.push({ symbol: sym, name }); }
+      document.getElementById('symSearch').value = '';
+      dd.style.display = 'none';
+      renderTabs(); renderSymbolList(); scheduleAutosave();
+    }));
+  };
+
+  renderResults(results, []);
+
+  // Debounce CoinGecko search to avoid hammering the free API
+  clearTimeout(_cgSearchTimer);
+  _cgSearchTimer = setTimeout(async () => {
+    const cgResults = await searchCoinGecko(query);
+    const exchangeSyms = new Set(results.map(r => r.symbol));
+    const fresh = cgResults.filter(c => !exchangeSyms.has(`${c.symbol}USDT`));
+    if (fresh.length) renderResults(results, fresh);
+  }, 400);
 }
 
 // ---- Simple context menu helper ----

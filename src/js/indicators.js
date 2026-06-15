@@ -249,6 +249,28 @@ export function calcOverlay(id, d, p) {
       const ha = calcHeikinAshi(d);
       return [{ candles: ha }];
     }
+    case 'luxalgo': {
+      const emaVals = ema(closes(d), p.emaPeriod);
+      const atrVals = rma(trueRange(d), p.atrPeriod);
+      const upper = emaVals.map((v, i) => v == null || atrVals[i] == null ? null : v + p.mult * atrVals[i]);
+      const lower = emaVals.map((v, i) => v == null || atrVals[i] == null ? null : v - p.mult * atrVals[i]);
+      const signals = [];
+      let prevTrend = 0;
+      for (let i = 1; i < d.length; i++) {
+        if (upper[i] == null) continue;
+        let trend = prevTrend;
+        if (d[i].close > upper[i]) trend = 1;
+        else if (d[i].close < lower[i]) trend = -1;
+        if (trend !== 0 && trend !== prevTrend) signals.push({ time: d[i].time, direction: trend });
+        if (trend !== 0) prevTrend = trend;
+      }
+      return [
+        { vals: toLine(d, emaVals), color: p._color },
+        { vals: toLine(d, upper), color: p._color, dashed: true },
+        { vals: toLine(d, lower), color: p._color, dashed: true },
+        { signals },
+      ];
+    }
     default: return [];
   }
 }

@@ -433,6 +433,9 @@ body.resizing * { pointer-events: none; }
 .sym-picker-more { grid-column: 1 / -1; padding: 8px; border: 1px dashed var(--border); border-radius: 6px; color: var(--accent); font-size: 12px; font-weight: 600; }
 .sym-picker-more:hover { background: var(--hover); }
 .sym-picker-count { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 10px; padding: 2px 0; }
+.cg-badge { display: inline-block; background: #6366f1; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.04em; vertical-align: middle; margin-right: 4px; }
+.search-sep { grid-column: 1 / -1; color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 2px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
+.search-res-cg { background: var(--panel); }
 
 /* Events pane */
 .events-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; }

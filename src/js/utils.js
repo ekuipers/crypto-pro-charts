@@ -48,12 +48,12 @@ export function fmtPct(p) {
 
 // Base asset from a symbol, e.g. BTCUSDT -> BTC, BTCUSDC -> BTC, BTCEUR -> BTC
 export function baseAsset(symbol) {
-  return String(symbol).replace(/(USDT|USDC|BUSD|EUR|BTC|ETH|BNB|DAI)$/, '');
+  return String(symbol).replace(/(USDT|USDC|BUSD|EUR|USD|BTC|ETH|BNB|DAI)$/, '');
 }
 
-// Quote asset from a symbol, e.g. BTCUSDT -> USDT, BTCEUR -> EUR
+// Quote asset from a symbol, e.g. BTCUSDT -> USDT, BTCEUR -> EUR, BTCUSD -> USD
 export function quoteAsset(symbol) {
-  const m = String(symbol).match(/(USDT|USDC|BUSD|EUR|BTC|ETH|BNB|DAI)$/);
+  const m = String(symbol).match(/(USDT|USDC|BUSD|EUR|USD|BTC|ETH|BNB|DAI)$/);
   return m ? m[1] : 'USDT';
 }
 

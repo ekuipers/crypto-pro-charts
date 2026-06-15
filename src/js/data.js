@@ -6,7 +6,7 @@ import { state } from './state.js';
 import { fetchJSON, baseAsset, quoteAsset, log, warn } from './utils.js';
 
 // Quote currencies to include when fetching all pairs
-const SUPPORTED_QUOTES = ['USDT', 'USDC', 'EUR'];
+const SUPPORTED_QUOTES = ['USDT', 'USDC', 'EUR', 'USD'];
 
 function ex() { return EXCHANGES[state.settings.exchange] || EXCHANGES.binance; }
 
@@ -15,10 +15,12 @@ export function toExchangeSymbol(sym, exId = state.settings.exchange) {
   const base = baseAsset(sym);
   const quote = quoteAsset(sym);
   switch (exId) {
-    case 'okx':    return `${base}-${quote}`;
-    case 'gate':   return `${base}_${quote}`;
-    case 'kucoin': return `${base}-${quote}`;
-    default:       return sym; // binance, bybit
+    case 'okx':          return `${base}-${quote}`;
+    case 'gate':         return `${base}_${quote}`;
+    case 'kucoin':       return `${base}-${quote}`;
+    case 'bitstamp':     return `${base.toLowerCase()}${quote.toLowerCase()}`;
+    case 'cryptocompare': return `${base}_${quote}`;
+    default:             return sym; // binance, bybit
   }
 }
 
@@ -78,6 +80,25 @@ export async function fetchKlines(symbol, tf, limit = 500) {
       const j = await fetchJSON(`/api/klines?exchange=kucoin&symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=${limit}`, {}, 16000);
       if (j && Array.isArray(j.bars) && j.bars.length) return j.bars;
       throw new Error('kucoin proxy returned empty');
+    }
+    if (e.id === 'bitstamp') {
+      const inst = toExchangeSymbol(symbol, 'bitstamp');
+      const step = e.intervals[tf] || '3600';
+      const url = `${e.rest}/ohlcdata/${inst}/?step=${step}&limit=${Math.min(limit, 1000)}`;
+      const j = await fetchJSON(url);
+      return (j.data?.ohlc || []).map(k => ({
+        time: Math.floor(+k.timestamp), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volume,
+      }));
+    }
+    if (e.id === 'cryptocompare') {
+      const [base2, quote2] = toExchangeSymbol(symbol, 'cryptocompare').split('_');
+      const [endpoint, agg] = (e.intervals[tf] || 'histohour').split('|');
+      const aggParam = agg ? `&aggregate=${agg}` : '';
+      const url = `${e.rest}/${endpoint}?fsym=${base2}&tsym=${quote2}&limit=${Math.min(limit, 2000)}${aggParam}`;
+      const j = await fetchJSON(url);
+      return (j.Data?.Data || [])
+        .map(k => ({ time: Math.floor(+k.time), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volumefrom }))
+        .filter(k => k.close > 0);
     }
   } catch (e2) {
     warn('fetchKlines failed, trying fallback chain', e2.message);
@@ -150,6 +171,20 @@ export async function fetchPrice(symbol) {
       const price = +t.last, open = +t.open || price;
       return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +t.volValue || 0 };
     }
+    if (e.id === 'bitstamp') {
+      const inst = toExchangeSymbol(symbol, 'bitstamp');
+      const j = await fetchJSON(`${e.rest}/ticker/${inst}/`);
+      const price = +j.last, open = +j.open;
+      return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +j.volume || 0 };
+    }
+    if (e.id === 'cryptocompare') {
+      const [base2, quote2] = toExchangeSymbol(symbol, 'cryptocompare').split('_');
+      const j = await fetchJSON(`https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${base2}&tsyms=${quote2}`);
+      const t = j.RAW?.[base2]?.[quote2];
+      if (!t) throw new Error('no cryptocompare ticker');
+      const price = +t.PRICE, open = +t.OPEN24HOUR;
+      return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +t.TOTALVOLUME24HTO || 0 };
+    }
   } catch (e2) { warn('fetchPrice fallback', e2.message); }
   // Final fallback: Binance
   const j = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbol=${symbol}`);
@@ -219,6 +254,15 @@ async function fetchExchangePairs(exId) {
         .filter(s => SUPPORTED_QUOTES.includes(s.quoteCurrency) && s.enableTrading)
         .map(s => ({ symbol: `${s.baseCurrency}${s.quoteCurrency}`, name: s.baseCurrency, quote: s.quoteCurrency }));
     }
+    case 'bitstamp': {
+      const j = await fetchJSON('https://www.bitstamp.net/api/v2/trading-pairs-info/');
+      return (j || [])
+        .filter(s => s.trading === 'Enabled')
+        .map(s => { const parts = (s.name || '').split('/'); return parts.length === 2 ? { symbol: `${parts[0]}${parts[1]}`, name: parts[0], quote: parts[1] } : null; })
+        .filter(s => s && SUPPORTED_QUOTES.includes(s.quote));
+    }
+    case 'cryptocompare':
+      return fetchBinancePairs(); // CryptoCompare covers all major assets; use Binance pairs as the symbol list
     default: // binance + hyperliquid (which falls back to Binance data)
       return fetchBinancePairs();
   }
@@ -251,6 +295,21 @@ export async function validateSymbol(symbol) {
     await fetchJSON(`${EXCHANGES.binance.rest}/ticker/price?symbol=${symbol}`);
     return true;
   } catch { return false; }
+}
+
+// Search CoinGecko for coins by name or symbol. Returns [{id, name, symbol, thumb}].
+// Used to let users discover coins not listed on the active exchange.
+export async function searchCoinGecko(query) {
+  if (!query || query.length < 2) return [];
+  try {
+    const j = await fetchJSON(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`, {}, 8000);
+    return (j.coins || []).slice(0, 8).map(c => ({
+      id: c.id, name: c.name, symbol: c.symbol.toUpperCase(), thumb: c.thumb,
+    }));
+  } catch (e2) {
+    warn('searchCoinGecko failed', e2.message);
+    return [];
+  }
 }
 
 // ---- Order book snapshot ----------------------------------

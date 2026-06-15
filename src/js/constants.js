@@ -95,6 +95,12 @@ const INDICATORS_DEF = [
     params:[], color:'#2962ff' },
   { id:'avwap',     name:'Anch.VWAP', full:'Anchored VWAP',               type:'overlay',
     params:[{ n:'bars', l:'Anchor Bars Ago', d:50, mn:1, mx:500 }], color:'#ff5722' },
+  { id:'luxalgo',   name:'Lux Trend', full:'Lux Trend Signals',             type:'overlay',
+    params:[
+      { n:'emaPeriod', l:'EMA Period', d:14, mn:5, mx:200 },
+      { n:'atrPeriod', l:'ATR Period', d:14, mn:5, mx:50 },
+      { n:'mult', l:'ATR Mult', d:1.5, mn:0.5, mx:5, s:0.1 },
+    ], color:'#e91e63' },
   // Oscillators
   { id:'rsi',       name:'RSI',       full:'Relative Strength Index',      type:'oscillator',
     params:[{ n:'period', l:'Period', d:14, mn:2, mx:100 }], color:'#2962ff' },
@@ -141,6 +147,10 @@ const EXCHANGES = {
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' } },
   kucoin: { id:'kucoin', name:'KuCoin', rest:'https://api.kucoin.com/api/v1', status:'REST only',
     intervals:{ '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','4h':'4hour','1d':'1day','1w':'1week' } },
+  bitstamp: { id:'bitstamp', name:'Bitstamp', rest:'https://www.bitstamp.net/api/v2', status:'REST only',
+    intervals:{ '1m':'60','5m':'300','15m':'900','30m':'1800','1h':'3600','4h':'14400','1d':'86400','1w':'604800' } },
+  cryptocompare: { id:'cryptocompare', name:'CryptoCompare', rest:'https://min-api.cryptocompare.com/data/v2', status:'REST only (aggregated)',
+    intervals:{ '1m':'histominute','5m':'histominute|5','15m':'histominute|15','30m':'histominute|30','1h':'histohour','4h':'histohour|4','1d':'histoday','1w':'histoday|7' } },
 };
 
 // Short, plain-language descriptions shown as a hover tooltip in the indicator
@@ -164,6 +174,7 @@ const INDICATOR_DESC = {
   htflevels: 'HTF Levels — previous day and week high/low reference lines from higher timeframes.',
   maribbon: 'MA Ribbon — eight stacked EMAs; their spread and order show trend strength and direction.',
   avwap: 'Anchored VWAP — a VWAP measured from a chosen anchor bar instead of the daily reset.',
+  luxalgo: 'Lux Trend Signals — EMA trend line with ATR-based upper/lower bands; buy/sell arrows fire when price crosses the bands.',
   rsi: 'Relative Strength Index — momentum from 0–100; above 70 is overbought, below 30 oversold.',
   macd: 'MACD — the gap between two EMAs with a signal line and histogram; tracks momentum shifts.',
   stoch: 'Stochastic — where price closes within its recent range; %K/%D flag overbought/oversold.',

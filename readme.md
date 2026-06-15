@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.4.0  
+**Version:** v1.5.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -10,9 +10,9 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 ## Features
 
 - **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
-- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid
+- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare
 - **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
-- **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA
+- **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)
 - **Oscillator panes** — RSI, MACD, Stochastic, ATR, ADX render in sub-panes below the main chart
 - **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
 - **Symbol overlay** — Compare multiple symbols on one chart with independent price scales
@@ -36,9 +36,12 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 | Gate.io | USDT, USDC, EUR | REST + server cache | REST polling fallback |
 | KuCoin | USDT, USDC, EUR | REST + server cache | REST polling fallback |
 | Hyperliquid | Perps | Binance fallback | — |
+| Bitstamp | USDT, USDC, EUR, USD | REST + server cache | REST polling fallback |
+| CryptoCompare | All major pairs (aggregated) | REST + server cache | REST polling fallback |
 
 Kline fetching uses an ordered fallback chain: **active exchange → Gate.io → Binance**.  
-Missing watchlist prices are refreshed via Binance batch ticker every 30 s, with per-exchange REST fallback for symbols not on Binance.
+Missing watchlist prices are refreshed via Binance batch ticker every 30 s, with per-exchange REST fallback for symbols not on Binance.  
+The watchlist symbol search also queries **CoinGecko** (debounced) to discover coins not listed on the active exchange — results are added as `{SYMBOL}USDT` pairs.
 
 ## Tech Stack
 

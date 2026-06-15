@@ -448,6 +448,7 @@ export function removeIndicator(panel, ind) {
   if (panel.heikinSeries && ind.defId === 'heikinashi') { try { panel.chart.removeSeries(panel.heikinSeries); } catch {} panel.heikinSeries = null; }
   if (ind.subChart) { try { ind.subChart.remove(); } catch {} ind._oscDiv?.remove(); }
   if (ind.defId === 'volprofile') panel.el.querySelector('.vol-profile-layer').innerHTML = '';
+  if (ind.defId === 'luxalgo') { panel._luxAlgoMarkers = []; applyPanelMarkers(panel); }
   panel.indicators = panel.indicators.filter(i => i !== ind);
   layoutOscillators(panel);
   rebuildCrossMarkers(panel);
@@ -466,6 +467,7 @@ export function recomputeIndicators(panel) {
   });
   if (panel.heikinSeries) { try { panel.chart.removeSeries(panel.heikinSeries); } catch {} panel.heikinSeries = null; }
   panel.el.querySelector('.vol-profile-layer').innerHTML = '';
+  panel._luxAlgoMarkers = [];
   panel.indicators.forEach(ind => buildIndicator(panel, ind));
   rebuildCrossMarkers(panel);
 }
@@ -487,6 +489,18 @@ function buildIndicator(panel, ind) {
         });
         panel.heikinSeries.setData(r.candles);
         ind.series.push(panel.heikinSeries);
+        return;
+      }
+      if (r.signals) {
+        panel._luxAlgoMarkers = r.signals.map(s => ({
+          time: s.time,
+          position: s.direction === 1 ? 'belowBar' : 'aboveBar',
+          color: s.direction === 1 ? '#26a69a' : '#ef5350',
+          shape: s.direction === 1 ? 'arrowUp' : 'arrowDown',
+          size: 1,
+          text: s.direction === 1 ? 'BUY' : 'SELL',
+        }));
+        applyPanelMarkers(panel);
         return;
       }
       const s = panel.chart.addLineSeries({
@@ -796,7 +810,7 @@ export function rebuildCrossMarkers(panel) {
 // series and each setMarkers replaces the previous list.
 export function applyPanelMarkers(panel) {
   if (!panel || !panel.candleSeries) return;
-  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || [])];
+  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || []), ...(panel._luxAlgoMarkers || [])];
   all.sort((a, b) => a.time - b.time);
   try { panel.candleSeries.setMarkers(all); } catch {}
 }

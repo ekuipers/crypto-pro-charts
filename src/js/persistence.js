@@ -3,7 +3,7 @@
 // ============================================================
 import { state } from './state.js';
 import { LEGACY_THEME, THEMES, DEFAULT_THEME } from './constants.js';
-import { debounce, toast, esc } from './utils.js';
+import { debounce, toast, esc, baseAsset, quoteAsset } from './utils.js';
 import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
 
@@ -106,7 +106,7 @@ export function applyLayoutData(data) {
     panel.symbol = pd.symbol; panel.symbolName = pd.symbolName; panel.tf = pd.tf;
     panel.drawings = pd.drawings || [];
     panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, color: o.color, series: null, data: [], ws: null }));
-    panel.el.querySelector('.sym-btn').innerHTML = `${pd.symbol.replace(/USDT$/, '')}<span class="sym-quote">USDT</span>`;
+    panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(pd.symbol)}<span class="sym-quote">${quoteAsset(pd.symbol)}</span>`;
     panel.el.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === pd.tf));
     loadPanelData(panel).then(() => {
       (pd.indicators || []).forEach(ind => addIndicator(panel, ind.defId, ind.params, ind.color));

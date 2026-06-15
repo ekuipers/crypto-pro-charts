@@ -10,7 +10,7 @@ import {
 } from './charts.js';
 import { setTool, clearDrawings, exportDrawings, importDrawings } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
-import { showSaveLayoutModal, showLayoutsModal } from './persistence.js';
+import { showSaveLayoutModal, showLayoutsModal, getNamedLayouts, applyLayoutData } from './persistence.js';
 import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
 import { setEventMarkersVisible } from './events.js';
 import { esc, clamp } from './utils.js';
@@ -174,6 +174,68 @@ export function showIndicatorModal(defId, existingInd = null, panel = state.acti
   });
 }
 
+// ---------- Layout selector dropdown ----------
+const LAYOUT_NAMES = { l1: 'Single', l2h: '2 Columns', l2v: '2 Rows', l4: '4 Grid' };
+const LAYOUT_ICONS = { l1: '▢', l2h: '▢▢', l2v: '⊟', l4: '⊞' };
+
+export function updateLayoutDropBtn() {
+  const btn = document.getElementById('layoutDropBtn');
+  if (!btn) return;
+  const name = LAYOUT_NAMES[state.layout] || state.layout;
+  btn.textContent = `${LAYOUT_ICONS[state.layout] || ''} ${name} ▾`.trim();
+}
+
+async function openLayoutDropdown() {
+  const menu = document.getElementById('layoutDropMenu');
+  const btn = document.getElementById('layoutDropBtn');
+  if (!menu || !btn) return;
+  if (menu.style.display !== 'none') { closeLayoutDropdown(); return; }
+
+  // Build preset section
+  const presetItems = Object.entries(LAYOUT_NAMES).map(([key, name]) =>
+    `<button class="ld-item${state.layout === key ? ' active' : ''}" data-preset="${key}">
+       <span class="ld-icon">${LAYOUT_ICONS[key]}</span>${name}
+     </button>`).join('');
+
+  // Load saved layouts
+  let savedHtml = '';
+  try {
+    const saved = await getNamedLayouts();
+    const keys = Object.keys(saved);
+    if (keys.length) {
+      savedHtml = `<div class="ld-sep">Saved</div>` +
+        keys.map(k => `<button class="ld-item" data-saved="${esc(k)}"><span class="ld-icon">📋</span>${esc(k)}</button>`).join('');
+    }
+  } catch {}
+
+  menu.innerHTML = `<div class="ld-sep">Presets</div>${presetItems}${savedHtml}`;
+
+  // Wire clicks
+  menu.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    setLayout(b.dataset.preset);
+    scheduleAutosave();
+    updateLayoutDropBtn();
+    closeLayoutDropdown();
+  }));
+  menu.querySelectorAll('[data-saved]').forEach(b => b.addEventListener('click', async () => {
+    const all = await getNamedLayouts();
+    const data = all[b.dataset.saved];
+    if (data) { applyLayoutData(data); document.dispatchEvent(new CustomEvent('layout-restored')); }
+    closeLayoutDropdown();
+  }));
+
+  // Position below button
+  const r = btn.getBoundingClientRect();
+  menu.style.left = r.left + 'px';
+  menu.style.top = r.bottom + 4 + 'px';
+  menu.style.display = 'block';
+}
+
+function closeLayoutDropdown() {
+  const menu = document.getElementById('layoutDropMenu');
+  if (menu) menu.style.display = 'none';
+}
+
 // ---------- Drawing toolbar ----------
 function buildDrawingToolbar() {
   const tb = document.getElementById('drawToolbar');
@@ -209,12 +271,22 @@ function selectTool(id) {
 function wireTopbar() {
   // Indicators dropdown button.
   document.getElementById('indDropBtn').addEventListener('click', openIndDropdown);
-  // Close dropdown when clicking outside it.
+
+  // Layout dropdown button.
+  document.getElementById('layoutDropBtn').addEventListener('click', openLayoutDropdown);
+
+  // Close dropdowns when clicking outside them.
   document.addEventListener('click', e => {
-    if (!document.getElementById('indDropdown')?.contains(e.target) && e.target.id !== 'indDropBtn') closeIndDropdown();
+    const indDrop = document.getElementById('indDropdown');
+    const indBtn = document.getElementById('indDropBtn');
+    if (!indDrop?.contains(e.target) && e.target !== indBtn) closeIndDropdown();
+
+    const ldMenu = document.getElementById('layoutDropMenu');
+    const ldBtn = document.getElementById('layoutDropBtn');
+    if (!ldMenu?.contains(e.target) && e.target !== ldBtn) closeLayoutDropdown();
   }, true);
 
-  // Event markers toggle button (Roadmap 3).
+  // Event markers toggle button.
   document.getElementById('evtMarkersBtn').addEventListener('click', () => {
     const btn = document.getElementById('evtMarkersBtn');
     const next = !state.showEventMarkers;
@@ -224,16 +296,12 @@ function wireTopbar() {
 
   document.getElementById('toggleRight').addEventListener('click', () => { document.getElementById('rightPanel').classList.toggle('collapsed'); resizeAllCharts(); });
 
-  document.querySelectorAll('.layout-opt').forEach(b => b.addEventListener('click', () => {
-    document.querySelectorAll('.layout-opt').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    setLayout(b.dataset.layout); scheduleAutosave();
-  }));
-
   document.getElementById('themeToggle').addEventListener('click', showThemeMenu);
   document.getElementById('saveBtn').addEventListener('click', showSaveLayoutModal);
   document.getElementById('layoutsBtn').addEventListener('click', showLayoutsModal);
   document.getElementById('templatesBtn').addEventListener('click', showTemplatesModal);
+
+  updateLayoutDropBtn();
 }
 
 export function applyTheme(key) {

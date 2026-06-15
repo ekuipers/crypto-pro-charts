@@ -5,7 +5,7 @@ import { state, drawingState } from './state.js';
 import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS } from './constants.js';
 import { getCachedKlines, fetchKlines, openKlineStream } from './data.js';
 import { indDef, calcOverlay, calcOscillator } from './indicators.js';
-import { baseAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
 
 const LWC = () => window.LightweightCharts;
@@ -172,7 +172,7 @@ export function addPanel(opts = {}) {
   el.dataset.id = id;
   el.innerHTML = `
     <div class="panel-bar">
-      <button class="sym-btn">${opts.symbol ? baseAsset(opts.symbol) : 'BTC'}<span class="sym-quote">USDT</span></button>
+      <button class="sym-btn">${opts.symbol ? baseAsset(opts.symbol) : 'BTC'}<span class="sym-quote">${opts.symbol ? quoteAsset(opts.symbol) : 'USDT'}</span></button>
       <div class="tf-group">
         ${['1m','5m','15m','30m','1h','4h','1d','1w'].map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
       </div>
@@ -379,7 +379,7 @@ export function changeTimeframe(panel, tf) {
 export async function changeSymbol(panel, symbol, name) {
   panel.symbol = symbol;
   panel.symbolName = name || baseAsset(symbol);
-  panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(symbol)}<span class="sym-quote">USDT</span>`;
+  panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(symbol)}<span class="sym-quote">${quoteAsset(symbol)}</span>`;
   await loadPanelData(panel);
   if (panel === state.activePanel) {
     document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));

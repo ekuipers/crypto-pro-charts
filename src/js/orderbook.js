@@ -2,7 +2,7 @@
 // ORDER BOOK + TECH INFO panes
 // ============================================================
 import { state } from './state.js';
-import { fetchOrderBook, openOrderBookStream, closeOrderBookStream, fetchPrice } from './data.js';
+import { fetchOrderBook, openOrderBookStream, closeOrderBookStream, fetchPrice, getCachedKlines } from './data.js';
 import { fmtPrice, fmtVol, fmtPct } from './utils.js';
 
 let pollTimer = null;
@@ -85,7 +85,112 @@ function row(o, maxQty, side) {
     <span class="ob-qty">${fmtVol(o.qty)}</span></div>`;
 }
 
-// ---- Tech info ----
+// ---- Tech info (enhanced) ----
+
+function calcRSI14(closes) {
+  if (!closes || closes.length < 16) return null;
+  const arr = closes.slice(-30);
+  let ag = 0, al = 0;
+  for (let i = 1; i <= 14; i++) {
+    const d = arr[i] - arr[i - 1];
+    if (d > 0) ag += d; else al -= d;
+  }
+  ag /= 14; al /= 14;
+  for (let i = 15; i < arr.length; i++) {
+    const d = arr[i] - arr[i - 1];
+    ag = (ag * 13 + Math.max(0, d)) / 14;
+    al = (al * 13 + Math.max(0, -d)) / 14;
+  }
+  return al ? 100 - 100 / (1 + ag / al) : 100;
+}
+
+function perfPill(pct) {
+  const up = pct >= 0;
+  return `<span class="ti-perf-pill ${up ? 'up' : 'down'}">${up ? '+' : ''}${pct.toFixed(2)}%</span>`;
+}
+
+function rangeGaugeSvg(value, lo, hi, label) {
+  const pct = hi > lo ? Math.max(0, Math.min(100, ((value - lo) / (hi - lo)) * 100)) : 50;
+  const color = pct < 33 ? 'var(--red)' : pct > 67 ? 'var(--green)' : '#f59e0b';
+  return `
+    <div class="ti-section-label">${label}</div>
+    <div class="ti-range-wrap">
+      <span class="ti-range-lo">${fmtPrice(lo)}</span>
+      <div class="ti-range-track">
+        <div class="ti-range-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div>
+        <div class="ti-range-thumb" style="left:${pct.toFixed(1)}%;background:${color}"></div>
+      </div>
+      <span class="ti-range-hi">${fmtPrice(hi)}</span>
+    </div>`;
+}
+
+function rsiSpeedometerSvg(rsi) {
+  const cx = 80, cy = 82, R = 66, needleLen = 52;
+  const C = Math.PI * R; // half-circle arc length
+  const needleRad = (Math.PI / 180) * (180 - rsi * 1.8);
+  const nx = cx + needleLen * Math.cos(needleRad);
+  const ny = cy - needleLen * Math.sin(needleRad);
+  const color = rsi < 30 ? '#26a69a' : rsi > 70 ? '#ef5350' : '#f59e0b';
+  const label = rsi < 30 ? 'Strong Buy' : rsi < 45 ? 'Buy' : rsi > 70 ? 'Strong Sell' : rsi > 55 ? 'Sell' : 'Neutral';
+  const track = `M ${cx - R} ${cy} A ${R} ${R} 0 0 0 ${cx + R} ${cy}`;
+  return `
+    <div class="ti-section-label">Buy / Sell Pressure (RSI 14)</div>
+    <div class="ti-speedometer">
+      <svg viewBox="0 0 160 92" style="width:100%;max-width:190px;display:block;margin:0 auto">
+        <path d="${track}" fill="none" stroke="rgba(128,128,128,0.18)" stroke-width="15" stroke-linecap="butt"/>
+        <path d="${track}" fill="none" stroke="#26a69a" stroke-width="12" stroke-linecap="butt"
+          stroke-dasharray="${(C * 0.3).toFixed(2)} ${(C * 0.7).toFixed(2)}" stroke-dashoffset="0"/>
+        <path d="${track}" fill="none" stroke="#f59e0b" stroke-width="12" stroke-linecap="butt"
+          stroke-dasharray="${(C * 0.4).toFixed(2)} ${(C * 0.6).toFixed(2)}"
+          stroke-dashoffset="${-(C * 0.3).toFixed(2)}"/>
+        <path d="${track}" fill="none" stroke="#ef5350" stroke-width="12" stroke-linecap="butt"
+          stroke-dasharray="${(C * 0.3).toFixed(2)} ${(C * 0.7).toFixed(2)}"
+          stroke-dashoffset="${-(C * 0.7).toFixed(2)}"/>
+        <line x1="${cx}" y1="${cy}" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}"
+          stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="${cx}" cy="${cy}" r="5" fill="${color}"/>
+        <text x="15" y="91" font-size="9" fill="#26a69a" font-family="sans-serif">Buy</text>
+        <text x="145" y="91" font-size="9" fill="#ef5350" text-anchor="end" font-family="sans-serif">Sell</text>
+      </svg>
+      <div class="ti-speedometer-label" style="color:${color}">${label}</div>
+      <div class="ti-speedometer-rsi">RSI ${rsi.toFixed(0)}</div>
+    </div>`;
+}
+
+function seasonalsChartSvg(bars) {
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const buckets = Array.from({ length: 12 }, () => []);
+  for (let i = 1; i < bars.length; i++) {
+    const m = new Date(bars[i].time * 1000).getUTCMonth();
+    const ret = (bars[i].close - bars[i - 1].close) / bars[i - 1].close * 100;
+    buckets[m].push(ret);
+  }
+  const avgs = buckets.map(b => b.length ? b.reduce((a, v) => a + v, 0) / b.length : 0);
+  const maxAbs = Math.max(...avgs.map(Math.abs), 0.01);
+
+  const W = 290, H = 80, barW = 20, gap = 4, ox = 6;
+  const midY = H / 2;
+  const scale = (midY - 6) / maxAbs;
+
+  const rects = avgs.map((v, i) => {
+    const x = ox + i * (barW + gap);
+    const h = Math.abs(v) * scale;
+    const y = v >= 0 ? midY - h : midY;
+    const fill = v >= 0 ? '#26a69a' : '#ef5350';
+    return `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${Math.max(1, h.toFixed(1))}" fill="${fill}" rx="2"/>
+      <text x="${x + barW / 2}" y="${H - 1}" text-anchor="middle" font-size="8" fill="var(--muted)" font-family="sans-serif">${MONTHS[i].slice(0,1)}</text>`;
+  }).join('');
+
+  return `
+    <div class="ti-section-label">Seasonals (avg monthly return)</div>
+    <div class="ti-seasonals">
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%">
+        <line x1="0" y1="${midY}" x2="${W}" y2="${midY}" stroke="var(--border)" stroke-width="1"/>
+        ${rects}
+      </svg>
+    </div>`;
+}
+
 export async function refreshTechInfo() {
   const panel = state.activePanel;
   const el = document.getElementById('techContent');
@@ -93,19 +198,58 @@ export async function refreshTechInfo() {
   if (state.rightTab !== 'techinfo') return;
   el.innerHTML = '<div class="muted">Loading…</div>';
   try {
-    const p = await fetchPrice(panel.symbol);
+    const [p, bars] = await Promise.all([
+      fetchPrice(panel.symbol),
+      getCachedKlines(panel.symbol, '1d', 400).catch(() => []),
+    ]);
     const up = p.change >= 0;
+    const closes = bars.map(b => b.close);
+    const last = closes[closes.length - 1] || p.price;
+
+    // Performance metrics
+    const perf7d  = bars.length >= 8  ? (last / closes[closes.length - 8]  - 1) * 100 : null;
+    const perf30d = bars.length >= 31  ? (last / closes[closes.length - 32]  - 1) * 100 : null;
+    const perf1y  = bars.length >= 252 ? (last / closes[closes.length - 253] - 1) * 100 : null;
+
+    // 52-week range
+    const yr = bars.slice(-365);
+    const w52hi = yr.length ? Math.max(...yr.map(b => b.high)) : p.high;
+    const w52lo = yr.length ? Math.min(...yr.map(b => b.low))  : p.low;
+
+    // RSI
+    const rsi = calcRSI14(closes);
+
     el.innerHTML = `
-      <div class="ti-price ${up ? 'up' : 'down'}">${fmtPrice(p.price)}</div>
-      <div class="ti-chg ${up ? 'up' : 'down'}">${fmtPct(p.change)}</div>
+      <div class="ti-header">
+        <div>
+          <div class="ti-price ${up ? 'up' : 'down'}">${fmtPrice(p.price)}</div>
+          <div class="ti-chg ${up ? 'up' : 'down'}">${fmtPct(p.change)} 24h</div>
+        </div>
+        <div class="ti-perfs">
+          <div class="ti-perf-row"><span>7D</span>${perf7d != null ? perfPill(perf7d) : '<span class="muted">–</span>'}</div>
+          <div class="ti-perf-row"><span>1M</span>${perf30d != null ? perfPill(perf30d) : '<span class="muted">–</span>'}</div>
+          <div class="ti-perf-row"><span>1Y</span>${perf1y != null ? perfPill(perf1y) : '<span class="muted">–</span>'}</div>
+        </div>
+      </div>
       <div class="ti-grid">
         <div><span>Open</span><b>${fmtPrice(p.open)}</b></div>
         <div><span>High</span><b>${fmtPrice(p.high)}</b></div>
         <div><span>Low</span><b>${fmtPrice(p.low)}</b></div>
         <div><span>24h Vol</span><b>${fmtVol(p.volume)}</b></div>
       </div>
-      <button id="tiAlertBtn" class="primary-btn">Set Price Alert</button>`;
-    el.querySelector('#tiAlertBtn').addEventListener('click', () => {
+      <div class="ti-divider"></div>
+      ${rangeGaugeSvg(p.price, p.low, p.high, "Day's Range")}
+      <div class="ti-spacer"></div>
+      ${rangeGaugeSvg(p.price, w52lo, w52hi, '52-Week Range')}
+      <div class="ti-divider"></div>
+      ${rsi != null ? rsiSpeedometerSvg(rsi) : ''}
+      <div class="ti-divider"></div>
+      ${bars.length >= 24 ? seasonalsChartSvg(bars) : ''}
+      <div class="ti-footer">
+        <button id="tiAlertBtn" class="primary-btn ti-alert-btn">🔔 Set Price Alert</button>
+      </div>`;
+
+    el.querySelector('#tiAlertBtn')?.addEventListener('click', () => {
       document.dispatchEvent(new CustomEvent('open-alert-modal', { detail: { symbol: panel.symbol, price: p.price } }));
     });
   } catch {

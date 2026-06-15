@@ -251,13 +251,44 @@ input:focus, select:focus { border-color: var(--accent); }
 .ob-spread { text-align: center; padding: 6px; font-size: 11px; color: var(--muted); border-block: 1px solid var(--border); margin: 4px 0; }
 
 /* Tech info */
-.tech-content { padding: 14px; }
-.ti-price { font-size: 26px; font-weight: 700; }
-.ti-chg { font-size: 14px; margin-bottom: 14px; }
-.ti-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.tech-content { padding: 12px; overflow-y: auto; flex: 1; }
+.ti-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+.ti-price { font-size: 24px; font-weight: 700; line-height: 1.1; }
+.ti-chg { font-size: 13px; margin-top: 2px; }
+.ti-perfs { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+.ti-perf-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+.ti-perf-pill {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 1px 6px; border-radius: 10px;
+}
+.ti-perf-pill.up { background: rgba(38,166,154,.18); color: var(--green); }
+.ti-perf-pill.down { background: rgba(239,83,80,.18); color: var(--red); }
+.ti-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .ti-grid div { display: flex; flex-direction: column; }
-.ti-grid span { color: var(--muted); font-size: 11px; }
-.ti-grid b { font-size: 14px; }
+.ti-grid span { color: var(--muted); font-size: 10px; }
+.ti-grid b { font-size: 13px; }
+.ti-divider { height: 1px; background: var(--border); margin: 10px 0; }
+.ti-spacer { height: 6px; }
+.ti-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 5px; }
+/* Range gauge */
+.ti-range-wrap { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.ti-range-lo, .ti-range-hi { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.ti-range-track { flex: 1; height: 6px; background: var(--panel2); border-radius: 3px; position: relative; }
+.ti-range-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px; transition: width .3s; }
+.ti-range-thumb {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--panel);
+  transition: left .3s;
+}
+/* RSI speedometer */
+.ti-speedometer { text-align: center; }
+.ti-speedometer-label { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.ti-speedometer-rsi { font-size: 11px; color: var(--muted); }
+/* Seasonals */
+.ti-seasonals { }
+/* Footer */
+.ti-footer { margin-top: 12px; }
+.ti-alert-btn { width: 100%; padding: 8px; font-size: 12px; }
 
 /* Scanner */
 .scan-controls { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -446,6 +477,114 @@ body.resizing * { pointer-events: none; }
 /* ---------- Event markers toggle button ---------- */
 .evt-markers-btn { opacity: 0.45; }
 .evt-markers-btn.active { opacity: 1; }
+
+/* ---------- Layout dropdown (Roadmap 4) ---------- */
+.layout-drop-wrap { position: relative; }
+.layout-drop-btn {
+  font-size: 12px; padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--panel2);
+  letter-spacing: 0.01em; white-space: nowrap;
+}
+.layout-drop-btn:hover { background: var(--hover); border-color: var(--accent); }
+.layout-drop-menu {
+  position: fixed; z-index: 250; min-width: 180px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  overflow: hidden; padding: 4px;
+}
+.ld-sep {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--muted); padding: 6px 10px 3px;
+}
+.ld-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  text-align: left; padding: 7px 10px; border-radius: 5px;
+  font-size: 13px; color: var(--text);
+}
+.ld-item:hover { background: var(--hover); }
+.ld-item.active { color: var(--accent); font-weight: 600; }
+.ld-icon { font-size: 11px; letter-spacing: -2px; min-width: 20px; }
+
+/* ---------- Fancy buttons — Roadmap 1 ---------- */
+/* Topbar buttons: subtle border + transition */
+.tb-btn {
+  border: 1px solid transparent; transition: background .12s, border-color .12s, color .12s;
+}
+.tb-btn:hover { border-color: var(--border); }
+.tb-btn:active { background: var(--panel2); }
+
+/* Panel bar symbol button */
+.sym-btn {
+  border: 1px solid transparent; border-radius: 6px;
+  padding: 3px 9px; transition: background .12s, border-color .12s;
+  background: var(--panel2);
+}
+.sym-btn:hover { border-color: var(--accent); }
+
+/* Timeframe buttons pill-group */
+.tf-group { background: var(--panel2); border-radius: 6px; padding: 2px; gap: 0; }
+.tf-btn {
+  border-radius: 4px; transition: background .12s, color .12s;
+  padding: 3px 7px;
+}
+.tf-btn.active { background: var(--accent); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+
+/* Time-scale range buttons */
+.panel-timescale { gap: 1px; }
+.ts-btn { border-radius: 4px; transition: background .12s, color .12s; }
+.ts-btn.active { background: var(--accent); color: #fff; }
+
+/* Panel action buttons */
+.panel-act {
+  width: 28px; height: 28px; border-radius: 6px;
+  transition: background .12s, color .12s;
+}
+.panel-act:hover { background: var(--hover); color: var(--text); }
+
+/* Drawing toolbar */
+.draw-tool { transition: background .12s, color .12s; }
+.draw-tool.active { box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+
+/* Watchlist footer buttons */
+.wl-footer button {
+  border-radius: 6px; border: 1px solid var(--border);
+  transition: background .12s, border-color .12s;
+  font-weight: 500;
+}
+.wl-footer button:hover { border-color: var(--accent); color: var(--accent); background: var(--hover); }
+
+/* Right panel tabs — animated underline */
+.right-tab {
+  position: relative; transition: color .15s;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.right-tab:after {
+  content: ''; position: absolute; left: 20%; right: 20%; bottom: -2px;
+  height: 2px; background: var(--accent);
+  transform: scaleX(0); transition: transform .15s ease;
+}
+.right-tab:hover:after { transform: scaleX(1); }
+.right-tab.active { border-bottom-color: var(--accent); }
+.right-tab.active:after { transform: scaleX(0); }
+
+/* Primary action buttons */
+.primary-btn {
+  border-radius: 6px; font-weight: 600;
+  transition: filter .12s, transform .08s;
+}
+.primary-btn:hover { filter: brightness(1.15); }
+.primary-btn:active { transform: scale(0.97); }
+
+/* Indicator chips — remove button polish */
+.chip-x { transition: color .1s; }
+
+/* Watchlist tab pills */
+.wl-tab { transition: background .12s, color .12s; }
+
+/* Alerts bell */
+#alertsBtn { border-radius: 6px; border: 1px solid transparent; transition: border-color .12s; }
+#alertsBtn:hover { border-color: var(--border); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {

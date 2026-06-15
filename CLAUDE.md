@@ -13,7 +13,8 @@ After every change to a code file, append a dated entry to `memory.md` describin
 Do not start the local server.
 
 ## Roadmap
-_All roadmap items implemented._
+_No pending items._
+
 
 ## Bugs
 _No known open bugs._

@@ -21,9 +21,11 @@ const TTL_MS = {
 };
 
 function toExSymbol(sym, exId) {
-  const base = sym.replace(/USDT$/, '');
-  if (exId === 'okx')  return base + '-USDT';
-  if (exId === 'gate') return base + '_USDT';
+  const m = sym.match(/(USDT|USDC|BUSD|EUR|BTC|ETH|BNB|DAI)$/);
+  const quote = m ? m[1] : 'USDT';
+  const base = m ? sym.slice(0, -quote.length) : sym;
+  if (exId === 'okx')  return `${base}-${quote}`;
+  if (exId === 'gate') return `${base}_${quote}`;
   return sym;
 }
 
@@ -193,5 +195,5 @@ app.get('*', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Crypto Charting Pro running at http://localhost:${PORT}`);
+  console.log(`CryptoPro Charts running at http://localhost:${PORT}`);
 });

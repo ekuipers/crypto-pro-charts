@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Crypto Charting Pro</title>
+  <title>CryptoPro Charts</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/css/style.css">
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -12,16 +12,16 @@
   <!-- TOP BAR -->
   <header class="topbar">
     <div class="tb-group">
-      <span class="logo">📈 Crypto<b>Pro</b></span>
+      <span class="logo">📈 <b>CryptoPro</b> Charts</span>
       <button id="indDropBtn" class="tb-btn" title="Add indicators to the active chart">Indicators ▾</button>
       <button id="toggleRight" class="tb-btn" title="Toggle watchlist">☰</button>
     </div>
 
-    <div class="tb-group layouts">
-      <button class="layout-opt active" data-layout="l1" title="Single">▢</button>
-      <button class="layout-opt" data-layout="l2h" title="2 side by side">▢▢</button>
-      <button class="layout-opt" data-layout="l2v" title="2 stacked">⊟</button>
-      <button class="layout-opt" data-layout="l4" title="4 grid">⊞</button>
+    <div class="tb-group">
+      <div id="layoutDropWrap" class="layout-drop-wrap">
+        <button id="layoutDropBtn" class="tb-btn layout-drop-btn">Single ▾</button>
+        <div id="layoutDropMenu" class="layout-drop-menu" style="display:none"></div>
+      </div>
     </div>
 
     <div class="tb-group right">

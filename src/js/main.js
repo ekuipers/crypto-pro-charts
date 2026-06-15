@@ -4,7 +4,7 @@
 import { state } from './state.js';
 import { openPriceStream, closePriceStream } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
-import { initUI, updateWSStatus, renderIndChips } from './ui.js';
+import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
 import { initAlerts } from './alerts.js';
 import { initSettings } from './settings.js';
@@ -51,13 +51,10 @@ async function init() {
   startPriceStream();
   document.addEventListener('restart-price-stream', startPriceStream);
 
-  // active layout button + theme reflect
-  document.querySelectorAll('.layout-opt').forEach(b => b.classList.toggle('active', b.dataset.layout === state.layout));
-
   document.addEventListener('drawings-changed', autosave);
   document.addEventListener('layout-restored', () => {
     renderIndChips();
-    document.querySelectorAll('.layout-opt').forEach(b => b.classList.toggle('active', b.dataset.layout === state.layout));
+    updateLayoutDropBtn();
   });
 
   window.addEventListener('resize', debounce(resizeAllCharts, 150));
@@ -66,7 +63,7 @@ async function init() {
   // right panel splitter
   initSplitter();
 
-  log('Crypto Charting Pro ready');
+  log('CryptoPro Charts ready');
   setTimeout(resizeAllCharts, 300);
 }
 

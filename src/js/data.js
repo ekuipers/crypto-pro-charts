@@ -3,16 +3,20 @@
 // ============================================================
 import { EXCHANGES } from './constants.js';
 import { state } from './state.js';
-import { fetchJSON, log, warn } from './utils.js';
+import { fetchJSON, baseAsset, quoteAsset, log, warn } from './utils.js';
+
+// Quote currencies to include when fetching all pairs
+const SUPPORTED_QUOTES = ['USDT', 'USDC', 'EUR'];
 
 function ex() { return EXCHANGES[state.settings.exchange] || EXCHANGES.binance; }
 
 // ---- Symbol normalisation per exchange --------------------
 export function toExchangeSymbol(sym, exId = state.settings.exchange) {
-  const base = sym.replace(/USDT$/, '');
+  const base = baseAsset(sym);
+  const quote = quoteAsset(sym);
   switch (exId) {
-    case 'okx':  return base + '-USDT';
-    case 'gate': return base + '_USDT';
+    case 'okx':  return `${base}-${quote}`;
+    case 'gate': return `${base}_${quote}`;
     default:     return sym; // binance, bybit
   }
 }
@@ -111,14 +115,12 @@ export async function fetchPrice(symbol) {
   };
 }
 
-// ---- All tradeable USDT pairs (from the active exchange) --------
-// Every pair is normalised to the app's internal `BASEUSDT` symbol form so the
-// rest of the app (klines, overlays, toExchangeSymbol) keeps working unchanged.
+// ---- All tradeable pairs (USDT + USDC + EUR) from the active exchange --------
 async function fetchBinancePairs() {
   const j = await fetchJSON(`${EXCHANGES.binance.rest}/exchangeInfo`);
   return j.symbols
-    .filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
-    .map(s => ({ symbol: s.symbol, name: s.baseAsset }));
+    .filter(s => s.status === 'TRADING' && SUPPORTED_QUOTES.includes(s.quoteAsset))
+    .map(s => ({ symbol: s.symbol, name: s.baseAsset, quote: s.quoteAsset }));
 }
 
 async function fetchExchangePairs(exId) {
@@ -126,20 +128,20 @@ async function fetchExchangePairs(exId) {
     case 'bybit': {
       const j = await fetchJSON('https://api.bybit.com/v5/market/instruments-info?category=spot');
       return (j.result?.list || [])
-        .filter(s => s.quoteCoin === 'USDT' && (s.status === 'Trading' || !s.status))
-        .map(s => ({ symbol: `${s.baseCoin}USDT`, name: s.baseCoin }));
+        .filter(s => SUPPORTED_QUOTES.includes(s.quoteCoin) && (s.status === 'Trading' || !s.status))
+        .map(s => ({ symbol: `${s.baseCoin}${s.quoteCoin}`, name: s.baseCoin, quote: s.quoteCoin }));
     }
     case 'okx': {
       const j = await fetchJSON('https://www.okx.com/api/v5/public/instruments?instType=SPOT');
       return (j.data || [])
-        .filter(s => s.quoteCcy === 'USDT' && s.state === 'live')
-        .map(s => ({ symbol: `${s.baseCcy}USDT`, name: s.baseCcy }));
+        .filter(s => SUPPORTED_QUOTES.includes(s.quoteCcy) && s.state === 'live')
+        .map(s => ({ symbol: `${s.baseCcy}${s.quoteCcy}`, name: s.baseCcy, quote: s.quoteCcy }));
     }
     case 'gate': {
       const j = await fetchJSON('https://api.gateio.ws/api/v4/spot/currency_pairs');
       return (j || [])
-        .filter(s => s.quote === 'USDT' && (s.trade_status === 'tradable' || !s.trade_status))
-        .map(s => ({ symbol: `${s.base}USDT`, name: s.base }));
+        .filter(s => SUPPORTED_QUOTES.includes(s.quote) && (s.trade_status === 'tradable' || !s.trade_status))
+        .map(s => ({ symbol: `${s.base}${s.quote}`, name: s.base, quote: s.quote }));
     }
     default: // binance + hyperliquid (which falls back to Binance data)
       return fetchBinancePairs();
@@ -209,7 +211,7 @@ export function openPriceStream(onUpdate) {
       try { arr = JSON.parse(ev.data); } catch { return; }
       if (!Array.isArray(arr)) return;
       for (const t of arr) {
-        if (!t.s || !t.s.endsWith('USDT')) continue;
+        if (!t.s || !SUPPORTED_QUOTES.some(q => t.s.endsWith(q))) continue;
         const price = +t.c, open = +t.o;
         const change = open ? ((price - open) / open) * 100 : 0;
         onUpdate({ symbol: t.s, price, open, change, chgVal: price - open });

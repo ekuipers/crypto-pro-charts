@@ -1,4 +1,43 @@
-# Crypto Charting Pro — Change Memory
+# CryptoPro Charts — Change Memory
+
+---
+
+## 2026-06-15 — Roadmap: Fancy Buttons, Enhanced Tech Info, Multi-Quote, Layout Dropdown
+
+**Roadmap 1 — Fancy buttons**
+- `public/css/style.css`: Added `transition` on `.tb-btn`, `.sym-btn`, `.tf-btn`, `.ts-btn`, `.panel-act`, `.draw-tool`, `.wl-footer button`, `.primary-btn`, `.right-tab`. Symbol button gets a `var(--panel2)` background and accent hover border. Timeframe buttons grouped in a pill container with consistent active styling. Right panel tabs get animated underline via `::after`. Primary buttons get brightness/scale transitions.
+
+**Roadmap 2 — Enhanced Symbol Info Pane**
+- `src/js/orderbook.js`: Added `getCachedKlines` import. Added helper functions: `calcRSI14` (Wilder's RSI from 1d closes), `perfPill` (colored % badge), `rangeGaugeSvg` (horizontal gauge with thumb), `rsiSpeedometerSvg` (SVG semi-circle gauge with 3 colour zones and needle), `seasonalsChartSvg` (SVG bar chart of average monthly returns). `refreshTechInfo` now fetches both `fetchPrice` and `getCachedKlines('1d', 400)` in parallel. Renders: 7D/1M/1Y performance pills, 4-cell OHLV grid, Day's Range gauge, 52-Week Range gauge, RSI speedometer, seasonals chart.
+- `public/css/style.css`: Added `.ti-header`, `.ti-perfs`, `.ti-perf-pill`, `.ti-divider`, `.ti-section-label`, `.ti-range-*`, `.ti-speedometer-*`, `.ti-seasonals`, `.ti-alert-btn` styles.
+
+**Roadmap 3 — Multi-Quote Symbol Support (USDT / USDC / EUR)**
+- `src/js/utils.js`: Extended `baseAsset` regex to also strip EUR/BTC/ETH/BNB/DAI. Added `quoteAsset(symbol)` that returns the quote currency (defaults to USDT).
+- `src/js/data.js`: Imported `baseAsset`, `quoteAsset`. Added `SUPPORTED_QUOTES = ['USDT','USDC','EUR']`. `toExchangeSymbol` now uses `baseAsset`/`quoteAsset` so OKX and Gate symbols include the correct quote. `fetchBinancePairs`/`fetchExchangePairs` now include USDC and EUR pairs. Price stream now accepts all `SUPPORTED_QUOTES` endings.
+- `src/js/charts.js`: Imported `quoteAsset`. Panel bar button and `changeSymbol` now show the correct quote via `quoteAsset(symbol)` instead of hardcoded "USDT".
+- `src/js/persistence.js`: Imported `baseAsset`, `quoteAsset`. `applyLayoutData` panel symbol button now uses `baseAsset`/`quoteAsset` instead of `.replace(/USDT$/, '')`.
+- `server.js`: `toExSymbol` now parses the real quote currency from the symbol string before building OKX/Gate URLs.
+
+**Roadmap 4 — Layout Selector Dropdown**
+- `public/index.html`: Replaced the `.tb-group.layouts` preset buttons with a `#layoutDropWrap` containing `#layoutDropBtn` and `#layoutDropMenu`.
+- `src/js/ui.js`: Imported `getNamedLayouts`, `applyLayoutData` from persistence. Added `LAYOUT_NAMES`, `LAYOUT_ICONS` constants. Added `updateLayoutDropBtn()` (exported), `openLayoutDropdown()` (async, loads saved layouts + presets on open, closes other dropdown too), `closeLayoutDropdown()`. Removed `.layout-opt` event wiring. Added `#layoutDropBtn` click handler and merged click-outside handler.
+- `src/js/main.js`: Imported `updateLayoutDropBtn`. Removed `.layout-opt` active-class toggling. `layout-restored` event handler calls `updateLayoutDropBtn()`.
+- `public/css/style.css`: Added `.layout-drop-wrap`, `.layout-drop-btn`, `.layout-drop-menu`, `.ld-sep`, `.ld-item`, `.ld-icon` styles.
+
+**Verification:** `node --check` passed on all 7 modified JS files (utils.js, data.js, charts.js, persistence.js, ui.js, orderbook.js, main.js) and server.js.
+
+---
+
+## 2026-06-15 — Rename to "CryptoPro Charts"
+
+**Date:** 2026-06-15
+**Change:** Renamed the product from "Crypto Charting Pro" to "CryptoPro Charts" across all
+user-visible surfaces.
+- `public/index.html`: `<title>` updated; logo span changed to `📈 **CryptoPro** Charts`.
+- `server.js`: startup log message updated.
+- `src/js/main.js`: ready log message updated.
+- `memory.md`: header updated.
+**Verified:** Grepped all `.html`, `.js`, `.json`, `.md` files — no remaining "Crypto Charting Pro" in user-facing text (only in historical changelog entries).
 
 ---
 

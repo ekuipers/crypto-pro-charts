@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-06-15 — Favicon: candlestick chart SVG
+
+**Date:** 2026-06-15
+**Change:** Added `public/favicon.svg` — a 32×32 SVG icon showing three candlesticks in a
+classic uptrend pattern (one red/bearish candle followed by two progressively taller
+green/bullish candles), with a blue accent trend line connecting the closes.
+Colors match the app's own palette: background `#131722`, green `#26a69a`, red `#ef5350`,
+blue accent `#2962ff`. Linked from `public/index.html` via
+`<link rel="icon" type="image/svg+xml" href="/favicon.svg">`. SVG favicons are supported
+natively by Chrome, Firefox, and Edge; Safari renders the default icon as fallback.
+**Verified:** SVG is well-formed; the `<link>` tag is placed in `<head>` before the stylesheet.
+
+---
+
 ## 2026-06-15 — Roadmap: save layouts and session state in backend JSON
 
 **Date:** 2026-06-15

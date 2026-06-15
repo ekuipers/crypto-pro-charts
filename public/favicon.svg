@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background tile matching the app's dark panel color -->
+  <rect width="32" height="32" rx="5" fill="#131722"/>
+
+  <!-- Subtle grid lines for depth -->
+  <line x1="0" y1="16" x2="32" y2="16" stroke="#1e222d" stroke-width="1"/>
+
+  <!-- Candle 1: bearish (red) — price fell, small body -->
+  <!-- wick -->
+  <line x1="8" y1="14" x2="8" y2="27" stroke="#ef5350" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- body: open at top (y=17), close at bottom (y=23) — red = price dropped -->
+  <rect x="5" y="17" width="6" height="6" rx="0.5" fill="#ef5350"/>
+
+  <!-- Candle 2: bullish (green) — price rose, medium body -->
+  <!-- wick -->
+  <line x1="16" y1="10" x2="16" y2="25" stroke="#26a69a" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- body: open at bottom (y=21), close at top (y=14) — green = price rose -->
+  <rect x="13" y="14" width="6" height="7" rx="0.5" fill="#26a69a"/>
+
+  <!-- Candle 3: bullish (green) — strong rally, tall body -->
+  <!-- wick -->
+  <line x1="24" y1="5" x2="24" y2="22" stroke="#26a69a" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- body: open at bottom (y=19), close at top (y=8) — tall = strong bullish candle -->
+  <rect x="21" y="8" width="6" height="11" rx="0.5" fill="#26a69a"/>
+
+  <!-- Accent trend line connecting the candle closes (low → mid → high) -->
+  <polyline points="8,23 16,14 24,8" stroke="#2962ff" stroke-width="1" fill="none"
+            stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+</svg>

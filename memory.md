@@ -4,6 +4,23 @@
 
 ---
 
+## v1.5.1 — 2026-06-15 · Bug fix: future event markers at wrong date
+
+### Bug fix — Future event markers snapping to last candle
+**Problem:** `applyEventMarkers` added future event markers to `panel._eventMarkers` alongside past markers, all applied via `panel.candleSeries.setMarkers()`. LightweightCharts requires every marker time to have a matching data point in the series; since future candles don't exist yet, LWC silently snapped those markers to the last existing bar — so a 17-06-2026 event appeared on the 15-06-2026 candle.
+
+**Fix (`src/js/events.js`):**
+- Past event markers continue to go on `panel._eventMarkers` → `candleSeries.setMarkers()` (unchanged).
+- Future events are now collected in a separate `futureByTime` map, then rendered on a hidden `LineSeries` (`panel._futureEvtSeries`) created with `color: 'rgba(0,0,0,0)'`, `lineWidth: 0`, `priceLineVisible/lastValueVisible/crosshairMarkerVisible: false`, sharing the `right` price scale. Each data point uses the last candle's close price so it stays within the visible price range. Markers are set on that series — LWC places them at the correct future dates.
+- `_removeFutureEvtSeries(panel)` helper cleans up the hidden series; called at the start of every `applyEventMarkers` call and in `setEventMarkersVisible(false)`.
+- Click-to-detail still works: `futureByTime` entries are merged into the combined `byTime` map used by `wireEventClick`.
+
+- `public/index.html`: Footer bumped to `v1.5.1`.
+
+**Verification:** `node --check src/js/events.js` passed.
+
+---
+
 ## v1.5.0 — 2026-06-15 · Lux Trend indicator + Bitstamp + CryptoCompare + CoinGecko watchlist
 
 ### Feature — Lux Trend Signals indicator (Roadmap 1)

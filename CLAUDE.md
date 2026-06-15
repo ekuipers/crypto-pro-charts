@@ -17,9 +17,8 @@ Add the creator to the footer of the website.
 6. Add version number to the footer
 
 ## Roadmap
-_No pending items._
+1. 
 
 ## Bugs
-_No known open bugs._
 
 

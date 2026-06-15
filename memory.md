@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-06-15 — Show full pairs in symbol list (BTCUSDT / ETHEUR / ADAUSDC)
+
+**Problem:** The watchlist rows showed only the base asset ("BTC", "ETH") and all USDT-related labels were hardcoded to "USDT", so USDC/EUR pairs were always labelled incorrectly.
+
+**Fix:**
+- `src/js/watchlist.js`: Imported `quoteAsset` from utils. Changed `renderSymbolList` `.sym-name` to `baseAsset(symbol) + <span class="sym-quote-tag">quoteAsset(symbol)</span>` so both the base and the actual quote currency are shown (e.g. `BTC USDT`, `ETH EUR`, `ADA USDC`). Changed the symbol picker items and search-results dropdown `<span>USDT</span>` to `<span>${quoteAsset(r.symbol)}</span>`. Changed the "Added" toast to show the full pair symbol.
+- `public/css/style.css`: Added `.sym-quote-tag` — 10 px, muted colour, normal weight — so the quote suffix is readable but visually subordinate to the bold base asset.
+
+**Verification:** `node --check src/js/watchlist.js` passed.
+
+---
+
 ## 2026-06-15 — Footer bar + SVG drawing toolbar icons
 
 **Roadmap 1 — Footer bar**

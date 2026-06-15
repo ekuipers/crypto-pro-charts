@@ -2,7 +2,7 @@
 // WATCHLIST — right panel symbol selector + search
 // ============================================================
 import { state } from './state.js';
-import { baseAsset, fmtPrice, fmtPct, esc, toast } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtPct, esc, toast } from './utils.js';
 import { fetchAllPairs, validateSymbol } from './data.js';
 import { changeSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
@@ -139,7 +139,7 @@ export function renderSymbolList() {
     row.innerHTML = `
       <span class="sym-drag" title="Drag to reorder">⠿</span>
       <span class="sym-dot" style="background:${dotColor}"></span>
-      <span class="sym-name">${esc(baseAsset(s.symbol))}</span>
+      <span class="sym-name">${esc(baseAsset(s.symbol))}<span class="sym-quote-tag">${esc(quoteAsset(s.symbol))}</span></span>
       <span class="sym-price">${fmtPrice(p.price)}</span>
       <span class="sym-chgv ${up ? 'up' : 'down'}">${p.chgVal != null ? (up ? '+' : '') + fmtPrice(p.chgVal) : '--'}</span>
       <span class="sym-chg ${up ? 'up' : 'down'}">${fmtPct(p.change)}</span>
@@ -209,7 +209,7 @@ function addSymbolPrompt() {
     if (wl.some(s => s.symbol === sym)) { toast('Already in watchlist', 'warn'); return; }
     wl.push({ symbol: sym, name: name || baseAsset(sym) });
     renderSymbolList(); scheduleAutosave();
-    toast(`Added ${baseAsset(sym)}`, 'info');
+    toast(`Added ${sym}`, 'info');
   });
 }
 
@@ -234,7 +234,7 @@ export async function showSymbolPicker(title, onPick) {
       const hidden = matches.length - slice.length;
       listEl.innerHTML =
         slice.map(r =>
-          `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>USDT</span></button>`).join('') +
+          `<button class="sym-picker-item" data-sym="${r.symbol}" data-name="${esc(r.name)}"><b>${esc(baseAsset(r.symbol))}</b><span>${esc(quoteAsset(r.symbol))}</span></button>`).join('') +
         (hidden > 0 ? `<button class="sym-picker-more" id="spMore">Load ${Math.min(PAGE, hidden)} more</button>` : '') +
         `<div class="sym-picker-count">Showing ${slice.length} of ${matches.length}</div>`;
       listEl.querySelectorAll('.sym-picker-item').forEach(b => b.addEventListener('click', () => {
@@ -265,7 +265,7 @@ async function handleSearch(query) {
   const q = query.toUpperCase();
   const pairs = await fetchAllPairs();
   const results = pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)).slice(0, 15);
-  dd.innerHTML = results.map(r => `<div class="search-res" data-sym="${r.symbol}" data-name="${r.name}">${esc(baseAsset(r.symbol))}<span>USDT</span></div>`).join('');
+  dd.innerHTML = results.map(r => `<div class="search-res" data-sym="${r.symbol}" data-name="${r.name}">${esc(baseAsset(r.symbol))}<span>${esc(quoteAsset(r.symbol))}</span></div>`).join('');
   dd.style.display = results.length ? 'block' : 'none';
   dd.querySelectorAll('.search-res').forEach(el => el.addEventListener('click', () => {
     const sym = el.dataset.sym, name = el.dataset.name;

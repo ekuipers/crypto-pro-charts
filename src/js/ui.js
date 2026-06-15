@@ -12,6 +12,7 @@ import { setTool, clearDrawings, exportDrawings, importDrawings } from './drawin
 import { showModal, closeModal } from './alerts.js';
 import { showSaveLayoutModal, showLayoutsModal } from './persistence.js';
 import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
+import { setEventMarkersVisible } from './events.js';
 import { esc, clamp } from './utils.js';
 
 const TEMPLATES = {
@@ -38,22 +39,24 @@ const DRAW_TOOLS = [
 ];
 
 export function initUI() {
-  buildIndicatorPanel();
+  buildIndicatorDropdown();
   buildDrawingToolbar();
   wireTopbar();
   wireRightTabs();
   document.addEventListener('active-symbol-changed', () => { renderIndChips(); refreshOrderBook(); refreshTechInfo(); });
   document.addEventListener('indicators-changed', renderIndChips);
-  document.addEventListener('open-indicators', () => document.getElementById('leftPanel').classList.remove('collapsed'));
+  // open-indicators (fired by the panel's ƒ button) now opens the topbar dropdown.
+  document.addEventListener('open-indicators', openIndDropdown);
   document.addEventListener('open-symbol-search', () => { document.getElementById('symSearch')?.focus(); });
   document.addEventListener('keydown', onKey);
   renderIndChips();
 }
 
-// ---------- Indicators left panel ----------
-function buildIndicatorPanel() {
-  const list = document.getElementById('indList');
+// ---------- Indicator picker dropdown (Roadmap 2) ----------
+function buildIndicatorDropdown() {
+  const list   = document.getElementById('indList');
   const filter = document.getElementById('indFilter');
+  if (!list || !filter) return;
   const render = () => {
     const q = (filter.value || '').toLowerCase();
     list.innerHTML = '';
@@ -62,7 +65,6 @@ function buildIndicatorPanel() {
       b.className = 'ind-item';
       b.innerHTML = `<span class="ind-tag ${d.type}">${d.type === 'overlay' ? 'O' : 'S'}</span><span class="ind-name">${d.name}</span><span class="ind-full">${esc(d.full)}</span>`;
       const desc = INDICATOR_DESC[d.id] || d.full;
-      b.title = desc; // native fallback
       b.addEventListener('mouseenter', () => showIndTooltip(b, d.full, desc));
       b.addEventListener('mouseleave', hideIndTooltip);
       b.addEventListener('click', () => {
@@ -70,12 +72,31 @@ function buildIndicatorPanel() {
         if (!state.activePanel) return;
         if (d.params.length) showIndicatorModal(d.id);
         else addIndicator(state.activePanel, d.id);
+        // Keep dropdown open so the user can add multiple indicators.
       });
       list.appendChild(b);
     });
   };
   filter.addEventListener('input', render);
   render();
+}
+
+function openIndDropdown() {
+  const drop = document.getElementById('indDropdown');
+  const btn  = document.getElementById('indDropBtn');
+  if (!drop) return;
+  const open = drop.style.display !== 'none';
+  if (open) { closeIndDropdown(); return; }
+  // Position below the button.
+  const r = btn?.getBoundingClientRect();
+  if (r) { drop.style.left = r.left + 'px'; drop.style.top = r.bottom + 4 + 'px'; }
+  drop.style.display = 'flex';
+  document.getElementById('indFilter')?.focus();
+}
+
+function closeIndDropdown() {
+  const drop = document.getElementById('indDropdown');
+  if (drop) drop.style.display = 'none';
 }
 
 // ---------- Indicator hover tooltip ----------
@@ -186,7 +207,21 @@ function selectTool(id) {
 
 // ---------- Topbar ----------
 function wireTopbar() {
-  document.getElementById('toggleLeft').addEventListener('click', () => { document.getElementById('leftPanel').classList.toggle('collapsed'); resizeAllCharts(); });
+  // Indicators dropdown button.
+  document.getElementById('indDropBtn').addEventListener('click', openIndDropdown);
+  // Close dropdown when clicking outside it.
+  document.addEventListener('click', e => {
+    if (!document.getElementById('indDropdown')?.contains(e.target) && e.target.id !== 'indDropBtn') closeIndDropdown();
+  }, true);
+
+  // Event markers toggle button (Roadmap 3).
+  document.getElementById('evtMarkersBtn').addEventListener('click', () => {
+    const btn = document.getElementById('evtMarkersBtn');
+    const next = !state.showEventMarkers;
+    setEventMarkersVisible(next);
+    btn.classList.toggle('active', next);
+  });
+
   document.getElementById('toggleRight').addEventListener('click', () => { document.getElementById('rightPanel').classList.toggle('collapsed'); resizeAllCharts(); });
 
   document.querySelectorAll('.layout-opt').forEach(b => b.addEventListener('click', () => {

@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="tb-group">
       <span class="logo">📈 Crypto<b>Pro</b></span>
-      <button id="toggleLeft" class="tb-btn" title="Toggle indicators">ƒ</button>
+      <button id="indDropBtn" class="tb-btn" title="Add indicators to the active chart">Indicators ▾</button>
       <button id="toggleRight" class="tb-btn" title="Toggle watchlist">☰</button>
     </div>
 
@@ -25,6 +25,7 @@
     </div>
 
     <div class="tb-group right">
+      <button id="evtMarkersBtn" class="tb-btn evt-markers-btn active" title="Toggle event markers on charts">📅</button>
       <button id="templatesBtn" class="tb-btn">Templates</button>
       <button id="saveBtn" class="tb-btn">Save</button>
       <button id="layoutsBtn" class="tb-btn">Layouts</button>
@@ -39,14 +40,17 @@
   </header>
 
   <div class="app-main">
-    <!-- LEFT: indicators -->
+    <!-- LEFT: active indicators on current chart -->
     <aside id="leftPanel" class="left-panel">
-      <div class="panel-head">Indicators</div>
-      <input id="indFilter" class="panel-search" placeholder="Search indicators…">
-      <div id="indList" class="ind-list"></div>
       <div class="panel-head">Active on chart</div>
       <div id="indChips" class="ind-chips"></div>
     </aside>
+
+    <!-- Floating indicator picker dropdown (shown by #indDropBtn) -->
+    <div id="indDropdown" class="ind-dropdown" style="display:none">
+      <input id="indFilter" class="ind-drop-search" placeholder="Search indicators…">
+      <div id="indList" class="ind-drop-list"></div>
+    </div>
 
     <!-- Drawing toolbar -->
     <div id="drawToolbar" class="draw-toolbar"></div>

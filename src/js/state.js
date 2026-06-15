@@ -28,6 +28,7 @@ let state = {
   rightTab: 'watchlist',
   klineCache: {},      // { 'binance:BTCUSDT:1h': { data, ts } }
   symColors: {},       // { 'BTCUSDT': '#color' }
+  showEventMarkers: true,
 };
 
 // drawingState lives here so it can be imported without circular deps

@@ -2,7 +2,7 @@
 // CHARTS — panel + chart lifecycle, layouts, indicators glue
 // ============================================================
 import { state, drawingState } from './state.js';
-import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME } from './constants.js';
+import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS } from './constants.js';
 import { getCachedKlines, fetchKlines, openKlineStream } from './data.js';
 import { indDef, calcOverlay, calcOscillator } from './indicators.js';
 import { baseAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
@@ -38,6 +38,44 @@ export function chartTheme() {
     crosshair: { mode: LWC().CrosshairMode.Normal },
   };
 }
+
+// ---------- Dynamic price-axis format (Roadmap 4) ----------
+// Returns LightweightCharts priceFormat options with precision and minMove
+// matched to the current price magnitude, so the axis never shows redundant
+// decimal places (e.g. BTC at 65000 shows 0 decimals; SHIB at 0.000012 shows 8).
+function dynamicPriceFormat(price) {
+  const a = Math.abs(price || 0);
+  if (a >= 10000) return { type: 'price', precision: 0, minMove: 1 };
+  if (a >= 1000)  return { type: 'price', precision: 1, minMove: 0.1 };
+  if (a >= 100)   return { type: 'price', precision: 2, minMove: 0.01 };
+  if (a >= 10)    return { type: 'price', precision: 3, minMove: 0.001 };
+  if (a >= 1)     return { type: 'price', precision: 4, minMove: 0.0001 };
+  if (a >= 0.1)   return { type: 'price', precision: 5, minMove: 0.00001 };
+  if (a >= 0.01)  return { type: 'price', precision: 6, minMove: 0.000001 };
+  return { type: 'price', precision: 8, minMove: 0.00000001 };
+}
+
+// ---------- Candle countdown timer (Roadmap 5) ----------
+function fmtCountdown(secs) {
+  secs = Math.max(0, secs);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    : `${m}:${String(s).padStart(2,'0')}`;
+}
+
+// Global 1s interval — updates every panel's timer element.
+setInterval(() => {
+  const now = Math.floor(Date.now() / 1000);
+  state.panels.forEach(p => {
+    const el = p.el?.querySelector('.candle-timer');
+    if (!el) return;
+    const sec = TF_SECONDS[p.tf] || 3600;
+    el.textContent = fmtCountdown((Math.floor(now / sec) + 1) * sec - now);
+  });
+}, 1000);
 
 // ---------- Layout management ----------
 export function setLayout(mode) {
@@ -140,6 +178,7 @@ export function addPanel(opts = {}) {
       </div>
       <div class="compare-legend"></div>
       <div class="ohlc-info"></div>
+      <span class="candle-timer" title="Time until candle closes"></span>
       <div class="panel-actions">
         <button class="panel-act compare-btn" title="Compare / overlay symbol">＋📈</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
@@ -282,6 +321,7 @@ export async function loadPanelData(panel) {
     const data = await getCachedKlines(panel.symbol, panel.tf, 500);
     panel.data = data;
     panel.candleSeries.setData(data);
+    if (data.length) panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(data[data.length - 1].close) });
     panel.volumeSeries.setData(data.map(c => ({
       time: c.time, value: c.volume,
       color: c.close >= c.open ? state.settings.upColor + '80' : state.settings.downColor + '80',

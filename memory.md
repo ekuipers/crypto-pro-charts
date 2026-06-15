@@ -2,6 +2,69 @@
 
 ---
 
+## 2026-06-15 — Roadmap + Bug fixes (5 roadmap items, 2 bugs)
+
+**Date:** 2026-06-15
+
+### Bug 1 — Double tooltip on indicator hover
+**Problem:** `b.title = desc` set a native browser tooltip alongside the custom `showIndTooltip`
+floating div, causing two tooltips to appear simultaneously.
+**Fix (`src/js/ui.js`):** Removed the `b.title = desc` line; the custom tooltip is sufficient.
+
+### Bug 2 — Indicator toggle in price chart does nothing
+**Problem:** The ƒ button in each panel bar dispatched `open-indicators`, which was wired to
+`document.getElementById('leftPanel').classList.remove('collapsed')`. With the left panel
+redesigned (Roadmap #2), this event now opens the indicators dropdown instead, making the button
+functional again.
+**Fix (`src/js/ui.js`):** `open-indicators` handler changed from `leftPanel.remove('collapsed')`
+to `openIndDropdown()`.
+
+### Roadmap 1 — Event markers on the x-axis (click-to-show + 2-week future window)
+**Change (`src/js/events.js`):**
+- Markers now use `position: 'belowBar'` (closest LWC approximation to x-axis) with `size: 1`.
+- Past events: no text on the marker — click the dot to open the event detail modal.
+- Future events (within 14 days of now): projected onto the time grid using `floor(ts / tfSec) * tfSec`;
+  short date label shown (e.g. "Jun 18") since click detection on projected bars is unreliable.
+  Future markers are blue (`#2962ff`) vs red for past events.
+- Added `TF_SECONDS` import from constants.js for the projection calculation.
+
+### Roadmap 2 — Indicators as multi-select dropdown in topbar
+**Change (`public/index.html`, `src/js/ui.js`, `public/css/style.css`):**
+- Removed the indicator search + list from `#leftPanel`; left panel now shows only "Active on chart"
+  chips (width reduced 230px → 180px). Removed `#toggleLeft` button from topbar.
+- New `<button id="indDropBtn">Indicators ▾</button>` in the topbar (first group).
+- New `<div id="indDropdown">` floating panel (fixed, positioned below the button) containing
+  `#indFilter` + `#indList` — same elements, same IDs, same JS render logic (`buildIndicatorDropdown`).
+- Clicking an indicator adds it to the active panel; dropdown stays open for multi-add.
+- Click-outside listener closes it automatically.
+- Bug 2 is fixed as a side-effect: `open-indicators` now opens this dropdown.
+
+### Roadmap 3 — Toggle to hide event markers
+**Change (`src/js/state.js`, `src/js/events.js`, `src/js/ui.js`, `public/index.html`, `public/css/style.css`):**
+- `state.showEventMarkers = true` (default on).
+- New `export function setEventMarkersVisible(visible)` in `events.js` — updates state and
+  re-applies/clears markers on all panels.
+- `<button id="evtMarkersBtn">📅</button>` in topbar right group, styled with `.evt-markers-btn`.
+  Button is dimmed (`.active` toggled) to reflect current state.
+
+### Roadmap 4 — Dynamic decimals on price axis
+**Change (`src/js/constants.js`, `src/js/charts.js`):**
+- Added `export const TF_SECONDS` to `constants.js`.
+- `dynamicPriceFormat(price)` function in `charts.js` returns `{ type:'price', precision, minMove }`
+  based on price magnitude (e.g. BTC ≥ 10 000 → 0 decimals; SHIB < 0.01 → 8 decimals).
+- Called in `loadPanelData` right after `candleSeries.setData()`.
+
+### Roadmap 5 — Candle countdown timer
+**Change (`src/js/charts.js`, `public/css/style.css`):**
+- `<span class="candle-timer">` added to every panel's `.panel-bar` (between ohlc-info and actions).
+- Module-level `setInterval` in `charts.js` runs every second, computes remaining time until the
+  next candle boundary (`ceil(now / tfSec) * tfSec - now`) for each panel's current TF, and renders
+  `m:ss` or `h:mm:ss` into the element.
+
+**Verified:** `node --check` passes on all edited JS files. HTML validates (no unclosed tags).
+
+---
+
 ## 2026-06-15 — Favicon: candlestick chart SVG
 
 **Date:** 2026-06-15

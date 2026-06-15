@@ -420,6 +420,33 @@ body.resizing * { pointer-events: none; }
 .ob-controls label { font-size: 11px; color: var(--muted); }
 .ob-controls select { flex: 1; padding: 4px 6px; font-size: 12px; }
 
+/* ---------- Left panel — now only shows active chips ---------- */
+.left-panel { width: 180px; min-width: 180px; }
+
+/* ---------- Indicator picker dropdown (Roadmap 2) ---------- */
+.ind-dropdown {
+  position: fixed; z-index: 200; top: var(--topbar-h);
+  width: 270px; max-height: 420px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  flex-direction: column; overflow: hidden;
+}
+.ind-drop-search {
+  margin: 8px; width: calc(100% - 16px); flex-shrink: 0;
+}
+.ind-drop-list { flex: 1; overflow-y: auto; padding: 0 6px 6px; }
+/* Reuse existing .ind-item styles — they still apply since the class name is the same */
+
+/* ---------- Candle countdown timer (Roadmap 5) ---------- */
+.candle-timer {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  color: var(--muted); letter-spacing: 0.02em; white-space: nowrap;
+}
+
+/* ---------- Event markers toggle button ---------- */
+.evt-markers-btn { opacity: 0.45; }
+.evt-markers-btn.active { opacity: 1; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .left-panel { position: absolute; z-index: 50; height: calc(100% - var(--topbar-h)); }

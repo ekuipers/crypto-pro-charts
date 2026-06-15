@@ -2,6 +2,9 @@
 // CONSTANTS — static configuration (no imports needed)
 // ============================================================
 const BINANCE = 'https://api.binance.com/api/v3';
+
+// Candle interval duration in seconds, keyed by timeframe id.
+export const TF_SECONDS = { '1m':60,'5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'1d':86400,'1w':604800 };
 const COLORS = ['#2962ff','#f7a600','#9c27b0','#00bcd4','#4caf50','#ff5722','#e91e63','#607d8b','#795548','#009688','#ff9800','#3f51b5'];
 
 const WATCHLISTS_INIT = {

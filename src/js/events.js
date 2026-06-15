@@ -1,10 +1,12 @@
 // ============================================================
 // EVENTS — market-events pane + chart x-axis markers
-// Major/critical (high-impact) events are marked on every panel's candle
-// series; clicking a marker (or a row in the pane) shows the event detail.
+// High-impact events get small belowBar markers on each panel's candle series.
+// Clicking a marker shows the event detail modal (no text on the marker itself).
+// Future events within 2 weeks are projected onto the extended time axis.
 // ============================================================
 import { state } from './state.js';
 import { applyPanelMarkers } from './charts.js';
+import { TF_SECONDS } from './constants.js';
 import { showModal, closeModal } from './alerts.js';
 import { fetchJSON, esc, warn } from './utils.js';
 
@@ -12,12 +14,12 @@ let _events = [];          // [{id, ts(sec), date, title, category, country, imp
 let _loaded = false;
 
 const IMPACT_COLOR = { high: '#ef5350', medium: '#f7a600', low: '#787b86' };
+const TWO_WEEKS_SEC = 14 * 86400;
 
 export function initEvents() {
   const highOnly = document.getElementById('evtHighOnly');
   if (highOnly) highOnly.addEventListener('change', renderEventsPane);
 
-  // Re-mark a panel whenever its data (re)loads — symbol/timeframe change, restore, etc.
   document.addEventListener('panel-data-loaded', e => {
     const panel = e.detail?.panel;
     if (panel) applyEventMarkers(panel);
@@ -40,8 +42,20 @@ async function loadEvents() {
     _loaded = true;
   }
   renderEventsPane();
-  // Apply markers to any panels that already exist.
   state.panels.forEach(applyEventMarkers);
+}
+
+// ---------- Toggle visibility (Roadmap 3) ----------
+export function setEventMarkersVisible(visible) {
+  state.showEventMarkers = visible;
+  state.panels.forEach(p => {
+    if (!visible) {
+      p._eventMarkers = [];
+      applyPanelMarkers(p);
+    } else {
+      applyEventMarkers(p);
+    }
+  });
 }
 
 // ---------- Pane list ----------
@@ -75,9 +89,13 @@ function fmtDate(ts) {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 }
 
-// ---------- Chart markers ----------
+function fmtShortDate(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// ---------- Chart markers (Roadmap 1) ----------
 function nearestBarTime(data, t) {
-  // data is ascending by time; return the time of the closest bar.
   let lo = 0, hi = data.length - 1;
   if (t <= data[0].time) return data[0].time;
   if (t >= data[hi].time) return data[hi].time;
@@ -91,25 +109,57 @@ function nearestBarTime(data, t) {
 
 export function applyEventMarkers(panel) {
   if (!panel || !panel.candleSeries || !panel.data?.length) return;
-  const first = panel.data[0].time, last = panel.data[panel.data.length - 1].time;
+
+  if (!state.showEventMarkers) {
+    panel._eventMarkers = [];
+    applyPanelMarkers(panel);
+    return;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const first = panel.data[0].time;
+  const last  = panel.data[panel.data.length - 1].time;
+  const future = now + TWO_WEEKS_SEC;
+  const tfSec  = TF_SECONDS[panel.tf] || 3600;
+
   const byTime = new Map();
-  // Only major/critical events get chart markers (per the roadmap).
-  _events.filter(e => e.impact === 'high').forEach(e => {
-    if (e.ts < first || e.ts > last) return;
-    const bar = nearestBarTime(panel.data, e.ts);
-    const arr = byTime.get(bar) || [];
-    arr.push(e); byTime.set(bar, arr);
-  });
+
+  // — Past events within the loaded data range (snapped to nearest real bar)
+  _events.filter(e => e.impact === 'high' && e.ts >= first && e.ts <= last)
+    .forEach(e => {
+      const bar = nearestBarTime(panel.data, e.ts);
+      const arr = byTime.get(bar) || [];
+      arr.push({ ...e, future: false }); byTime.set(bar, arr);
+    });
+
+  // — Future events within the next 2 weeks (projected onto the time grid)
+  _events.filter(e => e.impact === 'high' && e.ts > now && e.ts <= future)
+    .forEach(e => {
+      // Snap to the start of the candle period the event falls in.
+      const projTime = Math.floor(e.ts / tfSec) * tfSec;
+      const arr = byTime.get(projTime) || [];
+      arr.push({ ...e, future: true }); byTime.set(projTime, arr);
+    });
+
   const markers = [];
   byTime.forEach((list, time) => {
+    const isFuture = list[0].future;
     markers.push({
       time,
-      position: 'aboveBar',
-      color: '#f7a600',
+      // belowBar puts the dot below each candle's wick — the closest LWC
+      // supports to an x-axis marker without a separate series.
+      position: 'belowBar',
+      color: isFuture ? '#2962ff' : '#ef5350',
       shape: 'circle',
-      text: list.length > 1 ? `📅 ${list.length} events` : `📅 ${list[0].title}`,
+      size: 1,
+      // No text for past events (click to show details).
+      // Short date label for future events so they are identifiable on hover.
+      text: isFuture
+        ? (list.length > 1 ? `${fmtShortDate(list[0].ts)} +${list.length}` : fmtShortDate(list[0].ts))
+        : '',
     });
   });
+
   panel._eventByTime = byTime;
   panel._eventMarkers = markers;
   applyPanelMarkers(panel);

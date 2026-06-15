@@ -4,6 +4,17 @@
 
 ---
 
+## v1.5.2 — 2026-06-15 · Drawing toolbar icon size +25%
+
+### Feature — Larger drawing toolbar icons (Roadmap 1)
+- `src/js/ui.js`: `_I()` helper changed from `width="15" height="15"` to `width="19" height="19"` (viewBox stays `0 0 16 16`). All 13 drawing tool icons and the 3 action button icons are now 26% larger with no path changes.
+- `public/css/style.css`: `.draw-tool` button: `32×32` → `40×40`. `.draw-toolbar` width: `44px` → `55px`. Color picker `#drawColor`: `28×28` → `35×35`.
+- `public/index.html`: Footer bumped to `v1.5.2`.
+
+**Verification:** `node --check` passed on `src/js/ui.js`.
+
+---
+
 ## v1.5.1 — 2026-06-15 · Bug fix: future event markers at wrong date
 
 ### Bug fix — Future event markers snapping to last candle

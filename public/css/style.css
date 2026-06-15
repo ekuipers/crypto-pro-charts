@@ -123,12 +123,12 @@ input:focus, select:focus { border-color: var(--accent); }
 
 /* ---------- Drawing toolbar ---------- */
 .draw-toolbar {
-  width: 44px; min-width: 44px; background: var(--panel); border-right: 1px solid var(--border);
+  width: 55px; min-width: 55px; background: var(--panel); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; overflow-y: auto;
 }
-.draw-toolbar #drawColor { width: 28px; height: 28px; padding: 0; border-radius: 6px; cursor: pointer; }
+.draw-toolbar #drawColor { width: 35px; height: 35px; padding: 0; border-radius: 6px; cursor: pointer; }
 .draw-tool {
-  width: 32px; height: 32px; border-radius: 6px;
+  width: 40px; height: 40px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   color: var(--muted);
 }

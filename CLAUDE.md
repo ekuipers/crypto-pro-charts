@@ -17,7 +17,7 @@ Add the creator to the footer of the website.
 6. Update version number in the footer with the lastest version in the change log
 
 ## Roadmap
-1. 
+1. move the selected indicators from the left to the top navigaton bar of the page.
 
 ## Bugs
 

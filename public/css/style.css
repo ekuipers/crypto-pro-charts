@@ -85,12 +85,6 @@ input:focus, select:focus { border-color: var(--accent); }
 
 /* ---------- App layout ---------- */
 .app-main { flex: 1; display: flex; min-height: 0; }
-.left-panel {
-  width: 230px; min-width: 230px; background: var(--panel); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; overflow: hidden; transition: width .15s, min-width .15s;
-}
-.left-panel.collapsed { width: 0; min-width: 0; border: none; }
-.panel-head { padding: 8px 10px; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .5px; border-bottom: 1px solid var(--border); }
 .panel-search { margin: 8px; width: calc(100% - 16px); }
 .ind-list { flex: 1; overflow-y: auto; padding: 0 6px; }
 .ind-item {
@@ -114,8 +108,16 @@ input:focus, select:focus { border-color: var(--accent); }
 .ind-tooltip.show { opacity: 1; transform: translateY(0); }
 .ind-tt-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; }
 .ind-tt-desc { font-size: 11px; line-height: 1.45; color: var(--muted); }
-.ind-chips { padding: 8px; display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow-y: auto; }
-.ind-chip { display: flex; align-items: center; gap: 5px; background: var(--panel2); border: 1px solid var(--border); border-radius: 14px; padding: 3px 6px 3px 8px; font-size: 11px; }
+/* Active-indicator chips live in the top nav bar; single row, horizontal scroll. */
+.topbar-chips {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 1 auto; min-width: 0; max-width: 42vw;
+  overflow-x: auto; overflow-y: hidden; padding: 0 2px;
+  scrollbar-width: thin;
+}
+.topbar-chips::-webkit-scrollbar { height: 5px; }
+.topbar-chips::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.ind-chip { flex: none; display: flex; align-items: center; gap: 5px; background: var(--panel2); border: 1px solid var(--border); border-radius: 14px; padding: 3px 6px 3px 8px; font-size: 11px; white-space: nowrap; }
 .chip-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; }
 .chip-name { cursor: pointer; }
 .chip-x { color: var(--muted); font-size: 14px; line-height: 1; }
@@ -461,9 +463,6 @@ body.resizing * { pointer-events: none; }
 .ob-controls label { font-size: 11px; color: var(--muted); }
 .ob-controls select { flex: 1; padding: 4px 6px; font-size: 12px; }
 
-/* ---------- Left panel — now only shows active chips ---------- */
-.left-panel { width: 180px; min-width: 180px; }
-
 /* ---------- Indicator picker dropdown (Roadmap 2) ---------- */
 .ind-dropdown {
   position: fixed; z-index: 200; top: var(--topbar-h);
@@ -614,6 +613,6 @@ body.resizing * { pointer-events: none; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
-  .left-panel { position: absolute; z-index: 50; height: calc(100% - var(--topbar-h)); }
+  .topbar-chips { max-width: 30vw; }
   .right-panel { width: 260px; }
 }

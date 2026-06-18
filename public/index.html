@@ -17,6 +17,9 @@
       <button id="toggleRight" class="tb-btn" title="Toggle watchlist">☰</button>
     </div>
 
+    <!-- Active indicators on the current chart (moved from left panel into the top nav) -->
+    <div id="indChips" class="topbar-chips" title="Active indicators on the selected chart"></div>
+
     <div class="tb-group">
       <div id="layoutDropWrap" class="layout-drop-wrap">
         <button id="layoutDropBtn" class="tb-btn layout-drop-btn">Single ▾</button>
@@ -40,12 +43,6 @@
   </header>
 
   <div class="app-main">
-    <!-- LEFT: active indicators on current chart -->
-    <aside id="leftPanel" class="left-panel">
-      <div class="panel-head">Active on chart</div>
-      <div id="indChips" class="ind-chips"></div>
-    </aside>
-
     <!-- Floating indicator picker dropdown (shown by #indDropBtn) -->
     <div id="indDropdown" class="ind-dropdown" style="display:none">
       <input id="indFilter" class="ind-drop-search" placeholder="Search indicators…">
@@ -132,7 +129,7 @@
     <span class="footer-sep">·</span>
     <span>© 2026</span>
     <span class="footer-sep">·</span>
-    <span class="footer-version">v1.5.2</span>
+    <span class="footer-version">v1.5.3</span>
   </footer>
 
   <!-- Alerts slide-out -->

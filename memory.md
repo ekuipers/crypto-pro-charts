@@ -4,6 +4,20 @@
 
 ---
 
+## v1.5.3 — 2026-06-18 · Active indicators moved to top nav bar
+
+### Feature — Relocate active-indicator chips from left panel to top nav (Roadmap)
+**Problem:** The active-indicator chips lived in a dedicated 230px left sidebar (`#leftPanel`) that did nothing else, wasting horizontal chart space. Roadmap called for moving the selected indicators into the top navigation bar.
+
+**Fix:**
+- `public/index.html`: Removed the `#leftPanel` `<aside>` (and its "Active on chart" `.panel-head`). Moved `#indChips` into the top bar as a `.topbar-chips` flex item placed right after the Indicators button, so the chips sit beside the picker that creates them. Footer bumped to `v1.5.3`.
+- `public/css/style.css`: Replaced the vertical `.ind-chips` panel rule with a horizontal `.topbar-chips` rule — single row, `flex: 0 1 auto`, `max-width: 42vw`, horizontal scroll with a thin styled scrollbar. `.ind-chip` now `flex: none; white-space: nowrap` so chips keep their size and scroll instead of wrapping. Removed the now-dead `.left-panel`, `.left-panel.collapsed`, and `.panel-head` rules, plus the left-panel responsive override (replaced with a `.topbar-chips { max-width: 30vw }` rule under 900px).
+- No JS change needed — `renderIndChips()` still targets `#indChips`, which simply lives in a new parent.
+
+**Verification:** Confirmed no remaining references to `leftPanel`/`left-panel`/`panel-head`/`ind-chips` anywhere in the repo (grep). The chart area now reclaims the full former sidebar width.
+
+---
+
 ## v1.5.2 — 2026-06-15 · Drawing toolbar icon size +25%
 
 ### Feature — Larger drawing toolbar icons (Roadmap 1)

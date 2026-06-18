@@ -795,7 +795,6 @@ export function rebuildCrossMarkers(panel) {
           position: bull ? 'belowBar' : 'aboveBar',
           color: bull ? up : down,
           shape: bull ? 'arrowUp' : 'arrowDown',
-          text: `${bull ? '↑' : '↓'} ${fast.label}/${slow.label}`,
         });
       }
       if (diff !== 0) prevDiff = diff;

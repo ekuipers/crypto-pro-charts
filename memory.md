@@ -4,6 +4,18 @@
 
 ---
 
+## v1.5.4 — 2026-06-18 · Remove text labels from SMA crossing markers
+
+### Feature — Strip text from MA crossing markers (Roadmap)
+**Problem:** The golden/death cross markers drawn by `rebuildCrossMarkers()` carried a text label (e.g. `↑ SMA50/SMA200`) on every crossing arrow. On busy charts with multiple MA pairs the labels stacked up and cluttered the price axis, obscuring candles.
+
+**Fix:**
+- `src/js/charts.js`: Removed the `text` property from the marker object pushed in `rebuildCrossMarkers()`. Markers now render as bare up/down arrows (`arrowUp`/`arrowDown`) coloured with the up/down settings colours, positioned below/above the bar. Direction and bull/bear meaning are still conveyed by the arrow shape, position, and colour.
+
+**Verification:** `node --check src/js/charts.js` passed. Confirmed the only remaining `text:` usage for cross markers was the removed line; event/LuxAlgo markers are unaffected (separate code paths in `applyPanelMarkers`).
+
+---
+
 ## v1.5.3 — 2026-06-18 · Active indicators moved to top nav bar
 
 ### Feature — Relocate active-indicator chips from left panel to top nav (Roadmap)

@@ -34,6 +34,10 @@ export function initWatchlist() {
     });
   });
 
+  // Re-render so the row for the active chart's symbol stays highlighted when
+  // the selected panel changes or its symbol is swapped.
+  document.addEventListener('active-symbol-changed', () => renderSymbolList());
+
   fetchAllPairs();
 
   // Keep the header's right padding equal to the list's scrollbar gutter so
@@ -127,12 +131,13 @@ export function renderSymbolList() {
   const wl = state.watchlists[state.currentWatchlist] || [];
   const items = computeSorted(wl);
   const { col, dir } = state.wlSort;
+  const activeSym = state.activePanel?.symbol;
   list.innerHTML = '';
   items.forEach(s => {
     const p = state.prices[s.symbol] || {};
     const up = (p.change ?? 0) >= 0;
     const row = document.createElement('div');
-    row.className = 'sym-row';
+    row.className = 'sym-row' + (s.symbol === activeSym ? ' active' : '');
     row.draggable = true;
     row.dataset.sym = s.symbol;
     const dotColor = state.symColors[s.symbol] || 'transparent';

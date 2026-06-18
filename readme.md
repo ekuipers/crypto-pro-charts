@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.5.4  
+**Version:** v1.5.5  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -17,7 +17,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Oscillator panes** — RSI, MACD, Stochastic, ATR, ADX render in sub-panes below the main chart
 - **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
 - **Symbol overlay** — Compare multiple symbols on one chart with independent price scales
-- **Watchlist** — Multiple named watchlists, drag-to-reorder, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream
+- **Watchlist** — Multiple named watchlists, drag-to-reorder, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream; the symbol shown on the currently selected chart is highlighted in the list
 - **MA crossing markers** — Golden/death cross arrows drawn where adjacent SMA/EMA overlays cross (up arrow below bar for bullish, down arrow above bar for bearish), coloured with the up/down theme colours
 - **Event markers** — High-impact economic events overlaid on the chart; past events snapped to the correct candle period, future events projected up to 2 weeks ahead at their correct future date (rendered on a hidden series so LWC doesn't snap them to the last candle)
 - **Tech Info pane** — RSI speedometer, daily/monthly/yearly performance pills, day's/52-week range gauges, seasonals chart

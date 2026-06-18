@@ -232,6 +232,9 @@ input:focus, select:focus { border-color: var(--accent); }
 .sym-list-head { padding-right: calc(8px + var(--sb-w, 0px)); }
 .sym-row { font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
 .sym-row:hover { background: var(--hover); }
+/* Symbol shown on the currently selected chart */
+.sym-row.active { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 0 var(--accent); }
+.sym-row.active:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 .sym-drag { color: transparent; cursor: grab; font-size: 11px; line-height: 1; text-align: center; user-select: none; }
 .sym-row:hover .sym-drag { color: var(--muted); }
 .sym-row.dragging { opacity: 0.45; }

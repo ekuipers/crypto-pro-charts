@@ -4,6 +4,20 @@
 
 ---
 
+## v1.5.5 — 2026-06-18 · Highlight watchlist symbol for the selected chart
+
+### Feature — Highlight active chart's symbol in the watchlist (Roadmap)
+**Problem:** Nothing in the watchlist indicated which symbol was loaded on the currently selected chart panel. With multiple panels open it was hard to correlate the active chart with its entry in the symbol list.
+
+**Fix:**
+- `src/js/watchlist.js`: `renderSymbolList()` reads `state.activePanel?.symbol` and adds an `active` class to the matching `.sym-row`. Added a listener on the `active-symbol-changed` event that re-renders the list, so the highlight follows both panel-selection changes and symbol swaps on the active panel.
+- `public/css/style.css`: Added `.sym-row.active` styling — an accent-tinted background (`color-mix` with `--accent`) plus a 3px inset left bar in the accent colour, with a stronger tint on hover so the highlight reads in every theme.
+- The required event already existed: `setActivePanel()` dispatches `active-symbol-changed` on selection, and `changeSymbol()` dispatches it when the active panel's symbol changes (`src/js/charts.js:385,393`). No new wiring needed.
+
+**Verification:** `node --check` passed on `src/js/watchlist.js` and `src/js/charts.js`. Confirmed the highlight covers both trigger paths (panel select + symbol swap) by tracing the two dispatch sites. Footer and README bumped to `v1.5.5`.
+
+---
+
 ## v1.5.4 — 2026-06-18 · Remove text labels from SMA crossing markers
 
 ### Feature — Strip text from MA crossing markers (Roadmap)

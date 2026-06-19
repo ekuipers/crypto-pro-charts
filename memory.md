@@ -4,6 +4,19 @@
 
 ---
 
+## v1.7.0 — 2026-06-19 · Quote-currency filter in the symbol picker
+
+### Feature — Filter symbols by quote/stablecoin (Roadmap item #1)
+**Problem:** The symbol picker listed every tradeable pair regardless of quote currency. The roadmap asked for a way to narrow the list to a single quote stablecoin/currency — pick USDC and see only `*/USDC` pairs, pick USDT → only USDT pairs, USD → only USD pairs. (v1.6.0's "Hide stablecoins" toggle is unrelated: it drops stable/stable pairs by *base* asset; this is a *quote*-side filter.)
+
+**Fix:**
+- `src/js/watchlist.js`: Added a module-level `_quoteFilter` (defaults `'all'`, persists across dialog opens) and a `QUOTE_FILTER_ORDER = ['USDT','USDC','USD','EUR']` preference list. `showSymbolPicker()` now renders a row of quote pills (`#spQuoteFilter`) built from the quotes that actually appear in the active exchange's pair list (`availableQuotes`), so exchanges with different quote sets only show valid options. A stale `_quoteFilter` not available on the current exchange falls back to `'all'`. The render filters exchange pairs by `pairQuote(p)` (prefers exchange-supplied `p.quote`, falls back to `quoteAsset(p.symbol)`), and suppresses the CoinGecko discovery rows (always `*/USDT`) when a non-USDT quote is selected. Clicking a pill resets paging, re-highlights, and re-renders. Works alongside the existing "Hide stablecoins" toggle.
+- `public/css/style.css`: Added `.sp-quote-filter` / `.sp-quote-pill` styling — rounded pill buttons with an accent-filled active state, matching the picker's visual language across all themes.
+
+**Verification:** `node --check src/js/watchlist.js` passed. Traced the render path: with `_quoteFilter='USDC'` the exchange list keeps only pairs whose `quote==='USDC'`, the CoinGecko section is hidden, and the count line reflects the filtered total. Confirmed the available-quotes guard prevents an empty list when switching exchanges. Footer and README bumped to `v1.7.0`.
+
+---
+
 ## v1.6.0 — 2026-06-19 · Stablecoin filter + focus existing chart on symbol select
 
 ### Feature 1 — "Hide stablecoins" filter in the symbol picker (Roadmap)

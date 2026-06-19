@@ -20,7 +20,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Completed items are recorded in `memory.md`._
+_No open roadmap items. Completed items live in `memory.md`._
 
 ## Bugs
 

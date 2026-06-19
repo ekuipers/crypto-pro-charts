@@ -13,6 +13,14 @@ import { STABLECOINS } from './constants.js';
 // rarely charted and just clutter the list.
 let _hideStables = true;
 
+// Symbol-picker quote-currency filter. 'all' lists every quote; otherwise only
+// pairs quoted in the selected stablecoin/currency are shown (e.g. 'USDC' lists
+// only */USDC pairs). Module-level so the choice persists across dialog opens.
+let _quoteFilter = 'all';
+// Preferred display order for the quote pills; intersected with the quotes that
+// actually appear in the active exchange's pair list.
+const QUOTE_FILTER_ORDER = ['USDT', 'USDC', 'USD', 'EUR'];
+
 export function initWatchlist() {
   renderTabs();
   renderSymbolList();
@@ -229,12 +237,14 @@ export async function showSymbolPicker(title, onPick) {
   showModal(`
     <h3>${esc(title)}</h3>
     <input id="spSearch" class="panel-search" placeholder="Search symbols or coin name…" autocomplete="off" style="width:100%;margin:0 0 8px">
+    <div id="spQuoteFilter" class="sp-quote-filter" role="group" aria-label="Filter by quote currency"></div>
     <label class="sp-stable-toggle"><input type="checkbox" id="spHideStable"${_hideStables ? ' checked' : ''}> Hide stablecoins</label>
     <div id="spList" class="sym-picker-list"><div class="muted">Loading symbols…</div></div>
     <div class="modal-actions"><button id="spCancel">Cancel</button></div>`, async m => {
     m.querySelector('#spCancel').addEventListener('click', closeModal);
     const search = m.querySelector('#spSearch');
     const hideStableCb = m.querySelector('#spHideStable');
+    const quoteFilterEl = m.querySelector('#spQuoteFilter');
     const listEl = m.querySelector('#spList');
     const pairs = await fetchAllPairs();
     const PAGE = 100;
@@ -243,11 +253,16 @@ export async function showSymbolPicker(title, onPick) {
 
     const pickItem = (sym, name) => { onPick(sym, name); closeModal(); };
 
+    // Quote currency of a pair, preferring the exchange-supplied value and
+    // falling back to deriving it from the symbol suffix.
+    const pairQuote = p => p.quote || quoteAsset(p.symbol);
+
     let _lastCg = [];
     const render = (cgCoins = _lastCg) => {
       _lastCg = cgCoins;
       const q = (search.value || '').toUpperCase().trim();
       let matches = q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs;
+      if (_quoteFilter !== 'all') matches = matches.filter(p => pairQuote(p) === _quoteFilter);
       if (_hideStables) matches = matches.filter(p => !STABLECOINS.has(baseAsset(p.symbol)));
       const slice = matches.slice(0, shown);
       const hidden = matches.length - slice.length;
@@ -256,7 +271,10 @@ export async function showSymbolPicker(title, onPick) {
       ).join('');
       const moreBtn = hidden > 0 ? `<button class="sym-picker-more" id="spMore">Load ${Math.min(PAGE, hidden)} more</button>` : '';
       const countDiv = `<div class="sym-picker-count">Showing ${slice.length} of ${matches.length}</div>`;
-      const cgList = _hideStables ? cgCoins.filter(c => !STABLECOINS.has(String(c.symbol).toUpperCase())) : cgCoins;
+      // CoinGecko discovery rows are always */USDT, so suppress them when the
+      // user is filtering to a different quote currency.
+      let cgList = _hideStables ? cgCoins.filter(c => !STABLECOINS.has(String(c.symbol).toUpperCase())) : cgCoins;
+      if (_quoteFilter !== 'all' && _quoteFilter !== 'USDT') cgList = [];
       const cgHtml = cgList.length
         ? `<div class="search-sep">From CoinGecko</div>` + cgList.map(c => {
             const sym = `${c.symbol}USDT`;
@@ -291,6 +309,27 @@ export async function showSymbolPicker(title, onPick) {
       shown = PAGE;
       render();
     });
+
+    // Build the quote-currency pills from the quotes that actually appear on the
+    // active exchange. If a previously chosen quote isn't available here, fall
+    // back to "All" so the list is never silently empty.
+    const availableQuotes = QUOTE_FILTER_ORDER.filter(qc => pairs.some(p => pairQuote(p) === qc));
+    if (_quoteFilter !== 'all' && !availableQuotes.includes(_quoteFilter)) _quoteFilter = 'all';
+    const buildQuoteFilter = () => {
+      quoteFilterEl.innerHTML = ['all', ...availableQuotes].map(qc =>
+        `<button type="button" class="sp-quote-pill${_quoteFilter === qc ? ' active' : ''}" data-quote="${qc}">${qc === 'all' ? 'All' : esc(qc)}</button>`
+      ).join('');
+      quoteFilterEl.querySelectorAll('.sp-quote-pill').forEach(b =>
+        b.addEventListener('click', () => {
+          _quoteFilter = b.dataset.quote;
+          shown = PAGE;
+          buildQuoteFilter();
+          render();
+        })
+      );
+    };
+    buildQuoteFilter();
+
     render([]);
     search.focus();
   });

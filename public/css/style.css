@@ -433,6 +433,10 @@ body.resizing * { pointer-events: none; }
 /* ---------- Symbol picker (add / overlay) ---------- */
 .sp-stable-toggle { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
 .sp-stable-toggle input { accent-color: var(--accent); cursor: pointer; }
+.sp-quote-filter { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+.sp-quote-pill { padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; cursor: pointer; transition: background 120ms, color 120ms, border-color 120ms; }
+.sp-quote-pill:hover { background: var(--hover); color: var(--text); }
+.sp-quote-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .sym-picker-list { max-height: 320px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; }
 .sym-picker-item { display: flex; align-items: baseline; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-align: left; }
 .sym-picker-item:hover { background: var(--hover); border-color: var(--accent); }

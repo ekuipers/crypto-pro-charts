@@ -393,6 +393,18 @@ export function setActivePanel(panel) {
   document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));
 }
 
+// Pick a symbol from the watchlist. If another (non-active) chart is already
+// showing this symbol, focus that chart instead of loading a duplicate onto the
+// active chart — this prevents two panes charting the same symbol. Otherwise the
+// symbol loads into the active chart as usual.
+export function selectWatchlistSymbol(symbol, name) {
+  const active = state.activePanel;
+  if (active && active.symbol === symbol) return; // already on the active chart
+  const existing = state.panels.find(p => p !== active && p.symbol === symbol);
+  if (existing) { setActivePanel(existing); return; }
+  if (active) changeSymbol(active, symbol, name);
+}
+
 export function destroyPanel(panel) {
   stopAlignMonitor(panel);
   try { panel._ro?.disconnect(); } catch {}

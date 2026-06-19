@@ -4,8 +4,14 @@
 import { state } from './state.js';
 import { baseAsset, quoteAsset, fmtPrice, fmtPct, esc, toast } from './utils.js';
 import { fetchAllPairs, validateSymbol, searchCoinGecko } from './data.js';
-import { changeSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
+import { selectWatchlistSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
+import { STABLECOINS } from './constants.js';
+
+// Symbol-picker "Hide stablecoins" toggle. Module-level so the choice sticks
+// across dialog opens within a session. Defaults on — stable/stable pairs are
+// rarely charted and just clutter the list.
+let _hideStables = true;
 
 export function initWatchlist() {
   renderTabs();
@@ -151,7 +157,7 @@ export function renderSymbolList() {
       <button class="sym-del" title="Remove">×</button>`;
     row.addEventListener('click', e => {
       if (e.target.classList.contains('sym-del')) { removeSymbol(s.symbol); return; }
-      if (state.activePanel) changeSymbol(state.activePanel, s.symbol, s.name);
+      selectWatchlistSymbol(s.symbol, s.name);
     });
 
     // ---- drag to reorder ----
@@ -222,11 +228,13 @@ function addSymbolPrompt() {
 export async function showSymbolPicker(title, onPick) {
   showModal(`
     <h3>${esc(title)}</h3>
-    <input id="spSearch" class="panel-search" placeholder="Search symbols or coin name…" autocomplete="off" style="width:100%;margin:0 0 10px">
+    <input id="spSearch" class="panel-search" placeholder="Search symbols or coin name…" autocomplete="off" style="width:100%;margin:0 0 8px">
+    <label class="sp-stable-toggle"><input type="checkbox" id="spHideStable"${_hideStables ? ' checked' : ''}> Hide stablecoins</label>
     <div id="spList" class="sym-picker-list"><div class="muted">Loading symbols…</div></div>
     <div class="modal-actions"><button id="spCancel">Cancel</button></div>`, async m => {
     m.querySelector('#spCancel').addEventListener('click', closeModal);
     const search = m.querySelector('#spSearch');
+    const hideStableCb = m.querySelector('#spHideStable');
     const listEl = m.querySelector('#spList');
     const pairs = await fetchAllPairs();
     const PAGE = 100;
@@ -235,9 +243,12 @@ export async function showSymbolPicker(title, onPick) {
 
     const pickItem = (sym, name) => { onPick(sym, name); closeModal(); };
 
-    const render = (cgCoins = []) => {
+    let _lastCg = [];
+    const render = (cgCoins = _lastCg) => {
+      _lastCg = cgCoins;
       const q = (search.value || '').toUpperCase().trim();
-      const matches = q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs;
+      let matches = q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs;
+      if (_hideStables) matches = matches.filter(p => !STABLECOINS.has(baseAsset(p.symbol)));
       const slice = matches.slice(0, shown);
       const hidden = matches.length - slice.length;
       const exHtml = slice.map(r =>
@@ -245,13 +256,14 @@ export async function showSymbolPicker(title, onPick) {
       ).join('');
       const moreBtn = hidden > 0 ? `<button class="sym-picker-more" id="spMore">Load ${Math.min(PAGE, hidden)} more</button>` : '';
       const countDiv = `<div class="sym-picker-count">Showing ${slice.length} of ${matches.length}</div>`;
-      const cgHtml = cgCoins.length
-        ? `<div class="search-sep">From CoinGecko</div>` + cgCoins.map(c => {
+      const cgList = _hideStables ? cgCoins.filter(c => !STABLECOINS.has(String(c.symbol).toUpperCase())) : cgCoins;
+      const cgHtml = cgList.length
+        ? `<div class="search-sep">From CoinGecko</div>` + cgList.map(c => {
             const sym = `${c.symbol}USDT`;
             return `<button class="sym-picker-item sym-picker-cg" data-sym="${sym}" data-name="${esc(c.name)}"><b>${esc(c.name)}</b><span class="cg-badge">CG</span><span>${c.symbol}/USDT</span></button>`;
           }).join('')
         : '';
-      if (!matches.length && !cgCoins.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
+      if (!matches.length && !cgList.length) { listEl.innerHTML = '<div class="muted">No matches</div>'; return; }
       listEl.innerHTML = exHtml + moreBtn + countDiv + cgHtml;
       listEl.querySelectorAll('.sym-picker-item').forEach(b =>
         b.addEventListener('click', () => pickItem(b.dataset.sym, b.dataset.name))
@@ -273,6 +285,11 @@ export async function showSymbolPicker(title, onPick) {
           render(fresh);
         }, 400);
       }
+    });
+    hideStableCb.addEventListener('change', () => {
+      _hideStables = hideStableCb.checked;
+      shown = PAGE;
+      render();
     });
     render([]);
     search.focus();
@@ -310,7 +327,7 @@ async function handleSearch(query) {
     dd.style.display = exHtml || cgHtml ? 'block' : 'none';
     dd.querySelectorAll('.search-res').forEach(el => el.addEventListener('click', () => {
       const sym = el.dataset.sym, name = el.dataset.name;
-      if (state.activePanel) changeSymbol(state.activePanel, sym, name);
+      selectWatchlistSymbol(sym, name);
       const wl = state.watchlists[state.currentWatchlist];
       if (!wl.some(s => s.symbol === sym)) { wl.push({ symbol: sym, name }); }
       document.getElementById('symSearch').value = '';

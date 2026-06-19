@@ -431,6 +431,8 @@ body.resizing * { pointer-events: none; }
 .theme-mode { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 
 /* ---------- Symbol picker (add / overlay) ---------- */
+.sp-stable-toggle { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
+.sp-stable-toggle input { accent-color: var(--accent); cursor: pointer; }
 .sym-picker-list { max-height: 320px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; }
 .sym-picker-item { display: flex; align-items: baseline; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-align: left; }
 .sym-picker-item:hover { background: var(--hover); border-color: var(--accent); }

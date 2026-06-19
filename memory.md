@@ -4,6 +4,27 @@
 
 ---
 
+## v1.6.0 — 2026-06-19 · Stablecoin filter + focus existing chart on symbol select
+
+### Feature 1 — "Hide stablecoins" filter in the symbol picker (Roadmap)
+**Problem:** The Add-symbol dialog (and overlay picker) listed every tradeable pair, including stable/stable pairs (USDCUSDT, DAIUSDT, FDUSDUSDT, …) that are rarely charted and just clutter the list.
+
+**Fix:**
+- `src/js/constants.js`: Added a `STABLECOINS` `Set` of stablecoin base-asset tickers (USDT, USDC, BUSD, DAI, TUSD, USDP, FDUSD, USDD, FRAX, LUSD, PYUSD, …) and exported it.
+- `src/js/watchlist.js`: `showSymbolPicker()` now renders a "Hide stablecoins" checkbox above the list, defaulting on via a module-level `_hideStables` flag that persists across dialog opens in a session. The render filters out exchange pairs whose `baseAsset()` is in `STABLECOINS` and also drops matching CoinGecko discovery rows. Toggling the checkbox re-renders immediately and the empty-state check uses the filtered CG list.
+- `public/css/style.css`: Added `.sp-stable-toggle` styling for the checkbox row (accent-colored control, muted label).
+
+### Feature 2 — Focus existing chart instead of duplicating a symbol (Roadmap)
+**Problem:** Selecting a watchlist symbol always loaded it onto the active chart, even when another open panel was already charting that exact symbol — producing two panes on the same symbol.
+
+**Fix:**
+- `src/js/charts.js`: Added `selectWatchlistSymbol(symbol, name)`. If the active chart already shows the symbol it no-ops; if a *different* open panel shows it, that panel is focused via `setActivePanel()`; otherwise the symbol loads into the active chart via `changeSymbol()`.
+- `src/js/watchlist.js`: Both selection paths — the watchlist row click and the top search-result click — now call `selectWatchlistSymbol()` instead of `changeSymbol()` directly. Removed the now-unused `changeSymbol` import.
+
+**Verification:** `node --check` passed on `src/js/watchlist.js`, `src/js/charts.js`, and `src/js/constants.js`. Traced both selection paths and confirmed the existing `active-symbol-changed` highlight (v1.5.5) still updates when an existing chart is focused, since `setActivePanel()` dispatches that event. Footer and README bumped to `v1.6.0`.
+
+---
+
 ## v1.5.5 — 2026-06-18 · Highlight watchlist symbol for the selected chart
 
 ### Feature — Highlight active chart's symbol in the watchlist (Roadmap)

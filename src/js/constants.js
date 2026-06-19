@@ -194,6 +194,14 @@ const INDICATOR_DESC = {
 
 const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4 };
 
+// Stablecoin base-asset tickers. Used by the symbol picker's "Hide stablecoins"
+// filter to drop stable/stable pairs (e.g. USDCUSDT, DAIUSDT) that clutter the
+// list and are rarely charted.
+const STABLECOINS = new Set([
+  'USDT','USDC','BUSD','DAI','TUSD','USDP','FDUSD','USDD','GUSD','FRAX','LUSD',
+  'PYUSD','USDE','EURT','EURS','SUSD','USDJ','CUSD','OUSD','MUSD','HUSD','USTC','USDS',
+]);
+
 // ---- Themes (2 light + 4 dark). `chart` holds Lightweight-Charts colors;
 //      the matching CSS variables live in style.css keyed by [data-theme]. ----
 const THEMES = {
@@ -214,4 +222,4 @@ const DEFAULT_THEME = 'dark-classic';
 // Map legacy persisted values to new theme keys
 const LEGACY_THEME = { dark: 'dark-classic', light: 'light-classic' };
 
-export { BINANCE, COLORS, WATCHLISTS_INIT, INDICATORS_DEF, INDICATOR_DESC, EXCHANGES, LAYOUT_COUNTS, THEMES, DEFAULT_THEME, LEGACY_THEME };
+export { BINANCE, COLORS, WATCHLISTS_INIT, INDICATORS_DEF, INDICATOR_DESC, EXCHANGES, LAYOUT_COUNTS, STABLECOINS, THEMES, DEFAULT_THEME, LEGACY_THEME };

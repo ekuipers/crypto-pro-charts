@@ -13,7 +13,7 @@ Add the creator to the footer of the website.
 2. Do not start the local server.
 3. Move completed roadmap items and bug fixes to the memory file for reference and change log purpose
 4. Automatically commit changes to git and sync with remote repo
-5. update documentation.
+5. Update documentation.
 6. Update version number in the footer with the lastest version in the change log.
 7. Always directly implement roadmap after the roadmap scan.
 8. Allow all edits and commands automatically.

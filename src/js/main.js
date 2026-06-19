@@ -14,9 +14,18 @@ import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
 import { autosave, loadAutosave } from './persistence.js';
 import { debounce, log, toast } from './utils.js';
 
+// When a non-Binance exchange is active, any symbol shown on a chart has its
+// price owned by that chart (see charts.js startKlineStream), so the Binance
+// mini-ticker must not clobber it — otherwise the charted symbol's watchlist row
+// would disagree with the chart's own price axis.
+function isChartPinned(symbol) {
+  return state.settings.exchange !== 'binance' && state.panels.some(p => p.symbol === symbol);
+}
+
 function startPriceStream() {
   updateWSStatus('');
   const ws = openPriceStream(batch => {
+    if (isChartPinned(batch.symbol)) return;
     state.prices[batch.symbol] = { price: batch.price, open: batch.open, change: batch.change, chgVal: batch.chgVal };
   });
   if (ws) {

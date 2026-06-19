@@ -348,7 +348,9 @@ export async function loadPanelData(panel) {
 
 function startKlineStream(panel) {
   if (panel.klineWS) { try { panel.klineWS.close(); } catch {} panel.klineWS = null; }
-  panel.klineWS = openKlineStream(panel.symbol, panel.tf, candle => {
+  if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
+
+  const onCandle = candle => {
     const d = panel.data;
     if (!d.length) return;
     const last = d[d.length - 1];
@@ -364,10 +366,42 @@ function startKlineStream(panel) {
     panel.candleSeries.update(candle);
     panel.volumeSeries.update({ time: candle.time, value: candle.volume,
       color: candle.close >= candle.open ? state.settings.upColor + '80' : state.settings.downColor + '80' });
+    // Keep the charted symbol's watchlist price on the SAME exchange as the chart.
+    // The Binance mini-ticker stream (main.js) feeds every other watchlist row, but
+    // for a non-Binance exchange its price would diverge from this chart — so the
+    // chart owns its symbol's price here (main.js skips pinned symbols).
+    if (state.settings.exchange !== 'binance') {
+      state.prices[panel.symbol] = { ...(state.prices[panel.symbol] || {}), price: candle.close };
+    }
     // A closed bar can finalise a fresh MA crossing — refresh the markers.
     if (candle.closed) rebuildCrossMarkers(panel);
     document.dispatchEvent(new CustomEvent('panel-live', { detail: { panel, price: candle.close } }));
-  });
+  };
+
+  panel.klineWS = openKlineStream(panel.symbol, panel.tf, onCandle);
+  // Exchanges without a live kline WebSocket (OKX, Gate, KuCoin, Bitstamp,
+  // CryptoCompare, Alpaca, Hyperliquid) would otherwise freeze the chart at the
+  // last REST candle, leaving the vertical price axis showing stale values. Poll
+  // the latest bar so the chart keeps tracking the current price.
+  if (!panel.klineWS) startKlinePoll(panel, onCandle);
+}
+
+// REST polling fallback for exchanges without a kline WebSocket. Refreshes the
+// latest bar (the server-side cache coalesces these into real upstream hits at
+// the per-timeframe TTL, so this stays cheap).
+function startKlinePoll(panel, onCandle) {
+  const sec = TF_SECONDS[panel.tf] || 3600;
+  // ~4 refreshes per candle, clamped to 5–60 s to keep REST traffic light.
+  const periodMs = Math.min(Math.max(Math.round(sec / 4), 5), 60) * 1000;
+  const tick = async () => {
+    if (document.hidden) return;
+    try {
+      const bars = await fetchKlines(panel.symbol, panel.tf, 2);
+      if (bars.length) onCandle({ ...bars[bars.length - 1], closed: false });
+    } catch { /* transient upstream error — keep the last bars on screen */ }
+  };
+  tick();                                   // align immediately, don't wait a full period
+  panel._klinePoll = setInterval(tick, periodMs);
 }
 
 export function changeTimeframe(panel, tf) {
@@ -408,6 +442,7 @@ export function selectWatchlistSymbol(symbol, name) {
 export function destroyPanel(panel) {
   stopAlignMonitor(panel);
   try { panel._ro?.disconnect(); } catch {}
+  if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
   try { panel.klineWS?.close(); } catch {}
   panel.overlays?.forEach(o => { try { o.ws?.close(); } catch {} });
   panel.indicators.forEach(ind => { try { ind.subChart?.remove(); } catch {} });

@@ -4,6 +4,22 @@
 
 ---
 
+## v1.8.1 — 2026-06-19 · Fix stale price axis & watchlist mismatch on no-WebSocket exchanges
+
+### Bug — Price axis frozen and chart price ≠ watchlist price (Bugs #1)
+**Problem:** After adding Alpaca (v1.8.0), the vertical price axis showed stale values and the chart's price didn't match the watchlist. Two root causes, both exposed (not caused) by Alpaca:
+1. **Frozen chart.** `openKlineStream()` only wires a live WebSocket for Binance and Bybit; for every other exchange (OKX, Gate, KuCoin, Bitstamp, CryptoCompare, Alpaca, Hyperliquid) it returns `null`, so the chart never updated after the initial REST load — the last candle (and the price axis) sat frozen until a manual reload. Alpaca made this obvious because its USD feed visibly diverges from the still-live (Binance-sourced) watchlist.
+2. **Watchlist always Binance.** The watchlist/live-price stream (`openPriceStream`) is hardwired to Binance's `!miniTicker` feed for *all* symbols, so a chart on any other exchange could never agree with the watchlist row for the same symbol.
+
+**Fix:**
+- `src/js/charts.js`: Extracted the kline `onCandle` handler in `startKlineStream()` and added `startKlinePoll()` — a REST polling fallback that runs only when no WebSocket is available. It refreshes the latest bar (`fetchKlines(symbol, tf, 2)`) at ~4×/candle, clamped to 5–60 s, skips polling while the tab is hidden, and fires once immediately so the chart aligns without waiting a full period. The server-side cache coalesces these polls into real upstream hits at the per-timeframe TTL, so traffic stays light. The handler now also writes the charted symbol's price into `state.prices` when the active exchange isn't Binance, so its watchlist row tracks the chart. `destroyPanel()` clears `_klinePoll`.
+- `src/js/main.js`: Added `isChartPinned()` — when a non-Binance exchange is active, the Binance mini-ticker callback skips any symbol currently shown on a chart, so it can't clobber the chart-owned price. Other watchlist rows still use the Binance overview.
+- `src/js/data.js`: `fetchPrice()` for Alpaca now returns `high`/`low` from the daily bar (previously omitted), fixing the Tech Info panel's Day's-Range gauge.
+
+**Verification:** `node --check` passed on `charts.js`, `main.js`, `data.js`. Confirmed via live Node tests that Alpaca `snapshots` parses to a full `{price,open,high,low,change,volume}` and `fetchKlines(...,2)` returns the latest bar for the poll. Traced the flow: no-WS exchange → `startKlinePoll` ticks immediately + on interval → `onCandle` updates the candle/volume series and (non-Binance) `state.prices[symbol]`, while `isChartPinned` stops the Binance stream from overwriting it. Benefits all REST-only exchanges, not just Alpaca. Footer and README bumped to `v1.8.1`.
+
+---
+
 ## v1.8.0 — 2026-06-19 · Add Alpaca as an exchange
 
 ### Feature — Alpaca US crypto data source (Roadmap item #1)

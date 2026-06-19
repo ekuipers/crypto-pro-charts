@@ -202,9 +202,10 @@ export async function fetchPrice(symbol) {
       const j = await fetchJSON(`${e.rest}/snapshots?symbols=${encodeURIComponent(inst)}`);
       const snap = j.snapshots?.[inst];
       if (!snap) throw new Error('no alpaca snapshot');
-      const price = +snap.latestTrade?.p || +snap.dailyBar?.c;
-      const open = +snap.dailyBar?.o || price;
-      return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +snap.dailyBar?.v || 0 };
+      const db = snap.dailyBar || {};
+      const price = +snap.latestTrade?.p || +db.c;
+      const open = +db.o || price;
+      return { price, open, high: +db.h || price, low: +db.l || price, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +db.v || 0 };
     }
   } catch (e2) { warn('fetchPrice fallback', e2.message); }
   // Final fallback: Binance

@@ -24,3 +24,5 @@ _No open roadmap items. Completed items live in `memory.md`._
 
 ## Bugs
 
+_No open bugs. Fixed bugs are logged in `memory.md`._
+

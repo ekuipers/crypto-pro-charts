@@ -1,7 +1,7 @@
 // ============================================================
 // DATA — exchange REST + WebSocket access (Binance primary)
 // ============================================================
-import { EXCHANGES } from './constants.js';
+import { EXCHANGES, TF_SECONDS } from './constants.js';
 import { state } from './state.js';
 import { fetchJSON, baseAsset, quoteAsset, log, warn } from './utils.js';
 
@@ -20,6 +20,8 @@ export function toExchangeSymbol(sym, exId = state.settings.exchange) {
     case 'kucoin':       return `${base}-${quote}`;
     case 'bitstamp':     return `${base.toLowerCase()}${quote.toLowerCase()}`;
     case 'cryptocompare': return `${base}_${quote}`;
+    // Alpaca US crypto is USD-quoted; map stable quotes to USD.
+    case 'alpaca':       return `${base}/${(quote === 'USDT' || quote === 'USDC') ? 'USD' : quote}`;
     default:             return sym; // binance, bybit
   }
 }
@@ -99,6 +101,16 @@ export async function fetchKlines(symbol, tf, limit = 500) {
       return (j.Data?.Data || [])
         .map(k => ({ time: Math.floor(+k.time), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volumefrom }))
         .filter(k => k.close > 0);
+    }
+    if (e.id === 'alpaca') {
+      // Alpaca needs an explicit `start`, else it returns only the latest window.
+      const inst = toExchangeSymbol(symbol, 'alpaca');
+      const secs = TF_SECONDS[tf] || 3600;
+      const start = new Date(Date.now() - (limit + 5) * secs * 1000).toISOString();
+      const url = `${e.rest}/bars?symbols=${encodeURIComponent(inst)}&timeframe=${interval}&limit=${Math.min(limit, 10000)}&start=${start}`;
+      const j = await fetchJSON(url);
+      const list = Object.values(j.bars || {})[0] || [];
+      return list.map(k => ({ time: Math.floor(new Date(k.t).getTime() / 1000), open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v }));
     }
   } catch (e2) {
     warn('fetchKlines failed, trying fallback chain', e2.message);
@@ -185,6 +197,15 @@ export async function fetchPrice(symbol) {
       const price = +t.PRICE, open = +t.OPEN24HOUR;
       return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +t.TOTALVOLUME24HTO || 0 };
     }
+    if (e.id === 'alpaca') {
+      const inst = toExchangeSymbol(symbol, 'alpaca');
+      const j = await fetchJSON(`${e.rest}/snapshots?symbols=${encodeURIComponent(inst)}`);
+      const snap = j.snapshots?.[inst];
+      if (!snap) throw new Error('no alpaca snapshot');
+      const price = +snap.latestTrade?.p || +snap.dailyBar?.c;
+      const open = +snap.dailyBar?.o || price;
+      return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +snap.dailyBar?.v || 0 };
+    }
   } catch (e2) { warn('fetchPrice fallback', e2.message); }
   // Final fallback: Binance
   const j = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbol=${symbol}`);
@@ -262,7 +283,11 @@ async function fetchExchangePairs(exId) {
         .filter(s => s && SUPPORTED_QUOTES.includes(s.quote));
     }
     case 'cryptocompare':
-      return fetchBinancePairs(); // CryptoCompare covers all major assets; use Binance pairs as the symbol list
+    case 'alpaca':
+      // CryptoCompare and Alpaca have no free unauthenticated pair-list endpoint;
+      // reuse Binance's symbol list. Alpaca maps stable quotes to its USD feed,
+      // and symbols it doesn't list fall back through the kline fallback chain.
+      return fetchBinancePairs();
     default: // binance + hyperliquid (which falls back to Binance data)
       return fetchBinancePairs();
   }

@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.7.0  
+**Version:** v1.8.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -10,7 +10,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 ## Features
 
 - **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
-- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare
+- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca
 - **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
 - **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)
 - **Top-bar indicator chips** — Active indicators on the selected chart show as removable/editable chips in the top navigation bar, right beside the Indicators picker (frees the full chart width)
@@ -41,6 +41,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 | Hyperliquid | Perps | Binance fallback | — |
 | Bitstamp | USDT, USDC, EUR, USD | REST + server cache | REST polling fallback |
 | CryptoCompare | All major pairs (aggregated) | REST + server cache | REST polling fallback |
+| Alpaca | USD (USDT/USDC mapped to USD) | REST + server cache | REST polling fallback |
 
 Kline fetching uses an ordered fallback chain: **active exchange → Gate.io → Binance**.  
 Missing watchlist prices are refreshed via Binance batch ticker every 30 s, with per-exchange REST fallback for symbols not on Binance.  

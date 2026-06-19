@@ -7,7 +7,7 @@ Creator: Erik Kuipers
 
 Add the creator to the footer of the website.
 
-## Workflow rule
+# Workflow rule
 
 1. After every change to a code file, append a dated entry to `memory.md` describing what changed and why (problem, fix, and how it was verified). Treat `memory.md` as the running changelog — no code edit is complete until `memory.md` is updated. 
 2. Do not start the local server.

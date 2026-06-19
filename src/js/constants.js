@@ -151,6 +151,8 @@ const EXCHANGES = {
     intervals:{ '1m':'60','5m':'300','15m':'900','30m':'1800','1h':'3600','4h':'14400','1d':'86400','1w':'604800' } },
   cryptocompare: { id:'cryptocompare', name:'CryptoCompare', rest:'https://min-api.cryptocompare.com/data/v2', status:'REST only (aggregated)',
     intervals:{ '1m':'histominute','5m':'histominute|5','15m':'histominute|15','30m':'histominute|30','1h':'histohour','4h':'histohour|4','1d':'histoday','1w':'histoday|7' } },
+  alpaca: { id:'alpaca', name:'Alpaca', rest:'https://data.alpaca.markets/v1beta3/crypto/us', status:'REST only (US crypto, USD-quoted)',
+    intervals:{ '1m':'1Min','5m':'5Min','15m':'15Min','30m':'30Min','1h':'1Hour','4h':'4Hour','1d':'1Day','1w':'1Week' } },
 };
 
 // Short, plain-language descriptions shown as a hover tooltip in the indicator

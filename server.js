@@ -2,7 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
-import { EXCHANGES } from './src/js/constants.js';
+import { EXCHANGES, TF_SECONDS } from './src/js/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -29,6 +29,9 @@ function toExSymbol(sym, exId) {
   if (exId === 'kucoin')        return `${base}-${quote}`;
   if (exId === 'bitstamp')      return `${base.toLowerCase()}${quote.toLowerCase()}`;
   if (exId === 'cryptocompare') return `${base}_${quote}`;
+  // Alpaca's US crypto feed is USD-quoted; map stable quotes to USD so the
+  // real-volume pair is used instead of a thin derived USDT/USDC book.
+  if (exId === 'alpaca')        return `${base}/${(quote === 'USDT' || quote === 'USDC') ? 'USD' : quote}`;
   return sym;
 }
 
@@ -52,6 +55,14 @@ function klineUrl(exId, symbol, tf, limit) {
       const [endpoint, agg] = (interval || 'histohour').split('|');
       const aggParam = agg ? `&aggregate=${agg}` : '';
       return `${e.rest}/${endpoint}?fsym=${base}&tsym=${quote}&limit=${Math.min(limit, 2000)}${aggParam}`;
+    }
+    case 'alpaca': {
+      // Alpaca defaults to a narrow recent window, so anchor `start` far enough
+      // back to satisfy the requested bar count for the chosen timeframe.
+      const inst = toExSymbol(symbol, 'alpaca');
+      const secs = TF_SECONDS[tf] || 3600;
+      const start = new Date(Date.now() - (limit + 5) * secs * 1000).toISOString();
+      return `${e.rest}/bars?symbols=${encodeURIComponent(inst)}&timeframe=${interval}&limit=${Math.min(limit, 10000)}&start=${start}`;
     }
     default:
       return `${EXCHANGES.binance.rest}/klines?symbol=${symbol}&interval=${EXCHANGES.binance.intervals[tf] || tf}&limit=${limit}`;
@@ -86,6 +97,11 @@ function normalize(exId, raw) {
     return (raw?.Data?.Data || [])
       .map(k => ({ time: Math.floor(+k.time), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volumefrom }))
       .filter(k => k.close > 0);
+  }
+  if (exId === 'alpaca') {
+    // { bars: { "BTC/USD": [{ t,o,h,l,c,v }, ...] } } — single requested symbol.
+    const list = Object.values(raw?.bars || {})[0] || [];
+    return list.map(k => ({ time: Math.floor(new Date(k.t).getTime() / 1000), open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v }));
   }
   // binance
   return (raw || []).map(k => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));

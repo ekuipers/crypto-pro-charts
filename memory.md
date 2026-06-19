@@ -4,6 +4,22 @@
 
 ---
 
+## v1.8.0 — 2026-06-19 · Add Alpaca as an exchange
+
+### Feature — Alpaca US crypto data source (Roadmap item #1)
+**Problem:** The roadmap asked to add Alpaca as a selectable exchange. Alpaca's `v1beta3/crypto/us` market-data endpoints serve OHLCV bars and snapshots for US crypto pairs and — verified by testing — require **no API key** and return `Access-Control-Allow-Origin: *`, so they work both through the server proxy and via direct browser fetch.
+
+**Fix:**
+- `src/js/constants.js`: Added an `alpaca` entry to `EXCHANGES` (`rest: https://data.alpaca.markets/v1beta3/crypto/us`, status "REST only (US crypto, USD-quoted)") with the Alpaca timeframe map (`1Min/5Min/15Min/30Min/1Hour/4Hour/1Day/1Week`). The settings dropdown is built from `EXCHANGES`, so Alpaca now appears automatically.
+- `server.js`: Imported `TF_SECONDS`; added Alpaca cases to `toExSymbol` (`BASE/QUOTE`, mapping `USDT`/`USDC` → `USD` to hit the real-volume USD feed instead of a thin derived book), `klineUrl` (the `bars` endpoint with an explicit `start` anchored `(limit+5)*tfSeconds` back — without `start` Alpaca only returns the latest narrow window), and `normalize` (unwraps `{ bars: { "BTC/USD": [{t,o,h,l,c,v}] } }`).
+- `src/js/data.js`: Imported `TF_SECONDS`; added Alpaca to `toExchangeSymbol`, a direct-fetch branch in `fetchKlines` (same `start` logic, for the `file://`/no-proxy path), an Alpaca branch in `fetchPrice` using the `snapshots` endpoint (`latestTrade.p`, `dailyBar.o/v`), and routed `fetchExchangePairs` to reuse Binance's pair list (Alpaca has no free unauthenticated symbol-list endpoint — same approach as CryptoCompare). Symbols Alpaca doesn't list degrade gracefully through the existing Gate.io→Binance kline fallback chain.
+
+**Notes / limitations:** No Alpaca kline WebSocket is wired (returns `null`, same as OKX/Gate), so live updates poll via REST. Weekly/daily bars rely on the `start` anchor since Alpaca's default lookback is short.
+
+**Verification:** `node --check` passed on `server.js`, `constants.js`, `data.js`. Confirmed the live endpoints via curl (bars at 1Hour/4Hour/1Day/1Week, snapshots, CORS `*`) and ran a standalone Node integration test replicating the server's URL build + fetch + normalize for `BTCUSDT @ 1h` → 5 correctly-shaped bars. Footer and README bumped to `v1.8.0`.
+
+---
+
 ## v1.7.0 — 2026-06-19 · Quote-currency filter in the symbol picker
 
 ### Feature — Filter symbols by quote/stablecoin (Roadmap item #1)

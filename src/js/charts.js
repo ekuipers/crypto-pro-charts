@@ -411,6 +411,14 @@ export function changeTimeframe(panel, tf) {
   scheduleAutosave();
 }
 
+// Refresh every chart in one click (top-bar refresh button). Drops the kline
+// cache so each panel re-fetches fresh bars (getCachedKlines otherwise serves
+// cached data for up to 60s), then reloads all panels in parallel.
+export async function refreshAllPanels() {
+  state.klineCache = {};
+  await Promise.all(state.panels.map(p => loadPanelData(p)));
+}
+
 export async function changeSymbol(panel, symbol, name, exchange) {
   panel.symbol = symbol;
   panel.symbolName = name || baseAsset(symbol);

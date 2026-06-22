@@ -22,7 +22,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Completed items are logged in `memory.md`._
+1. Remove the hard limit for max. 4 open positions.
 
 ## Bugs
 

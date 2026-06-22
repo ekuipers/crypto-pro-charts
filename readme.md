@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.16.2  
+**Version:** v1.17.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -10,6 +10,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 ## Features
 
 - **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
+- **Refresh all** — a ⟳ button in the top bar drops the kline cache and reloads every chart's data in one click
 - **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca, Bitvavo. **Watchlists can mix symbols from several exchanges at once** — each symbol carries its own exchange, and Settings chooses which exchanges to query (not a single active one)
 - **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
 - **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)

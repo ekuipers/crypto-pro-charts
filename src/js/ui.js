@@ -6,14 +6,14 @@ import { INDICATORS_DEF, INDICATOR_DESC, COLORS, THEMES, EXCHANGES } from './con
 import { indDef } from './indicators.js';
 import {
   setLayout, addIndicator, removeIndicator, recomputeIndicators,
-  applyThemeToCharts, resizeAllCharts, scheduleAutosave,
+  applyThemeToCharts, resizeAllCharts, scheduleAutosave, refreshAllPanels,
 } from './charts.js';
 import { setTool, clearDrawings, exportDrawings, importDrawings } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
 import { showSaveLayoutModal, showLayoutsModal, getNamedLayouts, applyLayoutData } from './persistence.js';
 import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
 import { setEventMarkersVisible } from './events.js';
-import { esc, clamp } from './utils.js';
+import { esc, clamp, toast } from './utils.js';
 
 const TEMPLATES = {
   'Trend Setup': [['ema', { period: 20 }], ['ema', { period: 50 }], ['ema', { period: 200 }], ['supertrend', {}], ['adx', {}]],
@@ -302,6 +302,19 @@ function wireTopbar() {
   });
 
   document.getElementById('toggleRight').addEventListener('click', () => { document.getElementById('rightPanel').classList.toggle('collapsed'); resizeAllCharts(); });
+
+  // Refresh all charts in one click — drops the kline cache and reloads every
+  // panel. Disable + spin the button while in flight so rapid clicks can't pile
+  // up overlapping refreshes.
+  document.getElementById('refreshAllBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('refreshAllBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    try { await refreshAllPanels(); toast('Charts refreshed', 'info'); }
+    catch { toast('Refresh failed', 'error'); }
+    finally { btn.disabled = false; btn.classList.remove('spinning'); }
+  });
 
   document.getElementById('themeToggle').addEventListener('click', showThemeMenu);
   document.getElementById('saveBtn').addEventListener('click', showSaveLayoutModal);

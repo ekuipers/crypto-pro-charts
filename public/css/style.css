@@ -68,6 +68,10 @@ input:focus, select:focus { border-color: var(--accent); }
   border: 1px solid transparent;
 }
 .tb-btn:hover { background: var(--hover); }
+.tb-btn:disabled { opacity: .6; cursor: default; }
+#refreshAllBtn { font-size: 16px; line-height: 1; }
+#refreshAllBtn.spinning { animation: tb-spin .7s linear infinite; }
+@keyframes tb-spin { to { transform: rotate(360deg); } }
 .layouts { background: var(--panel2); border-radius: 6px; padding: 2px; }
 .layout-opt { padding: 5px 9px; border-radius: 4px; font-size: 11px; letter-spacing: -2px; }
 .layout-opt.active { background: var(--accent); color: #fff; }

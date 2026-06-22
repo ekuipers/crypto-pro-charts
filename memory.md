@@ -4,6 +4,21 @@
 
 ---
 
+## v1.17.0 — 2026-06-22 · Refresh-all-charts button in the top bar (Roadmap)
+
+### Feature — one-click refresh of every chart
+**Problem:** The roadmap asked for a refresh button in the top bar that reloads all price charts at once. There was no manual way to force-refresh chart data; bars only updated via the live kline WS or when a panel's symbol/timeframe changed, and `getCachedKlines` serves cached bars for up to 60s, so even re-selecting a symbol could return stale data.
+
+**Fix:**
+- **`index.html`:** Added a `⟳` `#refreshAllBtn` to the top bar's right group (before the event-markers button).
+- **`charts.js`:** New `refreshAllPanels()` — clears `state.klineCache` (so each panel re-fetches fresh bars rather than reusing the 60s-TTL cache) then reloads every panel via `Promise.all(state.panels.map(loadPanelData))`. `loadPanelData` already re-streams safely (`startKlineStream` closes the prior socket), so a refresh re-subscribes cleanly.
+- **`ui.js`:** Wired the button — imports `refreshAllPanels` and `toast`; the handler disables + spins the button while the refresh is in flight (guards against overlapping refreshes from rapid clicks), toasts "Charts refreshed" on success / "Refresh failed" on error, and always re-enables in `finally`.
+- **`style.css`:** Added `.tb-btn:disabled` styling, larger `#refreshAllBtn` glyph, and a `tb-spin` keyframe rotation applied via `.spinning`.
+
+**Verification:** `node --check` on `charts.js` and `ui.js` passes. Booted the server on a test port: `/` returns 200, DB connects, and the served HTML contains `id="refreshAllBtn"`. Traced the flow: click → button disables/spins → cache cleared → all panels reload in parallel (each closing/reopening its kline stream) → toast → button re-enabled. Footer/readme → v1.17.0.
+
+---
+
 ## v1.16.2 — 2026-06-22 · Fix: prices stop updating after the tab loses focus (Bugs #1)
 
 ### Bug — live prices freeze when focus leaves the charts

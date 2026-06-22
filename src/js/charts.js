@@ -3,7 +3,7 @@
 // ============================================================
 import { state, drawingState } from './state.js';
 import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS } from './constants.js';
-import { getCachedKlines, fetchKlines, openKlineStream } from './data.js';
+import { getCachedKlines, fetchKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator } from './indicators.js';
 import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
@@ -204,6 +204,7 @@ export function addPanel(opts = {}) {
     id, el,
     symbol: opts.symbol || 'BTCUSDT',
     symbolName: opts.symbolName || 'Bitcoin',
+    exchange: opts.exchange || defaultExchange(),
     tf: opts.tf || '1h',
     data: [],
     chart: null, candleSeries: null, volumeSeries: null,
@@ -318,7 +319,7 @@ function initChart(panel) {
 export async function loadPanelData(panel) {
   hidePanelError(panel);
   try {
-    const data = await getCachedKlines(panel.symbol, panel.tf, 500);
+    const data = await getCachedKlines(panel.symbol, panel.tf, 500, panel.exchange);
     panel.data = data;
     panel.candleSeries.setData(data);
     if (data.length) panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(data[data.length - 1].close) });
@@ -370,7 +371,7 @@ function startKlineStream(panel) {
     // The Binance mini-ticker stream (main.js) feeds every other watchlist row, but
     // for a non-Binance exchange its price would diverge from this chart — so the
     // chart owns its symbol's price here (main.js skips pinned symbols).
-    if (state.settings.exchange !== 'binance') {
+    if (panel.exchange !== 'binance') {
       state.prices[panel.symbol] = { ...(state.prices[panel.symbol] || {}), price: candle.close };
     }
     // A closed bar can finalise a fresh MA crossing — refresh the markers.
@@ -378,7 +379,7 @@ function startKlineStream(panel) {
     document.dispatchEvent(new CustomEvent('panel-live', { detail: { panel, price: candle.close } }));
   };
 
-  panel.klineWS = openKlineStream(panel.symbol, panel.tf, onCandle);
+  panel.klineWS = openKlineStream(panel.symbol, panel.tf, onCandle, panel.exchange);
   // Exchanges without a live kline WebSocket (OKX, Gate, KuCoin, Bitstamp,
   // CryptoCompare, Alpaca, Hyperliquid) would otherwise freeze the chart at the
   // last REST candle, leaving the vertical price axis showing stale values. Poll
@@ -396,7 +397,7 @@ function startKlinePoll(panel, onCandle) {
   const tick = async () => {
     if (document.hidden) return;
     try {
-      const bars = await fetchKlines(panel.symbol, panel.tf, 2);
+      const bars = await fetchKlines(panel.symbol, panel.tf, 2, panel.exchange);
       if (bars.length) onCandle({ ...bars[bars.length - 1], closed: false });
     } catch { /* transient upstream error — keep the last bars on screen */ }
   };
@@ -410,9 +411,10 @@ export function changeTimeframe(panel, tf) {
   scheduleAutosave();
 }
 
-export async function changeSymbol(panel, symbol, name) {
+export async function changeSymbol(panel, symbol, name, exchange) {
   panel.symbol = symbol;
   panel.symbolName = name || baseAsset(symbol);
+  if (exchange) panel.exchange = exchange;
   panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(symbol)}<span class="sym-quote">${quoteAsset(symbol)}</span>`;
   await loadPanelData(panel);
   if (panel === state.activePanel) {
@@ -431,12 +433,15 @@ export function setActivePanel(panel) {
 // showing this symbol, focus that chart instead of loading a duplicate onto the
 // active chart — this prevents two panes charting the same symbol. Otherwise the
 // symbol loads into the active chart as usual.
-export function selectWatchlistSymbol(symbol, name) {
+export function selectWatchlistSymbol(symbol, name, exchange) {
   const active = state.activePanel;
-  if (active && active.symbol === symbol) return; // already on the active chart
-  const existing = state.panels.find(p => p !== active && p.symbol === symbol);
+  const ex = exchange || defaultExchange();
+  // Treat symbol+exchange as the identity — BTCUSDT on Binance and on Bybit are
+  // different charts, so don't collapse them onto one another.
+  if (active && active.symbol === symbol && active.exchange === ex) return;
+  const existing = state.panels.find(p => p !== active && p.symbol === symbol && p.exchange === ex);
   if (existing) { setActivePanel(existing); return; }
-  if (active) changeSymbol(active, symbol, name);
+  if (active) changeSymbol(active, symbol, name, ex);
 }
 
 export function destroyPanel(panel) {
@@ -742,12 +747,12 @@ export function renderVolProfile(panel) {
 // ---------- Symbol overlay / comparison ----------
 const OVERLAY_COLORS = ['#ff9800', '#ab47bc', '#26c6da', '#ec407a', '#9ccc65'];
 
-export async function addOverlaySymbol(panel, symbol, name) {
+export async function addOverlaySymbol(panel, symbol, name, exchange) {
   if (!panel) return;
   if (symbol === panel.symbol) { toast('That is already the base symbol', 'warn'); return; }
   if (panel.overlays.some(o => o.symbol === symbol)) { toast('Already overlaid', 'warn'); return; }
   const color = OVERLAY_COLORS[panel.overlays.length % OVERLAY_COLORS.length];
-  const ov = { symbol, name: name || baseAsset(symbol), color, series: null, data: [], ws: null };
+  const ov = { symbol, name: name || baseAsset(symbol), exchange: exchange || panel.exchange, color, series: null, data: [], ws: null };
   panel.overlays.push(ov);
   await buildOverlay(panel, ov);
   renderCompareLegend(panel);
@@ -757,7 +762,7 @@ export async function addOverlaySymbol(panel, symbol, name) {
 
 async function buildOverlay(panel, ov) {
   try {
-    const data = await getCachedKlines(ov.symbol, panel.tf, 500);
+    const data = await getCachedKlines(ov.symbol, panel.tf, 500, ov.exchange || panel.exchange);
     ov.data = data;
     const scaleId = 'ov_' + ov.symbol;
     ov.series = panel.chart.addLineSeries({
@@ -768,7 +773,7 @@ async function buildOverlay(panel, ov) {
     ov.series.setData(data.map(c => ({ time: c.time, value: c.close })));
     ov.ws = openKlineStream(ov.symbol, panel.tf, candle => {
       if (ov.series) ov.series.update({ time: candle.time, value: candle.close });
-    });
+    }, ov.exchange || panel.exchange);
   } catch (e) { warn('overlay build failed', e.message); }
 }
 
@@ -783,11 +788,11 @@ export function removeOverlay(panel, symbol) {
 }
 
 function rebuildOverlays(panel) {
-  const defs = panel.overlays.map(o => ({ symbol: o.symbol, name: o.name, color: o.color }));
+  const defs = panel.overlays.map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange, color: o.color }));
   panel.overlays.forEach(o => { try { o.ws?.close(); } catch {} if (o.series) { try { panel.chart.removeSeries(o.series); } catch {} } });
   panel.overlays = [];
   defs.forEach(d => {
-    const ov = { symbol: d.symbol, name: d.name, color: d.color, series: null, data: [], ws: null };
+    const ov = { symbol: d.symbol, name: d.name, exchange: d.exchange || panel.exchange, color: d.color, series: null, data: [], ws: null };
     panel.overlays.push(ov);
     buildOverlay(panel, ov);
   });

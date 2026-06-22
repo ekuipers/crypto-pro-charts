@@ -2,7 +2,7 @@
 // MAIN — app entry point
 // ============================================================
 import { state } from './state.js';
-import { openPriceStream, closePriceStream, refreshMissingPrices } from './data.js';
+import { openPriceStream, closePriceStream, refreshMissingPrices, defaultExchange } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
@@ -15,12 +15,12 @@ import { autosave, loadAutosave } from './persistence.js';
 import { initAuth } from './auth.js';
 import { debounce, log, toast } from './utils.js';
 
-// When a non-Binance exchange is active, any symbol shown on a chart has its
-// price owned by that chart (see charts.js startKlineStream), so the Binance
-// mini-ticker must not clobber it — otherwise the charted symbol's watchlist row
-// would disagree with the chart's own price axis.
+// A symbol charted on a non-Binance exchange has its price owned by that chart
+// (see charts.js startKlineStream), so the Binance mini-ticker must not clobber
+// it — otherwise the charted symbol's watchlist row would disagree with the
+// chart's own price axis.
 function isChartPinned(symbol) {
-  return state.settings.exchange !== 'binance' && state.panels.some(p => p.symbol === symbol);
+  return state.panels.some(p => p.symbol === symbol && p.exchange !== 'binance');
 }
 
 function startPriceStream() {
@@ -42,8 +42,8 @@ function startPriceStream() {
   if (!startPriceStream._missingTimer) {
     const pollMissing = async () => {
       const wl = state.watchlists[state.currentWatchlist] || [];
-      const syms = wl.map(s => s.symbol);
-      if (syms.length) { await refreshMissingPrices(syms); updatePriceRows(); }
+      const items = wl.map(s => ({ symbol: s.symbol, exchange: s.exchange || defaultExchange() }));
+      if (items.length) { await refreshMissingPrices(items); updatePriceRows(); }
     };
     setTimeout(pollMissing, 2000);
     startPriceStream._missingTimer = setInterval(pollMissing, 30000);

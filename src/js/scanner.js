@@ -2,7 +2,7 @@
 // SCANNER — market screener pane
 // ============================================================
 import { state } from './state.js';
-import { fetchAllPairs, getCachedKlines } from './data.js';
+import { fetchAllPairs, getCachedKlines, defaultExchange } from './data.js';
 import { baseAsset, fmtPrice, fmtPct, fmtVol, toast } from './utils.js';
 import { changeSymbol } from './charts.js';
 
@@ -29,42 +29,43 @@ async function runScan() {
   const out = document.getElementById('scanResults');
   out.innerHTML = '<div class="muted">Scanning…</div>';
 
+  // Universe entries carry their exchange so candle scans hit the right venue.
   let universe;
   if (scope === 'watchlist') {
-    universe = (state.watchlists[state.currentWatchlist] || []).map(s => s.symbol);
+    universe = (state.watchlists[state.currentWatchlist] || []).map(s => ({ sym: s.symbol, ex: s.exchange || defaultExchange() }));
   } else {
-    universe = (await fetchAllPairs()).map(p => p.symbol).slice(0, 100);
+    universe = (await fetchAllPairs()).map(p => ({ sym: p.symbol, ex: p.exchange || defaultExchange() })).slice(0, 100);
   }
 
   try {
     if (['gainers', 'losers', 'volume'].includes(type)) {
-      const rows = universe.map(sym => ({ sym, p: state.prices[sym] })).filter(r => r.p);
+      const rows = universe.map(u => ({ sym: u.sym, ex: u.ex, p: state.prices[u.sym] })).filter(r => r.p);
       if (type === 'gainers') rows.sort((a, b) => (b.p.change ?? 0) - (a.p.change ?? 0));
       if (type === 'losers') rows.sort((a, b) => (a.p.change ?? 0) - (b.p.change ?? 0));
       if (type === 'volume') rows.sort((a, b) => (b.p.price * 1) - (a.p.price * 1)); // approx by price; vol unavailable in miniticker map
-      renderResults(rows.slice(0, 30).map(r => ({ sym: r.sym, val: type === 'volume' ? fmtPrice(r.p.price) : fmtPct(r.p.change), up: (r.p.change ?? 0) >= 0 })));
+      renderResults(rows.slice(0, 30).map(r => ({ sym: r.sym, ex: r.ex, val: type === 'volume' ? fmtPrice(r.p.price) : fmtPct(r.p.change), up: (r.p.change ?? 0) >= 0 })));
       return;
     }
     // candle-based scans (limit 30 for perf)
     const subset = universe.slice(0, 30);
     const results = [];
-    for (const sym of subset) {
+    for (const { sym, ex } of subset) {
       try {
-        const d = await getCachedKlines(sym, '1h', 210);
+        const d = await getCachedKlines(sym, '1h', 210, ex);
         if (d.length < 50) continue;
         const closes = d.map(c => c.close);
         if (type.startsWith('rsi')) {
           const r = rsi(closes, 14);
           const last = r[r.length - 1];
           if (last == null) continue;
-          if (type === 'rsi_ob' && last >= 70) results.push({ sym, val: 'RSI ' + last.toFixed(1), up: false });
-          if (type === 'rsi_os' && last <= 30) results.push({ sym, val: 'RSI ' + last.toFixed(1), up: true });
+          if (type === 'rsi_ob' && last >= 70) results.push({ sym, ex, val: 'RSI ' + last.toFixed(1), up: false });
+          if (type === 'rsi_os' && last <= 30) results.push({ sym, ex, val: 'RSI ' + last.toFixed(1), up: true });
         } else {
           const e = ema(closes, Math.min(200, closes.length - 1));
           const last = e[e.length - 1], price = closes[closes.length - 1];
           if (last == null) continue;
-          if (type === 'above_ema' && price > last) results.push({ sym, val: fmtPrice(price), up: true });
-          if (type === 'below_ema' && price < last) results.push({ sym, val: fmtPrice(price), up: false });
+          if (type === 'above_ema' && price > last) results.push({ sym, ex, val: fmtPrice(price), up: true });
+          if (type === 'below_ema' && price < last) results.push({ sym, ex, val: fmtPrice(price), up: false });
         }
       } catch {}
     }
@@ -78,12 +79,12 @@ function renderResults(rows) {
   const out = document.getElementById('scanResults');
   if (!rows.length) { out.innerHTML = '<div class="muted">No matches.</div>'; return; }
   out.innerHTML = rows.map(r => `
-    <div class="scan-row" data-sym="${r.sym}">
+    <div class="scan-row" data-sym="${r.sym}" data-ex="${r.ex || ''}">
       <span>${baseAsset(r.sym)}</span>
       <span class="${r.up ? 'up' : 'down'}">${r.val}</span>
     </div>`).join('');
   out.querySelectorAll('.scan-row').forEach(el => el.addEventListener('click', () => {
-    if (state.activePanel) changeSymbol(state.activePanel, el.dataset.sym, baseAsset(el.dataset.sym));
+    if (state.activePanel) changeSymbol(state.activePanel, el.dataset.sym, baseAsset(el.dataset.sym), el.dataset.ex || undefined);
   }));
 }
 

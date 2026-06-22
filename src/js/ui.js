@@ -374,13 +374,17 @@ export function updateWSStatus(s) {
   const dot = document.getElementById('wsStatus');
   if (!dot) return;
   dot.className = 'ws-status ' + (s || '');
-  const ex = EXCHANGES[state.settings.exchange] || EXCHANGES.binance;
+  const ids = (Array.isArray(state.settings.exchanges) && state.settings.exchanges.length
+    ? state.settings.exchanges
+    : [state.settings.exchange || 'binance']).filter(id => EXCHANGES[id]);
+  const names = ids.map(id => EXCHANGES[id].name);
   const stateLabel = s || 'idle';
-  dot.title = `${ex.name}: ${stateLabel}`;
+  const summary = names.length === 1 ? names[0] : `${names.length} exchanges`;
+  dot.title = `${names.join(', ')}: ${stateLabel}`;
   const exLabel = document.getElementById('wsExchange');
   if (exLabel) {
-    exLabel.textContent = ex.name;
-    exLabel.title = `${ex.name} — ${ex.status}`;
+    exLabel.textContent = summary;
+    exLabel.title = names.join(', ');
   }
 }
 

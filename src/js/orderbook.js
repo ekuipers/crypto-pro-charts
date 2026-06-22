@@ -12,13 +12,14 @@ export function refreshOrderBook() {
   if (!panel) return;
   if (state.rightTab !== 'orderbook') { closeOrderBookStream(); if (pollTimer) clearInterval(pollTimer); return; }
   const symbol = panel.symbol;
+  const exId = panel.exchange;
   closeOrderBookStream();
   if (pollTimer) clearInterval(pollTimer);
 
-  fetchOrderBook(symbol).then(ob => { state.obData = ob; renderOrderBook(); }).catch(() => {});
-  const ws = openOrderBookStream(symbol, ob => { state.obData = ob; renderOrderBook(); });
+  fetchOrderBook(symbol, 20, exId).then(ob => { state.obData = ob; renderOrderBook(); }).catch(() => {});
+  const ws = openOrderBookStream(symbol, ob => { state.obData = ob; renderOrderBook(); }, exId);
   if (!ws) {
-    pollTimer = setInterval(() => fetchOrderBook(symbol).then(ob => { state.obData = ob; renderOrderBook(); }).catch(() => {}), 5000);
+    pollTimer = setInterval(() => fetchOrderBook(symbol, 20, exId).then(ob => { state.obData = ob; renderOrderBook(); }).catch(() => {}), 5000);
   }
 }
 
@@ -199,8 +200,8 @@ export async function refreshTechInfo() {
   el.innerHTML = '<div class="muted">Loading…</div>';
   try {
     const [p, bars] = await Promise.all([
-      fetchPrice(panel.symbol),
-      getCachedKlines(panel.symbol, '1d', 400).catch(() => []),
+      fetchPrice(panel.symbol, panel.exchange),
+      getCachedKlines(panel.symbol, '1d', 400, panel.exchange).catch(() => []),
     ]);
     const up = p.change >= 0;
     const closes = bars.map(b => b.close);

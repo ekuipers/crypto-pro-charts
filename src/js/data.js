@@ -8,10 +8,27 @@ import { fetchJSON, baseAsset, quoteAsset, log, warn } from './utils.js';
 // Quote currencies to include when fetching all pairs
 const SUPPORTED_QUOTES = ['USDT', 'USDC', 'EUR', 'USD'];
 
-function ex() { return EXCHANGES[state.settings.exchange] || EXCHANGES.binance; }
+// Legacy/fallback default exchange for symbols or panels that carry no explicit
+// exchange of their own (e.g. pre-multi-exchange saved sessions).
+export function defaultExchange() {
+  const list = state.settings.exchanges;
+  if (Array.isArray(list) && list.length && EXCHANGES[list[0]]) return list[0];
+  return EXCHANGES[state.settings.exchange] ? state.settings.exchange : 'binance';
+}
+
+// The set of exchanges to query for the symbol picker. Falls back to the legacy
+// single-exchange setting so old sessions keep working.
+export function enabledExchanges() {
+  const list = Array.isArray(state.settings.exchanges) && state.settings.exchanges.length
+    ? state.settings.exchanges
+    : [state.settings.exchange || 'binance'];
+  return list.filter(id => EXCHANGES[id]);
+}
+
+function ex(exId = defaultExchange()) { return EXCHANGES[exId] || EXCHANGES.binance; }
 
 // ---- Symbol normalisation per exchange --------------------
-export function toExchangeSymbol(sym, exId = state.settings.exchange) {
+export function toExchangeSymbol(sym, exId = defaultExchange()) {
   const base = baseAsset(sym);
   const quote = quoteAsset(sym);
   switch (exId) {
@@ -30,8 +47,8 @@ export function toExchangeSymbol(sym, exId = state.settings.exchange) {
 
 // ---- Klines (candles) -------------------------------------
 // Returns [{ time(sec), open, high, low, close, volume }]
-export async function fetchKlines(symbol, tf, limit = 500) {
-  const e = ex();
+export async function fetchKlines(symbol, tf, limit = 500, exId = defaultExchange()) {
+  const e = ex(exId);
   const interval = e.intervals[tf] || tf;
   // Prefer the server-side JSON-file cache/proxy (persists bars to disk and
   // avoids exchange CORS). Falls through to direct exchange fetch if the server
@@ -148,20 +165,20 @@ export async function fetchKlines(symbol, tf, limit = 500) {
 }
 
 // Cached wrapper (1 min TTL)
-export async function getCachedKlines(symbol, tf, limit = 500) {
-  const key = `${state.settings.exchange}:${symbol}:${tf}`;
+export async function getCachedKlines(symbol, tf, limit = 500, exId = defaultExchange()) {
+  const key = `${exId}:${symbol}:${tf}`;
   const c = state.klineCache[key];
   if (c && Date.now() - c.ts < 60000 && c.data.length >= limit) {
     return c.data.slice(-limit);
   }
-  const data = await fetchKlines(symbol, tf, limit);
+  const data = await fetchKlines(symbol, tf, limit, exId);
   state.klineCache[key] = { data, ts: Date.now() };
   return data;
 }
 
 // ---- Single price / 24h stats -----------------------------
-export async function fetchPrice(symbol) {
-  const e = ex();
+export async function fetchPrice(symbol, exId = defaultExchange()) {
+  const e = ex(exId);
   try {
     if (e.id === 'binance') {
       const j = await fetchJSON(`${e.rest}/ticker/24hr?symbol=${symbol}`);
@@ -233,27 +250,34 @@ export async function fetchPrice(symbol) {
 }
 
 // Refresh state.prices for watchlist symbols that lack data.
-// Tries the Binance batch ticker first (one request for all), then individual
-// per-exchange calls for any symbol Binance doesn't know about.
-export async function refreshMissingPrices(symbols) {
-  const missing = symbols.filter(s => !state.prices[s] || !state.prices[s].price);
+// Accepts an array of { symbol, exchange } items. Binance-quoted symbols are
+// batched in one ticker request; everything else is fetched individually from
+// each item's own exchange (so multi-exchange watchlists price correctly).
+export async function refreshMissingPrices(items) {
+  // Tolerate plain string symbols for backward compatibility.
+  const norm = items.map(s => typeof s === 'string' ? { symbol: s, exchange: defaultExchange() } : s);
+  const missing = norm.filter(s => !state.prices[s.symbol] || !state.prices[s.symbol].price);
   if (!missing.length) return;
   const found = new Set();
-  try {
-    const encoded = encodeURIComponent(JSON.stringify(missing));
-    const arr = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbols=${encoded}`);
-    for (const t of (Array.isArray(arr) ? arr : [])) {
-      const price = +t.lastPrice, open = +t.openPrice;
-      state.prices[t.symbol] = { price, open, change: +t.priceChangePercent, chgVal: price - open };
-      found.add(t.symbol);
-    }
-  } catch (e2) { warn('refreshMissingPrices batch', e2.message); }
-  // Symbols not on Binance: fetch individually from the active exchange
-  const remaining = missing.filter(s => !found.has(s));
-  await Promise.allSettled(remaining.map(async sym => {
+  // Batch only the symbols actually sourced from Binance.
+  const binanceSyms = missing.filter(s => s.exchange === 'binance').map(s => s.symbol);
+  if (binanceSyms.length) {
     try {
-      const p = await fetchPrice(sym);
-      state.prices[sym] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
+      const encoded = encodeURIComponent(JSON.stringify(binanceSyms));
+      const arr = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbols=${encoded}`);
+      for (const t of (Array.isArray(arr) ? arr : [])) {
+        const price = +t.lastPrice, open = +t.openPrice;
+        state.prices[t.symbol] = { price, open, change: +t.priceChangePercent, chgVal: price - open };
+        found.add(t.symbol);
+      }
+    } catch (e2) { warn('refreshMissingPrices batch', e2.message); }
+  }
+  // Everything else: fetch individually from the item's own exchange.
+  const remaining = missing.filter(s => !found.has(s.symbol));
+  await Promise.allSettled(remaining.map(async ({ symbol, exchange }) => {
+    try {
+      const p = await fetchPrice(symbol, exchange);
+      state.prices[symbol] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
     } catch {}
   }));
 }
@@ -316,24 +340,40 @@ async function fetchExchangePairs(exId) {
   }
 }
 
+// Aggregate the tradeable pairs from every enabled exchange. Each pair is tagged
+// with the `exchange` it came from so the watchlist can chart a symbol from a
+// specific exchange and the picker can filter by exchange. Cached per enabled
+// set (state.allPairsKey) so toggling exchanges in Settings refreshes the list.
 export async function fetchAllPairs() {
-  if (state.allPairs) return state.allPairs;
-  const exId = state.settings.exchange;
+  const exIds = enabledExchanges();
+  const key = exIds.join(',');
+  if (state.allPairs && state.allPairsKey === key) return state.allPairs;
   try {
-    let pairs = await fetchExchangePairs(exId);
-    // Some exchanges occasionally return an empty/odd payload — fall back so the
-    // symbol picker is never empty.
-    if (!pairs.length && exId !== 'binance') pairs = await fetchBinancePairs();
-    // De-dupe by symbol and sort alphabetically for a stable picker order.
+    const lists = await Promise.all(exIds.map(async exId => {
+      try {
+        let pairs = await fetchExchangePairs(exId);
+        // Some exchanges occasionally return an empty/odd payload — fall back so
+        // the picker is never empty for that exchange.
+        if (!pairs.length && exId !== 'binance') pairs = await fetchBinancePairs();
+        return pairs.map(p => ({ ...p, exchange: exId }));
+      } catch (e2) { warn(`fetchExchangePairs(${exId}) failed`, e2.message); return []; }
+    }));
+    // De-dupe by exchange:symbol; sort by symbol then exchange for a stable order.
     const seen = new Set();
-    pairs = pairs.filter(p => p.symbol && !seen.has(p.symbol) && seen.add(p.symbol))
-                 .sort((a, b) => a.symbol.localeCompare(b.symbol));
+    let pairs = lists.flat()
+      .filter(p => p.symbol && !seen.has(`${p.exchange}:${p.symbol}`) && seen.add(`${p.exchange}:${p.symbol}`))
+      .sort((a, b) => a.symbol.localeCompare(b.symbol) || a.exchange.localeCompare(b.exchange));
+    if (!pairs.length) pairs = (await fetchBinancePairs()).map(p => ({ ...p, exchange: 'binance' }));
     state.allPairs = pairs;
+    state.allPairsKey = key;
     return pairs;
   } catch (e) {
     warn('fetchAllPairs failed', e.message);
-    try { state.allPairs = await fetchBinancePairs(); return state.allPairs; }
-    catch { return []; }
+    try {
+      state.allPairs = (await fetchBinancePairs()).map(p => ({ ...p, exchange: 'binance' }));
+      state.allPairsKey = key;
+      return state.allPairs;
+    } catch { return []; }
   }
 }
 
@@ -361,8 +401,8 @@ export async function searchCoinGecko(query) {
 }
 
 // ---- Order book snapshot ----------------------------------
-export async function fetchOrderBook(symbol, limit = 20) {
-  const e = ex();
+export async function fetchOrderBook(symbol, limit = 20, exId = defaultExchange()) {
+  const e = ex(exId);
   try {
     if (e.id === 'binance') {
       const j = await fetchJSON(`${e.rest}/depth?symbol=${symbol}&limit=${limit}`);
@@ -423,8 +463,8 @@ export function closePriceStream() {
 
 // ---- WebSocket: live kline for one panel ------------------
 // Returns the ws; onCandle({time, open, high, low, close, volume, closed})
-export function openKlineStream(symbol, tf, onCandle) {
-  const e = ex();
+export function openKlineStream(symbol, tf, onCandle, exId = defaultExchange()) {
+  const e = ex(exId);
   const interval = e.intervals[tf] || tf;
   try {
     if (e.id === 'binance') {
@@ -502,9 +542,9 @@ function openBitvavoKlineStream(market, interval, onCandle) {
 }
 
 // ---- WebSocket: order book stream -------------------------
-export function openOrderBookStream(symbol, onBook) {
+export function openOrderBookStream(symbol, onBook, exId = defaultExchange()) {
   closeOrderBookStream();
-  const e = ex();
+  const e = ex(exId);
   if (e.id !== 'binance') return null;
   try {
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@depth20@500ms`);

@@ -18,10 +18,14 @@ let state = {
   indFilter: '',
   symFilter: '',
   wlSort: { col: 'name', dir: 'asc' },
-  settings: { exchange: 'binance', upColor: '#26a69a', downColor: '#ef5350' },
+  // `exchanges` is the list of exchanges to query for the symbol picker (multi-
+  // exchange watchlists). `exchange` is kept as the legacy default/fallback used
+  // when a watchlist item or panel has no explicit exchange of its own.
+  settings: { exchange: 'binance', exchanges: ['binance'], upColor: '#26a69a', downColor: '#ef5350' },
   alerts: [],        // [{id, symbol, price, condition:'above'|'below', note, triggered}]
   alertIdCounter: 0,
-  allPairs: null,    // cached all tradeable pairs
+  allPairs: null,    // cached all tradeable pairs (across enabled exchanges)
+  allPairsKey: null, // enabled-exchange set the cached allPairs was built for
   symSearchActive: false,
   orderBookWS: null,
   obData: { bids: [], asks: [], symbol: null },

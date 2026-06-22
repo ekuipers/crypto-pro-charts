@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.12.0  
+**Version:** v1.14.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -10,7 +10,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 ## Features
 
 - **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
-- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca
+- **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca, Bitvavo. **Watchlists can mix symbols from several exchanges at once** — each symbol carries its own exchange, and Settings chooses which exchanges to query (not a single active one)
 - **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
 - **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)
 - **Top-bar indicator chips** — Active indicators on the selected chart show as removable/editable chips in the top navigation bar, right beside the Indicators picker (frees the full chart width)
@@ -18,7 +18,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
 - **Symbol overlay** — Compare multiple symbols on one chart with independent price scales
 - **Watchlist** — Multiple named watchlists, drag-to-reorder, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream; the symbol shown on the currently selected chart is highlighted in the list. Selecting a symbol that's already open on another chart focuses that chart instead of duplicating it
-- **Symbol picker** — Searchable add-symbol dialog with a quote-currency filter (All / USDT / USDC / USD / EUR) to list only pairs in a chosen quote, plus a "Hide stablecoins" filter (on by default) that drops stable/stable pairs from both exchange and CoinGecko results
+- **Symbol picker** — Searchable add-symbol dialog with an **exchange filter** (multi-select; none selected = all enabled exchanges) plus a quote-currency filter (All / USDT / USDC / USD / EUR) and a "Hide stablecoins" filter (on by default) that drops stable/stable pairs from both exchange and CoinGecko results. Picked symbols remember which exchange they came from
 - **MA crossing markers** — Golden/death cross arrows drawn where adjacent SMA/EMA overlays cross (up arrow below bar for bullish, down arrow above bar for bearish), coloured with the up/down theme colours
 - **Event markers** — High-impact economic events overlaid on the chart; past events snapped to the correct candle period, future events projected up to 2 weeks ahead at their correct future date (rendered on a hidden series so LWC doesn't snap them to the last candle)
 - **Tech Info pane** — RSI speedometer, daily/monthly/yearly performance pills, day's/52-week range gauges, seasonals chart
@@ -43,10 +43,11 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 | Bitstamp | USDT, USDC, EUR, USD | REST + server cache | REST polling fallback |
 | CryptoCompare | All major pairs (aggregated) | REST + server cache | REST polling fallback |
 | Alpaca | USD (USDT/USDC mapped to USD) | REST + server cache | REST polling fallback |
+| Bitvavo | EUR (USDT/USDC mapped to EUR) | REST + server cache | WebSocket (candles) |
 
-Kline fetching uses an ordered fallback chain: **active exchange → Gate.io → Binance**.  
-Missing watchlist prices are refreshed via Binance batch ticker every 30 s, with per-exchange REST fallback for symbols not on Binance.  
-The watchlist symbol search also queries **CoinGecko** (debounced) to discover coins not listed on the active exchange — results are added as `{SYMBOL}USDT` pairs.
+Each watchlist symbol and chart carries its own exchange, so data is loaded from that symbol's exchange; kline fetching then uses an ordered fallback chain: **the symbol's exchange → Gate.io → Binance**.  
+Missing watchlist prices are refreshed via Binance batch ticker every 30 s (for Binance-sourced symbols), with per-exchange REST fallback for everything else.  
+The watchlist symbol search also queries **CoinGecko** (debounced) to discover coins not listed on the enabled exchanges — results are added as `{SYMBOL}USDT` pairs.
 
 ## Tech Stack
 

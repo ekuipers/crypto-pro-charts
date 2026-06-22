@@ -25,9 +25,9 @@ export function snapshot() {
     alerts: state.alerts,
     symColors: state.symColors,
     panels: state.panels.map(p => ({
-      symbol: p.symbol, symbolName: p.symbolName, tf: p.tf,
+      symbol: p.symbol, symbolName: p.symbolName, exchange: p.exchange, tf: p.tf,
       indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color })),
-      overlays: (p.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, color: o.color })),
+      overlays: (p.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange, color: o.color })),
       drawings: p.drawings,
     })),
   };
@@ -91,6 +91,10 @@ export function applyLayoutData(data) {
   if (data.currentWatchlist) state.currentWatchlist = data.currentWatchlist;
   if (data.wlSort) state.wlSort = data.wlSort;
   if (data.settings) state.settings = { ...state.settings, ...data.settings };
+  // Migrate legacy single-exchange sessions to the multi-exchange list.
+  if (!Array.isArray(state.settings.exchanges) || !state.settings.exchanges.length) {
+    state.settings.exchanges = [state.settings.exchange || 'binance'];
+  }
   if (data.alerts) state.alerts = data.alerts;
   if (data.symColors) state.symColors = data.symColors;
 
@@ -104,8 +108,9 @@ export function applyLayoutData(data) {
     const pd = panelsData[i];
     if (!pd) return;
     panel.symbol = pd.symbol; panel.symbolName = pd.symbolName; panel.tf = pd.tf;
+    panel.exchange = pd.exchange || (state.settings.exchanges?.[0] || state.settings.exchange || 'binance');
     panel.drawings = pd.drawings || [];
-    panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, color: o.color, series: null, data: [], ws: null }));
+    panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange || panel.exchange, color: o.color, series: null, data: [], ws: null }));
     panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(pd.symbol)}<span class="sym-quote">${quoteAsset(pd.symbol)}</span>`;
     panel.el.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === pd.tf));
     loadPanelData(panel).then(() => {

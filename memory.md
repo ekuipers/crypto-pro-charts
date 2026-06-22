@@ -4,6 +4,26 @@
 
 ---
 
+## v1.14.0 — 2026-06-22 · Multi-exchange watchlists (Roadmap)
+
+### Feature — add symbols from multiple exchanges; per-symbol exchange
+**Problem:** The roadmap asked to let the watchlist hold symbols from *multiple* exchanges at once. The old model had a single active exchange (`state.settings.exchange`) that every chart, price feed and order book keyed off — so a watchlist could only ever show one venue. The Settings exchange **selector** should be replaced with a **list** of exchanges to query, and the symbol-picker should gain an exchange **filter** (no filter selected = all enabled exchanges).
+
+**Fix:**
+- **`state.js`:** Added `settings.exchanges` (array of enabled exchange ids; the source of truth for the picker) while keeping `settings.exchange` as a legacy default/fallback. Added `allPairsKey` so the aggregated pair cache invalidates when the enabled set changes.
+- **`data.js`:** New `defaultExchange()` / `enabledExchanges()` helpers. Threaded an explicit `exId` parameter (defaulting to `defaultExchange()`) through `fetchKlines`, `getCachedKlines` (cache key now `exId:symbol:tf`), `fetchPrice`, `fetchOrderBook`, `openKlineStream`, `openOrderBookStream` and `toExchangeSymbol`. `refreshMissingPrices` now takes `{symbol, exchange}` items — Binance-sourced symbols are batched in one ticker call; everything else is fetched per-item from its own exchange. **`fetchAllPairs` now aggregates across every enabled exchange**, tagging each pair with `exchange`, de-duping by `exchange:symbol`, and caching per enabled set.
+- **`charts.js`:** Each `panel` now carries an `exchange`. `loadPanelData`, the kline WebSocket/REST-poll, the price-ownership pin and overlays all use `panel.exchange` (overlays carry their own `exchange`). `changeSymbol`/`selectWatchlistSymbol`/`addOverlaySymbol` take an `exchange`, and symbol identity for "already-charted" detection is now `symbol+exchange`.
+- **`watchlist.js`:** Watchlist items now store `exchange`. The symbol picker gained a **multi-select exchange filter** (pills; none selected = all enabled exchanges, only shown when >1 exchange is enabled), an exchange badge per row, and passes the chosen exchange to `onPick`. Rows, removal, drag-reorder and the top search are keyed by `symbol+exchange`; a per-row exchange tag shows when a watchlist mixes venues.
+- **`settings.js`:** Replaced the single `<select>` with a **checkbox list of exchanges** ("Exchanges to query"). `setExchanges()` saves the list, points the legacy `exchange` at the first enabled one, invalidates the pair cache and refreshes the WS label. No panel reloads — each chart keeps its own exchange.
+- **`orderbook.js` / `scanner.js` / `main.js`:** Order book + Tech Info use `panel.exchange`; the scanner universe carries each symbol's exchange into `getCachedKlines` and the click-through; the missing-price poll passes `{symbol, exchange}`; chart-pin logic pins any charted non-Binance symbol.
+- **`persistence.js`:** Persists/restores `panel.exchange` and overlay `exchange`; migrates legacy single-exchange sessions by deriving `settings.exchanges` from `settings.exchange`. Untagged watchlist items fall back to `defaultExchange()` at read time.
+- **`ui.js`:** WS status label shows the exchange name when one is enabled, else "N exchanges" (title lists them).
+- **`style.css`:** Styles for the picker exchange-filter pills, picker/search/watchlist exchange badges, and the Settings exchange checkbox list.
+
+**Verification:** `node --check` passed on all 10 modified frontend modules. Local server serving `/` and `/js/data.js` returned 200. Reviewed the migration path: old sessions (no `exchanges`, untagged items/panels) resolve through `defaultExchange()` and the persistence migration, so they keep working unchanged. Footer → v1.14.0.
+
+---
+
 ## v1.13.0 — 2026-06-22 · Add Bitvavo as a data source (Roadmap)
 
 ### Feature — Bitvavo exchange support

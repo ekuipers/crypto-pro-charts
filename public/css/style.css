@@ -243,6 +243,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .sym-dot { width: 8px; height: 8px; border-radius: 50%; }
 .sym-name { font-weight: 600; }
 .sym-quote-tag { font-weight: 400; font-size: 10px; color: var(--muted); margin-left: 2px; vertical-align: baseline; }
+.sym-ex-tag { font-weight: 600; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: var(--hover); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 4px; vertical-align: middle; }
 .sym-price { text-align: right; }
 .sym-chgv, .sym-chg { text-align: right; font-size: 11px; }
 .sym-del { color: transparent; font-size: 14px; }
@@ -338,6 +339,13 @@ input:focus, select:focus { border-color: var(--accent); }
 .color-sw { width: 22px; height: 22px; border-radius: 5px; border: 2px solid transparent; }
 .color-sw.sel { border-color: var(--text); }
 .set-warn { color: var(--red); font-size: 11px; margin-bottom: 10px; min-height: 14px; }
+.set-section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 4px 0 6px; }
+.set-ex-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; padding: 4px; }
+.set-ex-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; cursor: pointer; }
+.set-ex-row:hover { background: var(--hover); }
+.set-ex-row input { accent-color: var(--accent); cursor: pointer; }
+.set-ex-name { font-size: 12px; font-weight: 600; }
+.set-ex-status { margin-left: auto; font-size: 10px; color: var(--muted); }
 
 .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
@@ -433,6 +441,10 @@ body.resizing * { pointer-events: none; }
 /* ---------- Symbol picker (add / overlay) ---------- */
 .sp-stable-toggle { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
 .sp-stable-toggle input { accent-color: var(--accent); cursor: pointer; }
+.sp-ex-filter { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+.sp-ex-pill { padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; cursor: pointer; transition: background 120ms, color 120ms, border-color 120ms; }
+.sp-ex-pill:hover { background: var(--hover); color: var(--text); }
+.sp-ex-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .sp-quote-filter { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
 .sp-quote-pill { padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; cursor: pointer; transition: background 120ms, color 120ms, border-color 120ms; }
 .sp-quote-pill:hover { background: var(--hover); color: var(--text); }
@@ -441,6 +453,8 @@ body.resizing * { pointer-events: none; }
 .sym-picker-item { display: flex; align-items: baseline; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-align: left; }
 .sym-picker-item:hover { background: var(--hover); border-color: var(--accent); }
 .sym-picker-item span { color: var(--muted); font-size: 10px; }
+.sym-picker-ex { margin-left: auto; font-weight: 600; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: var(--hover); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; }
+.search-res-ex { margin-left: auto; font-weight: 600; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: var(--hover); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; }
 .sym-picker-more { grid-column: 1 / -1; padding: 8px; border: 1px dashed var(--border); border-radius: 6px; color: var(--accent); font-size: 12px; font-weight: 600; }
 .sym-picker-more:hover { background: var(--hover); }
 .sym-picker-count { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 10px; padding: 2px 0; }

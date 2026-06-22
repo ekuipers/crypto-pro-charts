@@ -1,9 +1,9 @@
 // ============================================================
-// AUTH (client) — account button, sign-in modal, session awareness
+// AUTH (client) — account button + username/password sign-in modal
 // ------------------------------------------------------------
-// Talks to /api/me, /api/auth/<provider>/login and /api/auth/logout. Layout
-// data is already user-scoped server-side via the session cookie, so signing in
-// or out is just a page (re)load that fetches the right user's session.
+// Talks to /api/me, /api/auth/login, /api/auth/register, /api/auth/logout.
+// Layout data is already user-scoped server-side via the session cookie, so
+// signing in or out is just a page (re)load that fetches the right user's data.
 // ============================================================
 import { esc } from './utils.js';
 import { showModal, closeModal } from './alerts.js';
@@ -13,70 +13,78 @@ export let currentUser = null;
 async function fetchMe() {
   try {
     const r = await fetch('/api/me');
-    if (!r.ok) return { user: null, providers: [] };
+    if (!r.ok) return { user: null };
     return await r.json();
   } catch {
-    return { user: null, providers: [] };
+    return { user: null };
   }
 }
 
-const PROVIDER_ICON = { google: 'G', github: '🐙' };
-
-function renderButton(me) {
+function renderButton(user) {
   const btn = document.getElementById('accountBtn');
   if (!btn) return;
-  const u = me.user;
-  if (u) {
-    const avatar = u.avatar
-      ? `<img class="acct-avatar" src="${esc(u.avatar)}" alt="">`
-      : `<span class="acct-avatar acct-avatar-fallback">${esc((u.name || '?').charAt(0).toUpperCase())}</span>`;
-    btn.innerHTML = `${avatar}<span class="acct-name">${esc(u.name || 'Account')}</span>`;
-    btn.title = `Signed in as ${u.name}${u.email ? ' · ' + u.email : ''}`;
+  if (user) {
+    const name = user.displayName || user.username;
+    btn.innerHTML = `<span class="acct-avatar acct-avatar-fallback">${esc(name.charAt(0).toUpperCase())}</span><span class="acct-name">${esc(name)}</span>`;
+    btn.title = `Signed in as ${name}`;
   } else {
     btn.innerHTML = '👤 Sign in';
     btn.title = 'Sign in to save layouts to your account';
   }
 }
 
-function signInModal(me) {
-  const providerBtns = me.providers.length
-    ? me.providers.map(p => `
-        <button class="sso-btn" data-provider="${esc(p.id)}">
-          <span class="sso-icon">${PROVIDER_ICON[p.id] || '🔑'}</span>
-          Continue with ${esc(p.label)}
-        </button>`).join('')
-    : `<p class="muted sso-none">No SSO providers are configured on this server.
-         Set <code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code> or
-         <code>GITHUB_CLIENT_ID</code>/<code>GITHUB_CLIENT_SECRET</code> to enable
-         single sign-on. You can keep using the app as a guest — your layouts are
-         saved locally.</p>`;
-
+// One modal handling both Sign in and Create account via a mode toggle.
+function authModal(mode = 'login') {
+  const isLogin = mode === 'login';
   showModal(`
-    <h3>Sign in to CryptoPro Charts</h3>
-    <p class="muted">Save your chart layouts to your own account and access them anywhere.</p>
-    <div class="sso-list">${providerBtns}</div>
+    <h3>${isLogin ? 'Sign in' : 'Create account'}</h3>
+    <p class="muted">Your chart layouts and watchlists are saved to your account.</p>
+    <label>Username<input id="auUser" autocomplete="username" placeholder="your name"></label>
+    <label>Password<input id="auPass" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" placeholder="${isLogin ? 'password' : 'at least 6 characters'}"></label>
+    <div class="auth-err set-warn" id="auErr"></div>
     <div class="modal-actions">
-      <button id="ssoGuest">Continue as guest</button>
+      <button id="auSwitch" class="auth-switch">${isLogin ? 'Create account' : 'Have an account? Sign in'}</button>
+      <button id="auSubmit" class="primary-btn">${isLogin ? 'Sign in' : 'Create account'}</button>
     </div>`, m => {
-    m.querySelectorAll('.sso-btn').forEach(b =>
-      b.addEventListener('click', () => { window.location.href = `/api/auth/${b.dataset.provider}/login`; }));
-    m.querySelector('#ssoGuest').addEventListener('click', closeModal);
+    const userEl = m.querySelector('#auUser');
+    const passEl = m.querySelector('#auPass');
+    const errEl = m.querySelector('#auErr');
+    userEl.focus();
+
+    m.querySelector('#auSwitch').addEventListener('click', () => authModal(isLogin ? 'register' : 'login'));
+
+    const submit = async () => {
+      const username = userEl.value.trim();
+      const password = passEl.value;
+      if (!username || !password) { errEl.textContent = 'Enter a username and password.'; return; }
+      errEl.textContent = '';
+      try {
+        const r = await fetch(`/api/auth/${isLogin ? 'login' : 'register'}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { errEl.textContent = data.error || 'Sign-in failed.'; return; }
+        window.location.reload(); // reload to pull this user's saved layouts
+      } catch {
+        errEl.textContent = 'Network error — try again.';
+      }
+    };
+    m.querySelector('#auSubmit').addEventListener('click', submit);
+    passEl.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
   });
 }
 
-function accountModal(me) {
-  const u = me.user;
-  const avatar = u.avatar
-    ? `<img class="acct-modal-avatar" src="${esc(u.avatar)}" alt="">`
-    : `<span class="acct-modal-avatar acct-avatar-fallback">${esc((u.name || '?').charAt(0).toUpperCase())}</span>`;
+function accountModal(user) {
+  const name = user.displayName || user.username;
   showModal(`
     <h3>Account</h3>
     <div class="acct-card">
-      ${avatar}
+      <span class="acct-modal-avatar acct-avatar-fallback">${esc(name.charAt(0).toUpperCase())}</span>
       <div class="acct-card-info">
-        <div class="acct-card-name">${esc(u.name || 'Account')}</div>
-        <div class="acct-card-email muted">${esc(u.email || '')}</div>
-        <div class="acct-card-provider muted">via ${esc(u.provider)}</div>
+        <div class="acct-card-name">${esc(name)}</div>
+        <div class="acct-card-email muted">@${esc(user.username)}</div>
       </div>
     </div>
     <p class="muted">Your layouts and watchlists are saved to this account.</p>
@@ -95,9 +103,9 @@ function accountModal(me) {
 export async function initAuth() {
   const me = await fetchMe();
   currentUser = me.user;
-  renderButton(me);
+  renderButton(me.user);
   document.getElementById('accountBtn')?.addEventListener('click', () => {
-    if (currentUser) accountModal(me); else signInModal(me);
+    if (currentUser) accountModal(currentUser); else authModal('login');
   });
   return me;
 }

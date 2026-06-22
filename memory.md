@@ -4,7 +4,23 @@
 
 ---
 
-## v1.9.0 — 2026-06-22 · Multi-user accounts with Google/GitHub SSO (Roadmap item #1)
+## v1.10.0 — 2026-06-22 · Replace SSO with application-only username/password login (Roadmap)
+
+### Change — Drop Google/GitHub OAuth; add built-in username + password accounts
+**Problem:** The roadmap was revised to make login application-only: users sign in with a username and password handled entirely by the app, and the Google/GitHub SSO added in v1.9.0 should be removed. (OAuth also pulled in third-party redirect flows and a Windows-unsafe `provider:id` uid that contained a colon.)
+
+**Fix:**
+- **`auth.js` (server, rewritten):** Removed the OAuth2 provider definitions, authorize/callback routes, the `cpc_oauth_state` cookie, and `BASE_URL` handling. Added salted password hashing with Node's `crypto.scryptSync` (64-byte hash, 16-byte random salt) and constant-time verification via `timingSafeEqual`. New routes: `POST /api/auth/register` (validates username `^[a-zA-Z0-9_.-]{3,32}$` and password ≥ 6 chars, 409 on duplicate, auto-creates a session) and `POST /api/auth/login` (single generic "Invalid username or password" for both missing-user and bad-password). `GET /api/me` now returns just `{ user }` (no providers list); `POST /api/auth/logout` unchanged. Users are keyed by lowercased username, which is filesystem-safe and doubles as the per-user folder name, so `userPaths(uid)` → `data/users/<username>/{session.json,layouts/}`. **User context still persisted to `data/users.json`** (`{ users, sessions }`); each user record stores `salt` + `passwordHash`, never the plaintext. `currentUser`/`userPaths`/`init`/`installAuthRoutes` signatures unchanged, so `server.js` needed no edits.
+- **`src/js/auth.js` (client, rewritten):** Replaced the provider-button modal with a single username/password form that toggles between **Sign in** and **Create account** (`#auSwitch`), POSTs to `/api/auth/{login,register}`, shows inline server errors, submits on Enter, and reloads on success to pull the user's saved layouts. Account modal now shows the username + Sign out.
+- **`public/css/style.css`:** Removed the unused `.sso-*` styles; added `.auth-switch` (link-style toggle) and `.auth-err`. Kept the account avatar/card styling (now initials-only — no third-party avatars).
+- **`.env.example`:** Stripped all OAuth variables; documents only optional `PORT` / `NODE_ENV`.
+- **`public/index.html` + `readme.md`:** Footer/version → v1.10.0; docs describe application-only accounts.
+
+**Verification:** `node --check` passed on `auth.js`, `src/js/auth.js`, `server.js`. Ran the server live and exercised the full flow with curl: anon `/api/me` → `{user:null}`; register `alice` sets a session cookie and `/api/me` returns her; duplicate register → 409; saving a session then logging in fresh restored **alice's own** session (per-user storage confirmed); wrong password → 401; short password → 400; logout clears the session. Cleaned up the `data/users*` test artifacts afterward. README, `.env.example`, footer, and this changelog updated to v1.10.0.
+
+---
+
+## v1.9.0 — 2026-06-22 · Multi-user accounts with Google/GitHub SSO (Roadmap item #1, superseded by v1.10.0)
 
 ### Feature — Multi-user + SSO, per-user layout storage in backend JSON
 **Problem:** The roadmap asked to make CryptoPro Charts multi-user with SSO (Google/GitHub), saving layouts under the user context, with the user context stored in a JSON file in the backend. Until now sessions and named layouts were global single-user files (`data/session.json`, `data/layouts/`), shared by anyone hitting the server.

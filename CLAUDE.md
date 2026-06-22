@@ -23,7 +23,8 @@ Add the creator to the footer of the website.
 _No open roadmap items. Completed items are logged in `memory.md`._
 
 <!-- Done:
-1. ✅ v1.9.0 — Multi-user + SSO (Google/GitHub), per-user layouts, user context stored in data/users.json. See memory.md.
+1. ✅ v1.9.0 — Multi-user + SSO (Google/GitHub), per-user layouts, user context stored in data/users.json. (Superseded by v1.10.0.)
+2. ✅ v1.10.0 — Replaced SSO with application-only username/password login. See memory.md.
 -->
 
 

@@ -4,6 +4,24 @@
 
 ---
 
+## v1.9.0 — 2026-06-22 · Multi-user accounts with Google/GitHub SSO (Roadmap item #1)
+
+### Feature — Multi-user + SSO, per-user layout storage in backend JSON
+**Problem:** The roadmap asked to make CryptoPro Charts multi-user with SSO (Google/GitHub), saving layouts under the user context, with the user context stored in a JSON file in the backend. Until now sessions and named layouts were global single-user files (`data/session.json`, `data/layouts/`), shared by anyone hitting the server.
+
+**Fix:**
+- **`auth.js` (new, server):** Self-contained auth with no new dependencies — built on Node's `fetch` + `crypto`. Implements the OAuth2 authorization-code flow for Google (`accounts.google.com` → `oauth2.googleapis.com/token` → `oauth2/v3/userinfo`) and GitHub (`github.com/login/oauth` → `api.github.com/user` + `/user/emails` for the primary verified email). Opaque session tokens (`crypto.randomBytes`) are stored server-side; a CSRF `state` is round-tripped in a short-lived `cpc_oauth_state` cookie and verified on callback. Sessions live in a 30-day `cpc_session` HttpOnly/SameSite=Lax cookie (Secure when `NODE_ENV=production`). The **user context is persisted to `data/users.json`** (`{ users, sessions }`, pretty-printed). Exposes `init(dataDir)`, `installAuthRoutes(app)`, `currentUser(req)`, and `userPaths(uid)`. Providers are gated on env credentials, so unconfigured providers return 404 and don't appear in the UI. Routes: `GET /api/me`, `GET /api/auth/:provider/login`, `GET /api/auth/:provider/callback`, `POST /api/auth/logout`.
+- **`server.js`:** Imported and initialised auth (`initAuth(data)`, `installAuthRoutes(app)`). Replaced the global `SESSION_FILE`/`LAYOUTS_DIR` constants with `pathsFor(req)`, which calls `currentUser(req)` and resolves storage via `userPaths`: a signed-in user gets `data/users/<uid>/{session.json,layouts/}`; an anonymous guest reuses the legacy `data/session.json` + `data/layouts/` so **all pre-existing layouts keep working untouched**. All four session/layout endpoints now create the per-user dir on write (`mkdir(dirname(...))`).
+- **`src/js/auth.js` (new, client):** `initAuth()` fetches `/api/me`, renders the top-bar account button (avatar/name when signed in, "👤 Sign in" otherwise), and wires a sign-in modal (one "Continue with …" button per configured provider, plus "Continue as guest") and an account modal (profile card + "Sign out" → `POST /api/auth/logout` + reload). Since layout data is already user-scoped by the cookie server-side, sign-in/out is just a (re)load.
+- **`src/js/main.js`:** `await initAuth()` runs before `loadAutosave()` so the restored session/layouts belong to the signed-in user.
+- **`public/index.html`:** Added `#accountBtn` to the top bar; footer bumped to v1.9.0.
+- **`public/css/style.css`:** Added `.acct-*` / `.sso-*` styles (avatar pills, provider buttons, account card) using existing theme variables.
+- **`.env.example` (new):** Documents `BASE_URL`, `NODE_ENV`, and the Google/GitHub client ID/secret pairs. **`.gitignore`:** ignores `data/users/`, `data/users.json`, `.env`.
+
+**Verification:** `node --check` passed on `auth.js`, `server.js`, `src/js/auth.js`, `src/js/main.js`. Ran the server live (after `npm install`): with no env, `GET /api/me` → `{"user":null,"providers":[]}`, `/api/auth/google/login` → 404, and a guest session PUT/GET round-tripped correctly via the legacy file. With `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set, `/api/me` listed the Google provider and `/api/auth/google/login` returned a 302 to the correct Google authorize URL with the right `redirect_uri`, `scope`, `state`, and a matching `cpc_oauth_state` cookie. The token-exchange + profile callback path requires real OAuth credentials to exercise end-to-end. README, `.env.example`, footer, and this changelog updated to v1.9.0.
+
+---
+
 ## v1.8.1 — 2026-06-19 · Fix stale price axis & watchlist mismatch on no-WebSocket exchanges
 
 ### Bug — Price axis frozen and chart price ≠ watchlist price (Bugs #1)

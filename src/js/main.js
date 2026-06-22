@@ -12,6 +12,7 @@ import { initScanner } from './scanner.js';
 import { initEvents } from './events.js';
 import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
 import { autosave, loadAutosave } from './persistence.js';
+import { initAuth } from './auth.js';
 import { debounce, log, toast } from './utils.js';
 
 // When a non-Binance exchange is active, any symbol shown on a chart has its
@@ -55,6 +56,10 @@ async function init() {
     return;
   }
   setAutosaveFn(autosave);
+
+  // Resolve the signed-in user first so the session/layouts we load below come
+  // from their account (server scopes /api/session by the auth cookie).
+  await initAuth();
 
   // restore or default
   const restored = await loadAutosave();

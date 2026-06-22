@@ -5,3 +5,6 @@ cache/*
 ruvector.db
 data/session.json
 data/layouts/
+data/users/
+data/users.json
+.env

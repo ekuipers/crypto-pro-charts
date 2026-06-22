@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import { EXCHANGES, TF_SECONDS } from './src/js/constants.js';
+import { init as initAuth, installAuthRoutes, currentUser, userPaths } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -11,6 +12,10 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '2mb' }));
+
+// Multi-user auth (SSO) — sessions & layouts are scoped to the signed-in user.
+initAuth(join(__dirname, 'data'));
+installAuthRoutes(app);
 
 // ---- Server-side kline cache (persists fetched bars to JSON files) ----------
 const CACHE_DIR = join(__dirname, 'cache', 'klines');
@@ -162,9 +167,14 @@ app.get('/api/events', async (_req, res) => {
   }
 });
 
-// ---- Session & named layout persistence ------------------------------------
-const SESSION_FILE = join(__dirname, 'data', 'session.json');
-const LAYOUTS_DIR  = join(__dirname, 'data', 'layouts');
+// ---- Session & named layout persistence (scoped per signed-in user) --------
+// Resolve the storage paths for whoever made this request: a logged-in user
+// gets their own data/users/<uid>/ folder; an anonymous guest reuses the legacy
+// shared files (data/session.json + data/layouts/) so existing data survives.
+async function pathsFor(req) {
+  const user = await currentUser(req);
+  return userPaths(user?.id || null);
+}
 
 // Reject names that could escape the layouts directory.
 function validLayoutName(name) {
@@ -172,9 +182,10 @@ function validLayoutName(name) {
     && !name.includes('..') && !/[/\\]/.test(name);
 }
 
-app.get('/api/session', async (_req, res) => {
+app.get('/api/session', async (req, res) => {
+  const { sessionFile } = await pathsFor(req);
   try {
-    const raw = await fs.readFile(SESSION_FILE, 'utf8');
+    const raw = await fs.readFile(sessionFile, 'utf8');
     res.type('application/json').send(raw);
   } catch {
     res.status(404).json(null);
@@ -182,23 +193,26 @@ app.get('/api/session', async (_req, res) => {
 });
 
 app.put('/api/session', async (req, res) => {
+  const { sessionFile } = await pathsFor(req);
   try {
-    await fs.writeFile(SESSION_FILE, JSON.stringify(req.body));
+    await fs.mkdir(dirname(sessionFile), { recursive: true });
+    await fs.writeFile(sessionFile, JSON.stringify(req.body));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e.message) });
   }
 });
 
-app.get('/api/layouts', async (_req, res) => {
+app.get('/api/layouts', async (req, res) => {
+  const { layoutsDir } = await pathsFor(req);
   try {
-    await fs.mkdir(LAYOUTS_DIR, { recursive: true });
-    const files = (await fs.readdir(LAYOUTS_DIR)).filter(f => f.endsWith('.json'));
+    await fs.mkdir(layoutsDir, { recursive: true });
+    const files = (await fs.readdir(layoutsDir)).filter(f => f.endsWith('.json'));
     const result = {};
     for (const f of files) {
       try {
         const name = decodeURIComponent(f.slice(0, -5));
-        result[name] = JSON.parse(await fs.readFile(join(LAYOUTS_DIR, f), 'utf8'));
+        result[name] = JSON.parse(await fs.readFile(join(layoutsDir, f), 'utf8'));
       } catch { /* skip corrupt file */ }
     }
     res.json(result);
@@ -210,9 +224,10 @@ app.get('/api/layouts', async (_req, res) => {
 app.put('/api/layouts/:name', async (req, res) => {
   const name = req.params.name;
   if (!validLayoutName(name)) return res.status(400).json({ error: 'invalid name' });
+  const { layoutsDir } = await pathsFor(req);
   try {
-    await fs.mkdir(LAYOUTS_DIR, { recursive: true });
-    await fs.writeFile(join(LAYOUTS_DIR, encodeURIComponent(name) + '.json'), JSON.stringify(req.body));
+    await fs.mkdir(layoutsDir, { recursive: true });
+    await fs.writeFile(join(layoutsDir, encodeURIComponent(name) + '.json'), JSON.stringify(req.body));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e.message) });
@@ -222,8 +237,9 @@ app.put('/api/layouts/:name', async (req, res) => {
 app.delete('/api/layouts/:name', async (req, res) => {
   const name = req.params.name;
   if (!validLayoutName(name)) return res.status(400).json({ error: 'invalid name' });
+  const { layoutsDir } = await pathsFor(req);
   try {
-    await fs.unlink(join(LAYOUTS_DIR, encodeURIComponent(name) + '.json'));
+    await fs.unlink(join(layoutsDir, encodeURIComponent(name) + '.json'));
     res.json({ ok: true });
   } catch {
     res.status(404).json({ error: 'not found' });

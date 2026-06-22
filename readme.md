@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.8.1  
+**Version:** v1.9.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -24,7 +24,8 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Tech Info pane** — RSI speedometer, daily/monthly/yearly performance pills, day's/52-week range gauges, seasonals chart
 - **Order Book pane** — Live order book depth for the active symbol
 - **Scanner** — Configurable symbol scanner across the watchlist or top pairs
-- **Layout persistence** — Autosave + named layouts saved to server; layout selector dropdown in the toolbar
+- **Multi-user accounts (SSO)** — Optional single sign-on with Google and GitHub (OAuth2). Each user's autosaved session and named layouts are stored in their own server-side JSON folder (`data/users/<uid>/`). With no providers configured the app runs single-user as an anonymous guest, reusing the legacy shared files. Account button in the top bar
+- **Layout persistence** — Autosave + named layouts saved to server (scoped per signed-in user); layout selector dropdown in the toolbar
 - **Alerts** — Price alerts with browser notifications
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
 - **Responsive footer** — Creator attribution and version number
@@ -51,7 +52,7 @@ The watchlist symbol search also queries **CoinGecko** (debounced) to discover c
 
 - **Frontend:** Vanilla ES modules (`type="module"`), no bundler
 - **Charts:** [LightweightCharts v4.1.3](https://tradingview.github.io/lightweight-charts/)
-- **Backend:** Node.js + Express — server-side kline cache (JSON files), session/layout persistence
+- **Backend:** Node.js + Express — server-side kline cache (JSON files), per-user session/layout persistence, OAuth2 SSO (no extra auth dependencies — built on Node's `fetch` + `crypto`)
 - **Styling:** Single CSS file with CSS custom properties for theming
 
 ## Getting Started
@@ -60,6 +61,21 @@ The watchlist symbol search also queries **CoinGecko** (debounced) to discover c
 npm install
 npm start        # starts on http://localhost:3000
 ```
+
+### Enabling SSO (optional)
+
+Copy `.env.example` to `.env` (or export the variables in your environment) and
+fill in OAuth credentials:
+
+| Provider | Variables | Console | Callback URL |
+|---|---|---|---|
+| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [Google Cloud](https://console.cloud.google.com/apis/credentials) | `<BASE_URL>/api/auth/google/callback` |
+| GitHub | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | [GitHub Dev Settings](https://github.com/settings/developers) | `<BASE_URL>/api/auth/github/callback` |
+
+Set `BASE_URL` to the public origin (defaults to the request host) and
+`NODE_ENV=production` to mark session cookies `Secure`. Any provider with both
+its ID and secret set automatically appears as a sign-in option; the rest stay
+hidden.
 
 ## Project Structure
 
@@ -70,6 +86,7 @@ crypto-pro-charts/
 │   └── css/style.css
 ├── src/js/
 │   ├── main.js          # app entry point
+│   ├── auth.js          # account button + SSO sign-in modal (client)
 │   ├── charts.js        # panel creation, indicators, volume profile
 │   ├── data.js          # exchange REST/WS, kline fetching, pair lists
 │   ├── constants.js     # EXCHANGES, INDICATORS_DEF, THEMES
@@ -82,8 +99,10 @@ crypto-pro-charts/
 │   ├── ui.js            # toolbar, drawing tools, dropdowns
 │   ├── utils.js         # helpers (baseAsset, quoteAsset, fmtPrice…)
 │   └── watchlist.js     # watchlist UI + symbol picker
+├── auth.js              # server-side auth: sessions + OAuth (Google/GitHub)
 ├── server.js            # Express server + kline proxy/cache
-├── data/                # session.json, layouts/
+├── .env.example         # OAuth/SSO configuration template
+├── data/                # guest session.json + layouts/, users.json, users/<uid>/
 ├── cache/klines/        # server-side bar cache
 └── memory.md            # running changelog
 ```

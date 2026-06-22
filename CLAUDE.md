@@ -20,7 +20,12 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Completed items live in `memory.md`._
+_No open roadmap items. Completed items are logged in `memory.md`._
+
+<!-- Done:
+1. ✅ v1.9.0 — Multi-user + SSO (Google/GitHub), per-user layouts, user context stored in data/users.json. See memory.md.
+-->
+
 
 ## Bugs
 

@@ -604,6 +604,28 @@ body.resizing * { pointer-events: none; }
 #alertsBtn { border-radius: 6px; border: 1px solid transparent; transition: border-color .12s; }
 #alertsBtn:hover { border-color: var(--border); }
 
+/* ---------- Account / SSO ---------- */
+.acct-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 160px; }
+.acct-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.acct-avatar-fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
+}
+.sso-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.sso-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 14px; border-radius: 6px; background: var(--panel2);
+  border: 1px solid var(--border); font-weight: 600; transition: background .12s;
+}
+.sso-btn:hover { background: var(--hover); }
+.sso-icon { font-size: 16px; width: 20px; text-align: center; }
+.sso-none code { background: var(--panel2); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+.acct-card { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+.acct-modal-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; font-size: 20px; }
+.acct-card-name { font-weight: 700; font-size: 15px; }
+.acct-card-email, .acct-card-provider { font-size: 12px; }
+
 /* ---------- Footer ---------- */
 .app-footer {
   height: 30px; min-height: 30px; flex-shrink: 0;

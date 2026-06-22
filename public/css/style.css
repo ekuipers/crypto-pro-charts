@@ -218,6 +218,10 @@ input:focus, select:focus { border-color: var(--accent); }
 .wl-tabs { display: flex; gap: 4px; padding: 0 8px 8px; overflow-x: auto; }
 .wl-tab { padding: 5px 10px; font-size: 12px; border-radius: 5px; color: var(--muted); white-space: nowrap; background: var(--panel2); }
 .wl-tab.active { background: var(--accent); color: #fff; }
+.wl-tab { cursor: grab; }
+.wl-tab.dragging { opacity: 0.45; cursor: grabbing; }
+.wl-tab.drop-before { box-shadow: inset 2px 0 0 0 var(--accent); }
+.wl-tab.drop-after { box-shadow: inset -2px 0 0 0 var(--accent); }
 .sym-list-head, .sym-row {
   display: grid; grid-template-columns: 16px 14px 1fr 70px 56px 52px 18px; align-items: center; gap: 4px; padding: 5px 8px;
 }

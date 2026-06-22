@@ -4,6 +4,19 @@
 
 ---
 
+## v1.16.0 — 2026-06-22 · Reorder watchlist tabs horizontally (Roadmap)
+
+### Feature — drag the watchlist tabs to reorder them
+**Problem:** The roadmap asked to let the watchlist be reordered horizontally. The horizontal element is the row of watchlist **tabs** (`#wlTabs`): they could be renamed/deleted/switched but their left-to-right order was fixed to creation order, with no way to rearrange them.
+
+**Fix:**
+- **`watchlist.js`:** In `renderTabs()` each `.wl-tab` button is now `draggable` with `dragstart/dragend/dragover/dragleave/drop` handlers mirroring the symbol-row reorder pattern (module-level `_dragTab` holds the tab being dragged; a left/right midpoint test on the hovered tab shows a `drop-before`/`drop-after` indicator and decides insert side). `reorderWatchlist(fromName, toName, after)` rebuilds `state.watchlists` with its keys spliced into the new order — since `state.watchlists` is a plain object and JSON serialization preserves key order, the new tab order survives `scheduleAutosave()`/reload. Re-renders tabs and autosaves.
+- **`style.css`:** Added `.wl-tab` `cursor: grab`, `.wl-tab.dragging` (dimmed + `grabbing`), and `.wl-tab.drop-before`/`.drop-after` inset left/right accent bars (the horizontal analogue of the symbol rows' top/bottom drop bars).
+
+**Verification:** `node --check src/js/watchlist.js` passes. Traced the flow: drag tab A over tab B → accent bar on the correct side → drop → `reorderWatchlist` rebuilds the keyed object → tabs re-render in the new order and autosave persists it (object key order round-trips through JSON). Active-tab highlight and current-watchlist selection are untouched by the reorder. Footer/readme → v1.16.0.
+
+---
+
 ## v1.15.0 — 2026-06-22 · Move a symbol between watchlists (Roadmap)
 
 ### Feature — right-click a watchlist row to move it to another watchlist

@@ -49,6 +49,8 @@ function toExSymbol(sym, exId) {
   if (exId === 'kucoin')        return `${base}-${quote}`;
   if (exId === 'bitstamp')      return `${base.toLowerCase()}${quote.toLowerCase()}`;
   if (exId === 'cryptocompare') return `${base}_${quote}`;
+  // Bitvavo is EUR-quoted; map stable quotes to EUR so the deep EUR book is used.
+  if (exId === 'bitvavo')       return `${base}-${(quote === 'USDT' || quote === 'USDC') ? 'EUR' : quote}`;
   // Alpaca's US crypto feed is USD-quoted; map stable quotes to USD so the
   // real-volume pair is used instead of a thin derived USDT/USDC book.
   if (exId === 'alpaca')        return `${base}/${(quote === 'USDT' || quote === 'USDC') ? 'USD' : quote}`;
@@ -70,6 +72,9 @@ function klineUrl(exId, symbol, tf, limit) {
       return `${e.rest}/market/candles?symbol=${toExSymbol(symbol, 'kucoin')}&type=${interval}&pageSize=${Math.min(limit, 1500)}`;
     case 'bitstamp':
       return `${e.rest}/ohlcdata/${toExSymbol(symbol, 'bitstamp')}/?step=${interval}&limit=${Math.min(limit, 1000)}`;
+    case 'bitvavo':
+      // Bitvavo candles: array of [time(ms),open,high,low,close,volume], newest-first.
+      return `${e.rest}/${toExSymbol(symbol, 'bitvavo')}/candles?interval=${interval}&limit=${Math.min(limit, 1440)}`;
     case 'cryptocompare': {
       const [base, quote] = toExSymbol(symbol, 'cryptocompare').split('_');
       const [endpoint, agg] = (interval || 'histohour').split('|');
@@ -112,6 +117,10 @@ function normalize(exId, raw) {
     return (raw?.data?.ohlc || []).map(k => ({
       time: Math.floor(+k.timestamp), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volume,
     }));
+  }
+  if (exId === 'bitvavo') {
+    return (raw || []).map(k => ({ time: Math.floor(+k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }))
+      .sort((a, b) => a.time - b.time);
   }
   if (exId === 'cryptocompare') {
     return (raw?.Data?.Data || [])

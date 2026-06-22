@@ -17,18 +17,11 @@ Add the creator to the footer of the website.
 6. Update version number in the footer with the lastest version in the change log.
 7. Always directly implement roadmap after the roadmap scan.
 8. Allow all edits and commands automatically.
-9. Place frontend .js files in the src/js folder.
+9. Place frontend .js files in the /src/js folder and backend .js files in the /src folder.
 
 ## Roadmap
 
 _No open roadmap items. Completed items are logged in `memory.md`._
-
-<!-- Done:
-1. ✅ v1.9.0 — Multi-user + SSO (Google/GitHub). (Superseded by v1.10.0.)
-2. ✅ v1.10.0 — Application-only username/password login.
-3. ✅ v1.11.0 — Account info as per-user JSON in Vercel Blob "Users/". (Superseded by v1.12.0.)
-4. ✅ v1.12.0 — Persistence moved to Supabase (Postgres): accounts, sessions, layouts tables. Backend modules in src/ (not src/js, which is browser-served). See memory.md.
--->
 
 ## Bugs
 

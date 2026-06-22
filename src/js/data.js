@@ -22,6 +22,8 @@ export function toExchangeSymbol(sym, exId = state.settings.exchange) {
     case 'cryptocompare': return `${base}_${quote}`;
     // Alpaca US crypto is USD-quoted; map stable quotes to USD.
     case 'alpaca':       return `${base}/${(quote === 'USDT' || quote === 'USDC') ? 'USD' : quote}`;
+    // Bitvavo is EUR-quoted; map stable quotes to EUR.
+    case 'bitvavo':      return `${base}-${(quote === 'USDT' || quote === 'USDC') ? 'EUR' : quote}`;
     default:             return sym; // binance, bybit
   }
 }
@@ -91,6 +93,14 @@ export async function fetchKlines(symbol, tf, limit = 500) {
       return (j.data?.ohlc || []).map(k => ({
         time: Math.floor(+k.timestamp), open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: +k.volume,
       }));
+    }
+    if (e.id === 'bitvavo') {
+      const inst = toExchangeSymbol(symbol, 'bitvavo');
+      const url = `${e.rest}/${inst}/candles?interval=${interval}&limit=${Math.min(limit, 1440)}`;
+      const raw = await fetchJSON(url);
+      return (raw || []).map(k => ({
+        time: Math.floor(+k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5],
+      })).sort((a, b) => a.time - b.time);
     }
     if (e.id === 'cryptocompare') {
       const [base2, quote2] = toExchangeSymbol(symbol, 'cryptocompare').split('_');
@@ -189,6 +199,12 @@ export async function fetchPrice(symbol) {
       const price = +j.last, open = +j.open;
       return { price, open, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +j.volume || 0 };
     }
+    if (e.id === 'bitvavo') {
+      const inst = toExchangeSymbol(symbol, 'bitvavo');
+      const j = await fetchJSON(`${e.rest}/ticker/24h?market=${inst}`);
+      const price = +j.last, open = +j.open || price;
+      return { price, open, high: +j.high || price, low: +j.low || price, change: open ? ((price - open) / open) * 100 : 0, chgVal: price - open, volume: +j.volumeQuote || +j.volume || 0 };
+    }
     if (e.id === 'cryptocompare') {
       const [base2, quote2] = toExchangeSymbol(symbol, 'cryptocompare').split('_');
       const j = await fetchJSON(`https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${base2}&tsyms=${quote2}`);
@@ -283,6 +299,12 @@ async function fetchExchangePairs(exId) {
         .map(s => { const parts = (s.name || '').split('/'); return parts.length === 2 ? { symbol: `${parts[0]}${parts[1]}`, name: parts[0], quote: parts[1] } : null; })
         .filter(s => s && SUPPORTED_QUOTES.includes(s.quote));
     }
+    case 'bitvavo': {
+      const j = await fetchJSON('https://api.bitvavo.com/v2/markets');
+      return (j || [])
+        .filter(s => (s.status === 'trading' || !s.status) && SUPPORTED_QUOTES.includes(s.quote))
+        .map(s => ({ symbol: `${s.base}${s.quote}`, name: s.base, quote: s.quote }));
+    }
     case 'cryptocompare':
     case 'alpaca':
       // CryptoCompare and Alpaca have no free unauthenticated pair-list endpoint;
@@ -350,6 +372,15 @@ export async function fetchOrderBook(symbol, limit = 20) {
         asks: j.asks.map(a => ({ price: +a[0], qty: +a[1] })),
       };
     }
+    if (e.id === 'bitvavo') {
+      const inst = toExchangeSymbol(symbol, 'bitvavo');
+      const j = await fetchJSON(`${e.rest}/${inst}/book?depth=${limit}`);
+      return {
+        symbol,
+        bids: (j.bids || []).map(b => ({ price: +b[0], qty: +b[1] })),
+        asks: (j.asks || []).map(a => ({ price: +a[0], qty: +a[1] })),
+      };
+    }
   } catch (e2) { warn('fetchOrderBook fallback', e2.message); }
   const j = await fetchJSON(`${EXCHANGES.binance.rest}/depth?symbol=${symbol}&limit=${limit}`);
   return {
@@ -412,6 +443,7 @@ export function openKlineStream(symbol, tf, onCandle) {
       return ws;
     }
     if (e.id === 'bybit') return openBybitKlineStream(symbol, interval, onCandle);
+    if (e.id === 'bitvavo') return openBitvavoKlineStream(toExchangeSymbol(symbol, 'bitvavo'), interval, onCandle);
     return null; // okx / gate / hyperliquid: no public kline WS wired here yet
   } catch (e2) {
     warn('openKlineStream failed', e2.message);
@@ -443,6 +475,29 @@ function openBybitKlineStream(symbol, interval, onCandle) {
   const stop = () => { if (ping) { clearInterval(ping); ping = null; } };
   ws.addEventListener('close', stop);
   ws.addEventListener('error', stop);
+  return ws;
+}
+
+// Bitvavo v2 public candle stream. Emits the live (still-forming) candle on each
+// update; Bitvavo has no per-candle "closed" flag, so the chart simply updates
+// the latest bar until a new period starts a fresh one.
+function openBitvavoKlineStream(market, interval, onCandle) {
+  const ws = new WebSocket('wss://ws.bitvavo.com/v2/');
+  ws.addEventListener('open', () => {
+    try { ws.send(JSON.stringify({ action: 'subscribe', channels: [{ name: 'candles', interval: [interval], markets: [market] }] })); } catch {}
+  });
+  ws.addEventListener('message', ev => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.event !== 'candle' || !Array.isArray(m.candle)) return;
+    const k = m.candle[0];
+    if (!k) return;
+    onCandle({
+      time: Math.floor(+k[0] / 1000),
+      open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5],
+      closed: false,
+    });
+  });
   return ws;
 }
 

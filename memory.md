@@ -4,6 +4,20 @@
 
 ---
 
+## v1.13.0 — 2026-06-22 · Add Bitvavo as a data source (Roadmap)
+
+### Feature — Bitvavo exchange support
+**Problem:** The roadmap asked to add Bitvavo (the EUR-focused Dutch exchange) as a selectable data source alongside Binance, Bybit, OKX, Gate, KuCoin, Bitstamp, CryptoCompare and Alpaca.
+
+**Fix:**
+- **`constants.js`:** Added a `bitvavo` entry to `EXCHANGES` (`rest: https://api.bitvavo.com/v2`, status `Full: REST + WebSocket (EUR)`). Intervals map `1m…1d` to Bitvavo's native values. Bitvavo has **no native weekly candle**, so `1w` is intentionally omitted — the server returns 400 for it and the client's Gate→Binance fallback chain serves weekly bars.
+- **`server.js` (kline proxy):** `toExSymbol` maps app symbols to Bitvavo's `BASE-QUOTE` form, translating stable quotes (USDT/USDC) to **EUR** so the deep EUR book is used. `klineUrl` adds the `/{market}/candles?interval=&limit=` route (max 1440). `normalize` converts Bitvavo's `[time(ms),open,high,low,close,volume]` rows (newest-first) to ascending `{time(sec),…}` bars.
+- **`data.js` (frontend):** Added Bitvavo to `toExchangeSymbol` (same EUR mapping), a direct `fetchKlines` branch, a `fetchPrice` branch (`/ticker/24h`), a `fetchExchangePairs` case (`/markets`, filters `status==='trading'` + supported quotes — 429 EUR pairs live), a `fetchOrderBook` branch (`/{market}/book`), and a live candle WebSocket `openBitvavoKlineStream` (`wss://ws.bitvavo.com/v2/`, `candles` channel) wired into `openKlineStream`.
+
+**Verification:** `node --check` on `server.js`, `data.js`, `constants.js`. Probed live Bitvavo REST: candles, `ticker/24h`, `markets` (440 total / 429 EUR-trading), and order book all returned the expected shapes. Ran the local server and hit the proxy: `?exchange=bitvavo&symbol=BTCEUR&tf=1h` returned ascending bars, and `symbol=ETHUSDT` correctly mapped to `ETH-EUR` (≈€1553) — confirming the stable-quote→EUR mapping. Footer → v1.13.0.
+
+---
+
 ## v1.12.0 — 2026-06-22 · Move persistence to Supabase (Postgres); retire blob/JSON storage (Roadmap)
 
 ### Feature — Database-backed accounts, sessions & layouts

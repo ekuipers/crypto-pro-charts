@@ -341,19 +341,21 @@ input:focus, select:focus { border-color: var(--accent); }
 .set-warn { color: var(--red); font-size: 11px; margin-bottom: 10px; min-height: 14px; }
 .set-section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 4px 0 6px; }
 .set-ex-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; padding: 4px; }
-/* flex-direction:row overrides the column `.modal label` default so the
-   checkbox, name and status sit on one line. */
-.set-ex-row { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; cursor: pointer; margin-bottom: 0; }
-.set-ex-row input { flex: 0 0 auto; }
-.set-ex-row:hover { background: var(--hover); }
-.set-ex-row input { accent-color: var(--accent); cursor: pointer; }
+/* Each row is a <label>, so these MUST out-specify the global `.modal label`
+   rule (0,1,1) which forces flex-direction:column. Scoping under
+   `.modal-settings` (0,2,0) wins, keeping the checkbox + name + status on one
+   horizontal row. */
+.modal-settings .set-ex-row { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; cursor: pointer; margin: 0; }
+.modal-settings .set-ex-row:hover { background: var(--hover); }
+.modal-settings .set-ex-row input { flex: 0 0 auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .set-ex-name { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .set-ex-status { margin-left: auto; font-size: 10px; color: var(--muted); white-space: nowrap; }
 
 /* Settings dialog: wider to fit the exchange rows, and user-resizable via the
-   native bottom-right size handle (clamped by the modal's max-width/height). */
+   native bottom-right size handle (clamped by the modal's max-width/height).
+   Flex column + a flexing list makes the list grow/shrink with the dialog. */
 .modal.modal-settings { width: 480px; min-width: 360px; min-height: 300px; resize: both; overflow: auto; display: flex; flex-direction: column; }
-.modal.modal-settings .set-ex-list { flex: 1 1 auto; max-height: none; }
+.modal.modal-settings .set-ex-list { flex: 1 1 auto; min-height: 120px; max-height: none; }
 
 .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }

@@ -4,6 +4,20 @@
 
 ---
 
+## v1.14.2 — 2026-06-22 · Fix: Settings exchange rows still stacking; list now flexes (Bugs #1)
+
+### Bug — exchange rows still vertical; list didn't size with the dialog
+**Problem:** Despite the v1.14.1 fix, the "Exchanges to query" rows still stacked the checkbox above the label, and the list stayed a fixed height instead of growing with the (resizable) Settings dialog.
+
+**Root cause:** A **CSS specificity** miss. Each row is a `<label>`, and the global `.modal label { flex-direction: column }` rule has specificity (0,1,1). The v1.14.1 `.set-ex-row { flex-direction: row }` rule is only (0,1,0), so the global rule kept winning and the rows stayed in a column (the global `margin-bottom: 10px` also still applied).
+
+**Fix:**
+- **`style.css`:** Re-scoped the row rules under `.modal-settings .set-ex-row` (specificity 0,2,0), which out-specifies `.modal label` (0,1,1) — so `flex-direction: row`, zeroed margins and the input reset now actually apply, putting the checkbox + name + status on one horizontal row. The list override also gained `min-height: 120px` alongside `flex: 1 1 auto; max-height: none` so it grows/shrinks with the dialog as the user resizes it.
+
+**Verification:** Compared selector specificities (0,2,0 > 0,1,1) to confirm the override now wins; the flex-column dialog with a `flex:1` list grows the list on vertical resize. Footer/readme → v1.14.2.
+
+---
+
 ## v1.14.1 — 2026-06-22 · Fix: sloppy Settings exchange list; resizable dialog (Bugs #1)
 
 ### Bug — exchange rows misaligned (checkbox wrapping to next line)

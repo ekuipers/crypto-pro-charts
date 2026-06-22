@@ -4,6 +4,27 @@
 
 ---
 
+## v1.16.2 — 2026-06-22 · Fix: prices stop updating after the tab loses focus (Bugs #1)
+
+### Bug — live prices freeze when focus leaves the charts
+**Problem:** When focus/visibility left the page (switching tabs or apps), the watchlist prices stopped updating and never resumed until a full reload.
+
+**Root cause:** The live price feed (`openPriceStream` → Binance `!miniTicker@arr` WebSocket) had **no `onclose`/reconnect logic**. Browsers suspend and eventually close WebSockets on backgrounded tabs (and idle sockets get dropped server-side), so the stream died silently. The existing `visibilitychange` handler in `main.js` only called `resizeAllCharts()` — nothing re-established the socket — so rows stayed frozen on the last-seen prices.
+
+**Fix:**
+- **`data.js`:**
+  - `openPriceStream(onUpdate, onClose)` now takes an `onClose` callback and wires `ws.onclose`, which fires `onClose()` **only on an unexpected close**. Intent is tracked **per-socket** (`ws._intentional`) instead of via a shared flag, so the old socket's async close during a reopen can't be misread as a genuine drop. The synchronous-construction-failure path also calls `onClose()`.
+  - `closePriceStream()` marks the socket `_intentional` before closing.
+  - New `priceStreamLive()` returns true only while the socket is `OPEN`.
+- **`main.js`:**
+  - `startPriceStream()` passes `onPriceStreamClosed` as the close handler, resets the retry counter on `open`, and clears any pending reconnect at the top so a reconnect timer and a focus/visibility check can't stack duplicate sockets.
+  - `onPriceStreamClosed()` reconnects with **capped exponential backoff** (1s → 15s).
+  - `ensurePriceStream()` reconnects immediately if the socket isn't live; it's now called from `visibilitychange` (tab visible), `window` `focus`, and `online` events — so returning to the tab or regaining network resumes prices without waiting out the backoff.
+
+**Verification:** `node --check` on `data.js` and `main.js` passes. Traced the lifecycle: background tab → browser closes socket → `onclose` (not intentional) → `onPriceStreamClosed` schedules a backoff reconnect; returning to the tab fires `visibilitychange`/`focus` → `ensurePriceStream` sees `priceStreamLive() === false` → immediate `startPriceStream`. Reopen race covered by the per-socket `_intentional` flag (settings-driven `restart-price-stream` reopen no longer self-triggers a reconnect). Footer/readme → v1.16.2.
+
+---
+
 ## v1.16.1 — 2026-06-22 · Persist the re-ordered watchlist tab order (Roadmap)
 
 ### Fix — drag-reordered watchlist tabs didn't survive a reload

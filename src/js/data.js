@@ -431,8 +431,11 @@ export async function fetchOrderBook(symbol, limit = 20, exId = defaultExchange(
 }
 
 // ---- WebSocket: live mini-tickers for all symbols ---------
-// onUpdate({symbol, price, change, open})
-export function openPriceStream(onUpdate) {
+// onUpdate({symbol, price, change, open}); onClose() fires only on an
+// *unexpected* socket close so the caller can reconnect. Intent is tracked
+// per-socket (ws._intentional) rather than via a shared flag, so the old
+// socket's async close during a reopen can't be misread as a genuine drop.
+export function openPriceStream(onUpdate, onClose) {
   closePriceStream();
   try {
     const ws = new WebSocket('wss://stream.binance.com:9443/ws/!miniTicker@arr');
@@ -450,15 +453,26 @@ export function openPriceStream(onUpdate) {
       }
     };
     ws.onerror = () => warn('price stream error');
+    ws.onclose = () => {
+      if (state.ws === ws) state.ws = null;
+      if (!ws._intentional && onClose) onClose();
+    };
     return ws;
   } catch (e) {
     warn('openPriceStream failed', e.message);
+    if (onClose) onClose();
     return null;
   }
 }
 
 export function closePriceStream() {
-  if (state.ws) { try { state.ws.close(); } catch {} state.ws = null; }
+  if (state.ws) { try { state.ws._intentional = true; state.ws.close(); } catch {} state.ws = null; }
+}
+
+// True only while the price socket is actually OPEN — used to decide whether to
+// reconnect when the tab regains focus.
+export function priceStreamLive() {
+  return !!state.ws && state.ws.readyState === WebSocket.OPEN;
 }
 
 // ---- WebSocket: live kline for one panel ------------------

@@ -2,7 +2,7 @@
 // MAIN — app entry point
 // ============================================================
 import { state } from './state.js';
-import { openPriceStream, closePriceStream, refreshMissingPrices, defaultExchange } from './data.js';
+import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, defaultExchange } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
@@ -24,13 +24,16 @@ function isChartPinned(symbol) {
 }
 
 function startPriceStream() {
+  // Cancel any pending reconnect so we don't stack duplicate sockets when a
+  // reconnect timer and a focus/visibility check both fire.
+  clearTimeout(startPriceStream._reconnect);
   updateWSStatus('');
   const ws = openPriceStream(batch => {
     if (isChartPinned(batch.symbol)) return;
     state.prices[batch.symbol] = { price: batch.price, open: batch.open, change: batch.change, chgVal: batch.chgVal };
-  });
+  }, onPriceStreamClosed);
   if (ws) {
-    ws.addEventListener('open', () => updateWSStatus('connected'));
+    ws.addEventListener('open', () => { startPriceStream._retry = 0; updateWSStatus('connected'); });
     ws.addEventListener('error', () => updateWSStatus('error'));
   }
   // throttle row updates to ~1s
@@ -48,6 +51,23 @@ function startPriceStream() {
     setTimeout(pollMissing, 2000);
     startPriceStream._missingTimer = setInterval(pollMissing, 30000);
   }
+}
+
+// The price socket closed unexpectedly (tab backgrounded, network blip, server
+// drop). Reconnect with capped exponential backoff so prices resume on their
+// own — previously the stream just died and rows stopped updating until reload.
+function onPriceStreamClosed() {
+  updateWSStatus('error');
+  const retry = startPriceStream._retry = (startPriceStream._retry || 0) + 1;
+  const delay = Math.min(15000, 1000 * 2 ** Math.min(retry, 4));
+  clearTimeout(startPriceStream._reconnect);
+  startPriceStream._reconnect = setTimeout(startPriceStream, delay);
+}
+
+// Reconnect immediately if the socket isn't live when the user returns to the
+// tab / window, or the network comes back — rather than waiting out the backoff.
+function ensurePriceStream() {
+  if (!priceStreamLive()) startPriceStream();
 }
 
 async function init() {
@@ -83,7 +103,11 @@ async function init() {
   });
 
   window.addEventListener('resize', debounce(resizeAllCharts, 150));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) resizeAllCharts(); });
+  // When the tab/window regains focus or the network returns, redraw charts and
+  // make sure the price stream is alive (browsers suspend backgrounded sockets).
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { resizeAllCharts(); ensurePriceStream(); } });
+  window.addEventListener('focus', ensurePriceStream);
+  window.addEventListener('online', ensurePriceStream);
 
   // right panel splitter
   initSplitter();

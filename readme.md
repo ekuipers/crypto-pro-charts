@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.16.1  
+**Version:** v1.16.2  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.

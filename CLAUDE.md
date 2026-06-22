@@ -25,4 +25,5 @@ Add the creator to the footer of the website.
 _No open roadmap items. Completed items are logged in `memory.md`._
 
 ## Bugs
-1. When focus went away from the proce charts, the prices are not updated.
+
+_No open bugs. Fixed bugs are logged in `memory.md`._

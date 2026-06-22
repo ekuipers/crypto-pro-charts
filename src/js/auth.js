@@ -61,22 +61,31 @@ function signInModal() {
       if (!username || !password) { errEl.textContent = 'Enter a username and password.'; return; }
       busy = true; buttons.forEach(b => (b.disabled = true));
       errEl.textContent = action === 'register' ? 'Creating account…' : 'Signing in…';
+      const reset = () => { busy = false; buttons.forEach(b => (b.disabled = false)); };
+      // Never spin forever — abort the request if the server doesn't answer.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
       try {
         const r = await fetch(`/api/auth/${action}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
+          signal: ctrl.signal,
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
           errEl.textContent = data.error || (action === 'register' ? 'Could not create account.' : 'Sign-in failed.');
-          busy = false; buttons.forEach(b => (b.disabled = false));
+          reset();
           return;
         }
         window.location.reload(); // reload to pull this user's saved layouts
-      } catch {
-        errEl.textContent = 'Network error — try again.';
-        busy = false; buttons.forEach(b => (b.disabled = false));
+      } catch (e) {
+        errEl.textContent = e.name === 'AbortError'
+          ? 'Server did not respond — please try again.'
+          : 'Network error — try again.';
+        reset();
+      } finally {
+        clearTimeout(timer);
       }
     };
     m.querySelector('#auRegister').addEventListener('click', () => go('register'));

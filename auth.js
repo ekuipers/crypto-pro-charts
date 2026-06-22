@@ -29,9 +29,23 @@ async function readStore() {
     return { users: {}, sessions: {} };
   }
 }
+// Retry transient filesystem errors. The repo often lives in a OneDrive-synced
+// folder whose sync client briefly locks files, surfacing as EBUSY/EPERM/EACCES
+// on writeFile/mkdir — without this a single lock would crash/hang the request.
+const TRANSIENT = new Set(['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY']);
+async function withRetry(fn, tries = 5) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) {
+      if (i >= tries - 1 || !TRANSIENT.has(e.code)) throw e;
+      await new Promise(r => setTimeout(r, 60 * (i + 1)));
+    }
+  }
+}
+
 async function writeStore(store) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(USERS_FILE, JSON.stringify(store, null, 2));
+  await withRetry(() => fs.mkdir(DATA_DIR, { recursive: true }));
+  await withRetry(() => fs.writeFile(USERS_FILE, JSON.stringify(store, null, 2)));
 }
 
 // ---- Passwords (salted scrypt + constant-time compare) ---------------------
@@ -119,55 +133,67 @@ export function installAuthRoutes(app) {
   });
 
   app.post('/api/auth/register', async (req, res) => {
-    const username = String(req.body?.username || '').trim();
-    const password = String(req.body?.password || '');
-    if (!USERNAME_RE.test(username)) {
-      return res.status(400).json({ error: 'Username must be 3-32 chars: letters, digits, . _ -' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-    const uid = normUser(username);
-    const store = await readStore();
-    if (store.users[uid]) return res.status(409).json({ error: 'Username already taken' });
+    try {
+      const username = String(req.body?.username || '').trim();
+      const password = String(req.body?.password || '');
+      if (!USERNAME_RE.test(username)) {
+        return res.status(400).json({ error: 'Username must be 3-32 chars: letters, digits, . _ -' });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      const uid = normUser(username);
+      const store = await readStore();
+      if (store.users[uid]) return res.status(409).json({ error: 'Username already taken' });
 
-    const salt = token(16);
-    const now = Date.now();
-    store.users[uid] = {
-      id: uid, username, displayName: username,
-      salt, passwordHash: hashPassword(password, salt),
-      createdAt: now, lastLogin: now,
-    };
-    const sid = await createSession(store, uid);
-    await writeStore(store);
-    await fs.mkdir(join(USERS_SUBDIR, uid, 'layouts'), { recursive: true });
+      const salt = token(16);
+      const now = Date.now();
+      store.users[uid] = {
+        id: uid, username, displayName: username,
+        salt, passwordHash: hashPassword(password, salt),
+        createdAt: now, lastLogin: now,
+      };
+      const sid = await createSession(store, uid);
+      await writeStore(store);
+      // The layouts folder is created lazily on first save too, so a transient
+      // failure here must not fail (or hang) the registration.
+      try { await withRetry(() => fs.mkdir(join(USERS_SUBDIR, uid, 'layouts'), { recursive: true })); } catch { /* lazy */ }
 
-    setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
-    res.json({ user: publicUser(store.users[uid]) });
+      setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
+      res.json({ user: publicUser(store.users[uid]) });
+    } catch (e) {
+      res.status(500).json({ error: 'Could not create account — storage error, please retry.' });
+    }
   });
 
   app.post('/api/auth/login', async (req, res) => {
-    const uid = normUser(req.body?.username);
-    const password = String(req.body?.password || '');
-    const store = await readStore();
-    const user = store.users[uid];
-    // Same response whether the user is missing or the password is wrong.
-    if (!user || !verifyPassword(password, user.salt, user.passwordHash)) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+    try {
+      const uid = normUser(req.body?.username);
+      const password = String(req.body?.password || '');
+      const store = await readStore();
+      const user = store.users[uid];
+      // Same response whether the user is missing or the password is wrong.
+      if (!user || !verifyPassword(password, user.salt, user.passwordHash)) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+      }
+      user.lastLogin = Date.now();
+      const sid = await createSession(store, uid);
+      await writeStore(store);
+      setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
+      res.json({ user: publicUser(user) });
+    } catch (e) {
+      res.status(500).json({ error: 'Sign-in failed — storage error, please retry.' });
     }
-    user.lastLogin = Date.now();
-    const sid = await createSession(store, uid);
-    await writeStore(store);
-    setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
-    res.json({ user: publicUser(user) });
   });
 
   app.post('/api/auth/logout', async (req, res) => {
-    const sid = parseCookies(req)[SESSION_COOKIE];
-    if (sid) {
-      const store = await readStore();
-      if (store.sessions[sid]) { delete store.sessions[sid]; await writeStore(store); }
-    }
+    try {
+      const sid = parseCookies(req)[SESSION_COOKIE];
+      if (sid) {
+        const store = await readStore();
+        if (store.sessions[sid]) { delete store.sessions[sid]; await writeStore(store); }
+      }
+    } catch { /* clear the cookie regardless */ }
     clearCookie(res, SESSION_COOKIE);
     res.json({ ok: true });
   });

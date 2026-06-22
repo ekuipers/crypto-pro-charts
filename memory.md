@@ -4,6 +4,20 @@
 
 ---
 
+## v1.10.2 — 2026-06-22 · Fix: account creation stuck on "Creating account…" forever
+
+### Bug — Register/login could hang the UI indefinitely (Bugs #1)
+**Problem:** Entering a valid username/password and clicking "Create account" sometimes stuck on "Creating account…" forever. Root cause: the `/api/auth/register` and `/api/auth/login` route handlers were `async` with **no try/catch**, and they `await fs.writeFile`/`fs.mkdir`. The project lives in a **OneDrive-synced** folder ("OneDrive - Capgemini"), whose sync client intermittently locks files and makes those writes throw `EBUSY`/`EPERM`. An unhandled rejection in an Express 4 handler never sends a response (and on newer Node crashes the process) — so the client's `fetch` stayed pending and the spinner never resolved. Reproduced deterministically by replacing the `data/users` dir with a file to force `mkdir` to throw: the request returned no response and the server died on the unhandled rejection.
+
+**Fix (defense in depth, three layers):**
+- **`auth.js` — resilient writes:** Added `withRetry()` that retries transient FS errors (`EBUSY`/`EPERM`/`EACCES`/`ENOTEMPTY`) up to 5× with linear backoff; `writeStore()` now wraps both its `mkdir` and `writeFile` in it. This rides out OneDrive's brief file locks instead of failing on the first one.
+- **`auth.js` — always respond:** Wrapped the `register`, `login`, and `logout` handler bodies in try/catch that returns `500 { error: '… storage error, please retry.' }` (logout still clears the cookie). The per-user `layouts` `mkdir` in register is now best-effort (its own try/catch) since that folder is also created lazily on first layout save — so a lock there can't fail registration.
+- **`src/js/auth.js` — client timeout:** The auth `fetch` now uses an `AbortController` with a 15 s timeout; on abort it shows "Server did not respond — please try again." and re-enables the buttons. The UI can no longer spin forever regardless of server behaviour.
+
+**Verification:** `node --check` passed on `auth.js` and `src/js/auth.js`. Live test: a normal register returns the user (200); after replacing `data/users` with a file to force the old failure, register now **completes with 200** (layouts mkdir is non-fatal) and, crucially, **the server stays alive** (`/api/me` for the earlier user still works) instead of crashing/hanging as before. Footer/README → v1.10.2; bug moved out of `CLAUDE.md`.
+
+---
+
 ## v1.10.1 — 2026-06-22 · Fix: "Create account" button didn't create an account
 
 ### Bug — Sign-in dialog wouldn't progress on "Create account" (Bugs #1)

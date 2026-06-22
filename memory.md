@@ -4,6 +4,24 @@
 
 ---
 
+## v1.15.0 — 2026-06-22 · Move a symbol between watchlists (Roadmap)
+
+### Feature — right-click a watchlist row to move it to another watchlist
+**Problem:** The roadmap asked for the ability to move a symbol from one watchlist to another. Previously the only ways to manage a symbol's membership were to add it (via the picker/search) or remove it (the × button) — there was no way to relocate an existing entry, so users had to remove-then-re-add it (losing its place and any per-symbol color).
+
+**Fix:**
+- **`watchlist.js`:**
+  - Added a `contextmenu` handler on each `.sym-row` that opens a context menu via `rowContextMenu(e, item, exchange)`.
+  - `rowContextMenu` lists a **"Move to ‹name›"** entry for every *other* watchlist, plus a **Remove** entry. When there are no other watchlists it shows a disabled "No other watchlists" placeholder.
+  - `moveSymbol(item, exchange, targetName)` splices the entry (matched by **symbol+exchange** identity, consistent with the rest of the file) out of the current watchlist and pushes it onto the target. If the target already holds that symbol+exchange it just drops the source copy (no duplicate) and warns; otherwise it toasts a success message. Re-renders and `scheduleAutosave()`s either way, so the change persists to Supabase.
+  - The existing `.sym-dot` color context menu now calls `e.stopPropagation()` so right-clicking the color dot doesn't also trigger the new row menu.
+  - `showMenu` now honours an `it.disabled` flag, rendering the item as a non-clickable `.ctx-disabled` button.
+- **`style.css`:** Added `.ctx-menu button.ctx-disabled` styling (muted color, no hover background, default cursor).
+
+**Verification:** `node --check src/js/watchlist.js` passes. Traced the move flow: right-click row → menu lists other watchlists → pick one → entry moves (preserving its `name`, `exchange` and identity), list re-renders, autosave fires. Duplicate-target and single-watchlist edge cases handled. Footer/readme → v1.15.0.
+
+---
+
 ## v1.14.2 — 2026-06-22 · Fix: Settings exchange rows still stacking; list now flexes (Bugs #1)
 
 ### Bug — exchange rows still vertical; list didn't size with the dialog

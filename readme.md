@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.14.2  
+**Version:** v1.15.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -17,7 +17,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Oscillator panes** — RSI, MACD, Stochastic, ATR, ADX render in sub-panes below the main chart
 - **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
 - **Symbol overlay** — Compare multiple symbols on one chart with independent price scales
-- **Watchlist** — Multiple named watchlists, drag-to-reorder, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream; the symbol shown on the currently selected chart is highlighted in the list. Selecting a symbol that's already open on another chart focuses that chart instead of duplicating it
+- **Watchlist** — Multiple named watchlists, drag-to-reorder, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream; the symbol shown on the currently selected chart is highlighted in the list. Selecting a symbol that's already open on another chart focuses that chart instead of duplicating it. **Right-click a symbol to move it to another watchlist** (or remove it)
 - **Symbol picker** — Searchable add-symbol dialog with an **exchange filter** (multi-select; none selected = all enabled exchanges) plus a quote-currency filter (All / USDT / USDC / USD / EUR) and a "Hide stablecoins" filter (on by default) that drops stable/stable pairs from both exchange and CoinGecko results. Picked symbols remember which exchange they came from
 - **MA crossing markers** — Golden/death cross arrows drawn where adjacent SMA/EMA overlays cross (up arrow below bar for bullish, down arrow above bar for bearish), coloured with the up/down theme colours
 - **Event markers** — High-impact economic events overlaid on the chart; past events snapped to the correct candle period, future events projected up to 2 weeks ahead at their correct future date (rendered on a hidden series so LWC doesn't snap them to the last candle)

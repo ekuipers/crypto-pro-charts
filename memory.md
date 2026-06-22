@@ -4,6 +4,19 @@
 
 ---
 
+## v1.10.1 — 2026-06-22 · Fix: "Create account" button didn't create an account
+
+### Bug — Sign-in dialog wouldn't progress on "Create account" (Bugs #1)
+**Problem:** The auth dialog opened in *login* mode with a mode-toggle link labelled **"Create account"** sitting next to the primary **"Sign in"** button. Clicking "Create account" only re-rendered the dialog into register mode (and wiped any typed username/password) instead of creating the account — so a new user clicking the obvious "Create account" button never registered and then couldn't log in. The backend `/api/auth/register` route was fine (verified by curl); the defect was purely the confusing client toggle.
+
+**Fix:**
+- **`src/js/auth.js`:** Replaced the mode-toggle `authModal(mode)` with a single `signInModal()` that has **two explicit action buttons over one shared form** — `Create account` (→ `POST /api/auth/register`) and `Sign in` (→ `POST /api/auth/login`). Both read the same username/password fields, so the "Create account" button now always registers. Added an in-flight guard that disables both buttons and shows a "Creating account…/Signing in…" status, distinct error fallbacks per action, and Enter-to-sign-in. `initAuth` now calls `signInModal()`.
+- **`public/css/style.css`:** Removed the now-unused `.auth-switch` link style; added `.modal-actions button:disabled` styling for the busy state.
+
+**Verification:** `node --check src/js/auth.js` passed. Ran the server live: `POST /api/auth/register` for a new user returns the user + session cookie and `/api/me` then reports them; an invalid username (`"a b"`) returns 400. The dialog now exposes "Create account" as a real submit action rather than a form switch. Footer bumped to v1.10.1; bug moved out of `CLAUDE.md`.
+
+---
+
 ## v1.10.0 — 2026-06-22 · Replace SSO with application-only username/password login (Roadmap)
 
 ### Change — Drop Google/GitHub OAuth; add built-in username + password accounts

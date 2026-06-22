@@ -33,46 +33,55 @@ function renderButton(user) {
   }
 }
 
-// One modal handling both Sign in and Create account via a mode toggle.
-function authModal(mode = 'login') {
-  const isLogin = mode === 'login';
+// One form, two explicit actions — "Create account" and "Sign in" both submit
+// the same username/password. No mode toggle, so the visible "Create account"
+// button always creates the account (rather than just re-rendering the form).
+function signInModal() {
   showModal(`
-    <h3>${isLogin ? 'Sign in' : 'Create account'}</h3>
-    <p class="muted">Your chart layouts and watchlists are saved to your account.</p>
-    <label>Username<input id="auUser" autocomplete="username" placeholder="your name"></label>
-    <label>Password<input id="auPass" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" placeholder="${isLogin ? 'password' : 'at least 6 characters'}"></label>
+    <h3>Sign in to CryptoPro Charts</h3>
+    <p class="muted">New here? Pick a username and password and choose <b>Create account</b>. Your chart layouts and watchlists are saved to your account.</p>
+    <label>Username<input id="auUser" autocomplete="username" placeholder="3-32 letters, digits, . _ -"></label>
+    <label>Password<input id="auPass" type="password" autocomplete="current-password" placeholder="at least 6 characters"></label>
     <div class="auth-err set-warn" id="auErr"></div>
     <div class="modal-actions">
-      <button id="auSwitch" class="auth-switch">${isLogin ? 'Create account' : 'Have an account? Sign in'}</button>
-      <button id="auSubmit" class="primary-btn">${isLogin ? 'Sign in' : 'Create account'}</button>
+      <button id="auRegister">Create account</button>
+      <button id="auLogin" class="primary-btn">Sign in</button>
     </div>`, m => {
     const userEl = m.querySelector('#auUser');
     const passEl = m.querySelector('#auPass');
     const errEl = m.querySelector('#auErr');
+    const buttons = m.querySelectorAll('.modal-actions button');
     userEl.focus();
 
-    m.querySelector('#auSwitch').addEventListener('click', () => authModal(isLogin ? 'register' : 'login'));
-
-    const submit = async () => {
+    let busy = false;
+    const go = async (action) => {
+      if (busy) return;
       const username = userEl.value.trim();
       const password = passEl.value;
       if (!username || !password) { errEl.textContent = 'Enter a username and password.'; return; }
-      errEl.textContent = '';
+      busy = true; buttons.forEach(b => (b.disabled = true));
+      errEl.textContent = action === 'register' ? 'Creating account…' : 'Signing in…';
       try {
-        const r = await fetch(`/api/auth/${isLogin ? 'login' : 'register'}`, {
+        const r = await fetch(`/api/auth/${action}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         });
         const data = await r.json().catch(() => ({}));
-        if (!r.ok) { errEl.textContent = data.error || 'Sign-in failed.'; return; }
+        if (!r.ok) {
+          errEl.textContent = data.error || (action === 'register' ? 'Could not create account.' : 'Sign-in failed.');
+          busy = false; buttons.forEach(b => (b.disabled = false));
+          return;
+        }
         window.location.reload(); // reload to pull this user's saved layouts
       } catch {
         errEl.textContent = 'Network error — try again.';
+        busy = false; buttons.forEach(b => (b.disabled = false));
       }
     };
-    m.querySelector('#auSubmit').addEventListener('click', submit);
-    passEl.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+    m.querySelector('#auRegister').addEventListener('click', () => go('register'));
+    m.querySelector('#auLogin').addEventListener('click', () => go('login'));
+    passEl.addEventListener('keydown', e => { if (e.key === 'Enter') go('login'); });
   });
 }
 
@@ -105,7 +114,7 @@ export async function initAuth() {
   currentUser = me.user;
   renderButton(me.user);
   document.getElementById('accountBtn')?.addEventListener('click', () => {
-    if (currentUser) accountModal(currentUser); else authModal('login');
+    if (currentUser) accountModal(currentUser); else signInModal();
   });
   return me;
 }

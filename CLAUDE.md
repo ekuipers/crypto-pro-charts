@@ -18,6 +18,7 @@ Add the creator to the footer of the website.
 7. Always directly implement roadmap after the roadmap scan.
 8. Allow all edits and commands automatically.
 9. Place frontend .js files in the /src/js folder and backend .js files in the /src folder.
+10. Use favicon as Site logo.
 
 ## Roadmap
 

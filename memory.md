@@ -4,6 +4,21 @@
 
 ---
 
+## v1.14.1 — 2026-06-22 · Fix: sloppy Settings exchange list; resizable dialog (Bugs #1)
+
+### Bug — exchange rows misaligned (checkbox wrapping to next line)
+**Problem:** The new "Exchanges to query" list in the Settings dialog looked sloppy — each row's checkbox, name and status stacked vertically instead of sitting on one line, and the 380px dialog was too narrow for the rows.
+
+**Root cause:** Each exchange row (`.set-ex-row`) is a `<label>`, and the global `.modal label` rule forces `flex-direction: column`. `.set-ex-row` set `display:flex; align-items:center` but didn't override the inherited column direction, so the checkbox/name/status laid out as a column.
+
+**Fix:**
+- **`style.css`:** `.set-ex-row` now sets `flex-direction: row` (with `white-space: nowrap` on the name/status and a non-shrinking checkbox) so each exchange sits neatly on one line. Added a `.modal.modal-settings` shell — **480px wide**, `min-width/min-height`, **`resize: both`** with `overflow: auto` (native bottom-right size handle, clamped by the modal's existing `max-width:92vw`/`max-height:88vh`), laid out as a flex column so the exchange list (`flex:1; max-height:none`) grows to fill the dialog as it's resized.
+- **`settings.js`:** The settings modal's `after` callback adds the `modal-settings` class to the modal element.
+
+**Verification:** `node --check` on `settings.js`. Reviewed the cascade: `.modal label` (column) was the culprit; `.set-ex-row { flex-direction: row }` overrides it. Footer/readme → v1.14.1.
+
+---
+
 ## v1.14.0 — 2026-06-22 · Multi-exchange watchlists (Roadmap)
 
 ### Feature — add symbols from multiple exchanges; per-symbol exchange

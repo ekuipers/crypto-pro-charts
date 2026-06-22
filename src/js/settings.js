@@ -39,6 +39,8 @@ function openSettings() {
     <label>Down candle color <input type="color" id="setDown" value="${s.downColor}"></label>
     <div class="modal-actions"><button id="setClose">Close</button><button id="setApply" class="primary-btn">Apply</button></div>`;
   showModal(html, m => {
+    // Wider, resizable shell so the exchange rows lay out neatly on one line.
+    m.classList.add('modal-settings');
     const warn = m.querySelector('#setWarn');
     const cbs = () => [...m.querySelectorAll('.set-ex-cb')];
     const selected = () => cbs().filter(c => c.checked).map(c => c.value);

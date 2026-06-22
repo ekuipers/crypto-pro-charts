@@ -10,7 +10,7 @@ Add the creator to the footer of the website.
 # Workflow rule
 
 1. After every change to a code file, append a dated entry to `memory.md` describing what changed and why (problem, fix, and how it was verified). Treat `memory.md` as the running changelog — no code edit is complete until `memory.md` is updated. 
-2. Do not start the local server.
+2. Only start local node server for testing purpose.
 3. Move completed roadmap items and bug fixes to the memory file for reference and change log purpose
 4. Automatically commit changes to git and sync with remote repo
 5. Update documentation.
@@ -23,10 +23,10 @@ Add the creator to the footer of the website.
 _No open roadmap items. Completed items are logged in `memory.md`._
 
 <!-- Done:
-1. ✅ v1.9.0 — Multi-user + SSO (Google/GitHub), per-user layouts, user context stored in data/users.json. (Superseded by v1.10.0.)
-2. ✅ v1.10.0 — Replaced SSO with application-only username/password login. See memory.md.
+1. ✅ v1.9.0 — Multi-user + SSO (Google/GitHub). (Superseded by v1.10.0.)
+2. ✅ v1.10.0 — Replaced SSO with application-only username/password login.
+3. ✅ v1.11.0 — Account info stored as per-user JSON files in the Vercel Blob "Users/" folder. See memory.md.
 -->
-
 
 ## Bugs
 

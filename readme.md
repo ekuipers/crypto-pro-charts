@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.10.2  
+**Version:** v1.11.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -24,7 +24,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Tech Info pane** — RSI speedometer, daily/monthly/yearly performance pills, day's/52-week range gauges, seasonals chart
 - **Order Book pane** — Live order book depth for the active symbol
 - **Scanner** — Configurable symbol scanner across the watchlist or top pairs
-- **Multi-user accounts** — Application-only sign-in with a username and password (no third-party SSO). Passwords are salted + scrypt-hashed; the user context is stored in `data/users.json`. Each user's autosaved session and named layouts live in their own server-side folder (`data/users/<username>/`). With nobody signed in the app runs as an anonymous guest, reusing the legacy shared files. Account button in the top bar (Sign in / Create account)
+- **Multi-user accounts** — Application-only sign-in with a username and password (no third-party SSO). Passwords are salted + scrypt-hashed. Each user's account is stored as a **separate private JSON file in the Vercel Blob store's `Users/` folder** (`Users/<username>.json`) when a blob token is configured, falling back to local `data/accounts/` otherwise. Each user's autosaved session and named layouts live in their own server-side folder (`data/users/<username>/`). With nobody signed in the app runs as an anonymous guest, reusing the legacy shared files. Account button in the top bar (Sign in / Create account)
 - **Layout persistence** — Autosave + named layouts saved to server (scoped per signed-in user); layout selector dropdown in the toolbar
 - **Alerts** — Price alerts with browser notifications
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
@@ -52,7 +52,7 @@ The watchlist symbol search also queries **CoinGecko** (debounced) to discover c
 
 - **Frontend:** Vanilla ES modules (`type="module"`), no bundler
 - **Charts:** [LightweightCharts v4.1.3](https://tradingview.github.io/lightweight-charts/)
-- **Backend:** Node.js + Express — server-side kline cache (JSON files), per-user session/layout persistence, username/password auth (no extra dependencies — salted scrypt hashing via Node's `crypto`)
+- **Backend:** Node.js + Express — server-side kline cache (JSON files), per-user session/layout persistence, username/password auth (salted scrypt via Node's `crypto`), account storage in Vercel Blob (`@vercel/blob`) with a local fallback
 - **Styling:** Single CSS file with CSS custom properties for theming
 
 ## Getting Started
@@ -65,10 +65,22 @@ npm start        # starts on http://localhost:3000
 ### Accounts
 
 Sign-in is application-only — click **Sign in** in the top bar to create an
-account (username + password) or log in. No third-party credentials or
-configuration are required. Passwords are salted and scrypt-hashed, and the user
-context is stored in `data/users.json`. Set `NODE_ENV=production` to mark session
-cookies `Secure` when serving over HTTPS (see `.env.example`).
+account (username + password) or log in. No third-party SSO is involved.
+Passwords are salted and scrypt-hashed.
+
+Account records are written as **one private JSON file per user** in the
+**`Users/` folder of a Vercel Blob store** (`Users/<username>.json`). Provide a
+blob token in `.env` to enable this:
+
+```
+BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+BLOB_STORE_ID="store_..."
+```
+
+Without a token, accounts fall back to local files under `data/accounts/`, so the
+app still runs offline. Sessions are always kept locally in `data/sessions.json`.
+Set `NODE_ENV=production` to mark session cookies `Secure` over HTTPS. The server
+loads `.env` automatically at startup.
 
 ## Project Structure
 
@@ -93,9 +105,11 @@ crypto-pro-charts/
 │   ├── utils.js         # helpers (baseAsset, quoteAsset, fmtPrice…)
 │   └── watchlist.js     # watchlist UI + symbol picker
 ├── auth.js              # server-side auth: sessions + username/password (scrypt)
-├── server.js            # Express server + kline proxy/cache
-├── .env.example         # optional PORT / NODE_ENV config
-├── data/                # guest session.json + layouts/, users.json, users/<username>/
+├── blob.js              # Vercel Blob account storage (Users/<uid>.json)
+├── server.js            # Express server + kline proxy/cache + .env loader
+├── .env.example         # PORT / NODE_ENV / Vercel Blob token config
+├── data/                # guest session.json + layouts/, sessions.json,
+│                        #   users/<username>/ (layouts), accounts/ (blob fallback)
 ├── cache/klines/        # server-side bar cache
 └── memory.md            # running changelog
 ```

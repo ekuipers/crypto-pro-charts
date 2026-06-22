@@ -1,34 +1,33 @@
 // ============================================================
 // AUTH — multi-user sessions with username/password (application-only)
 // ------------------------------------------------------------
-// Pure Node (no extra deps): cookie parsing, opaque session tokens, and salted
-// scrypt password hashing. All state lives in JSON on disk under
-// <dataDir>/users.json so the backend stays portable.
+// Cookie parsing, opaque session tokens, and salted scrypt password hashing.
+//
+// Account records are stored as **one JSON file per user** in the "Users/"
+// folder. When BLOB_READ_WRITE_TOKEN is configured (see .env) that folder lives
+// in the Vercel Blob store (Users/<uid>.json, private); otherwise it falls back
+// to local files under <dataDir>/Users/<uid>.json so the app still runs offline.
+// Session tokens are ephemeral and always kept locally in <dataDir>/sessions.json.
 //
 // There is no third-party SSO: users register and sign in with a username and
 // password handled entirely by this app. With nobody signed in the app still
-// works for an anonymous "guest" whose data maps to the legacy shared files,
-// preserving every layout saved before multi-user support existed.
+// works for an anonymous "guest" whose chart data maps to the legacy shared
+// files, preserving every layout saved before multi-user support existed.
 // ============================================================
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import crypto from 'crypto';
+import * as blob from './blob.js';
 
 let DATA_DIR = '';
-let USERS_FILE = '';
-let USERS_SUBDIR = '';
+let USERS_SUBDIR = '';     // local chart-layout data per user (data/users/<uid>/)
+let ACCOUNTS_DIR = '';     // local fallback for account JSON when blob is disabled
+let SESSIONS_FILE = '';
+let LEGACY_USERS_FILE = '';
 
 const SESSION_COOKIE = 'cpc_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-// ---- Store helpers (read-modify-write a single JSON file) ------------------
-async function readStore() {
-  try {
-    return JSON.parse(await fs.readFile(USERS_FILE, 'utf8'));
-  } catch {
-    return { users: {}, sessions: {} };
-  }
-}
 // Retry transient filesystem errors. The repo often lives in a OneDrive-synced
 // folder whose sync client briefly locks files, surfacing as EBUSY/EPERM/EACCES
 // on writeFile/mkdir — without this a single lock would crash/hang the request.
@@ -42,10 +41,40 @@ async function withRetry(fn, tries = 5) {
     }
   }
 }
+async function writeJson(file, data) {
+  await withRetry(() => fs.mkdir(join(file, '..'), { recursive: true }));
+  await withRetry(() => fs.writeFile(file, JSON.stringify(data, null, 2)));
+}
+async function readJson(file, fallback) {
+  try { return JSON.parse(await fs.readFile(file, 'utf8')); }
+  catch { return fallback; }
+}
 
-async function writeStore(store) {
-  await withRetry(() => fs.mkdir(DATA_DIR, { recursive: true }));
-  await withRetry(() => fs.writeFile(USERS_FILE, JSON.stringify(store, null, 2)));
+// ---- Account store (per-user JSON: blob "Users/" or local fallback) --------
+// `fresh` forces an uncached read (used for the registration uniqueness check).
+async function getAccount(uid, fresh = false) {
+  if (blob.blobEnabled()) return blob.getAccount(uid, fresh);
+  return readJson(join(ACCOUNTS_DIR, `${uid}.json`), null);
+}
+async function putAccount(uid, record) {
+  if (blob.blobEnabled()) return blob.putAccount(uid, record);
+  return writeJson(join(ACCOUNTS_DIR, `${uid}.json`), record);
+}
+
+// ---- Sessions (always local; ephemeral, not "account information") ---------
+async function readSessions() { return readJson(SESSIONS_FILE, {}); }
+async function writeSessions(sessions) { return writeJson(SESSIONS_FILE, sessions); }
+
+async function createSession(uid) {
+  const sessions = await readSessions();
+  const now = Date.now();
+  for (const [sid, s] of Object.entries(sessions)) {
+    if (s.expiresAt < now) delete sessions[sid]; // prune expired
+  }
+  const sid = token(24);
+  sessions[sid] = { uid, createdAt: now, expiresAt: now + SESSION_TTL_MS };
+  await writeSessions(sessions);
+  return sid;
 }
 
 // ---- Passwords (salted scrypt + constant-time compare) ---------------------
@@ -82,34 +111,24 @@ function clearCookie(res, name) {
 
 const token = (bytes = 24) => crypto.randomBytes(bytes).toString('hex');
 
-// Usernames double as the on-disk folder name, so keep them filesystem-safe.
+// Usernames double as the blob/file name, so keep them filesystem-safe.
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
 const normUser = (u) => String(u || '').trim().toLowerCase();
-
-// ---- Sessions --------------------------------------------------------------
-async function createSession(store, uid) {
-  const now = Date.now();
-  for (const [sid, s] of Object.entries(store.sessions)) {
-    if (s.expiresAt < now) delete store.sessions[sid]; // prune expired
-  }
-  const sid = token(24);
-  store.sessions[sid] = { uid, createdAt: now, expiresAt: now + SESSION_TTL_MS };
-  return sid;
-}
 const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.displayName || u.username });
 
 // ---- Public: who is this request? ------------------------------------------
 export async function currentUser(req) {
   const sid = parseCookies(req)[SESSION_COOKIE];
   if (!sid) return null;
-  const store = await readStore();
-  const sess = store.sessions[sid];
+  const sessions = await readSessions();
+  const sess = sessions[sid];
   if (!sess || sess.expiresAt < Date.now()) return null;
-  return store.users[sess.uid] || null;
+  try { return await getAccount(sess.uid); }
+  catch { return null; } // storage hiccup — treat as signed-out, don't crash
 }
 
-// Where a given uid's data lives. Guests (uid null) reuse the legacy shared
-// files so pre-multi-user layouts keep working untouched.
+// Where a given uid's chart data lives. Guests (uid null) reuse the legacy
+// shared files so pre-multi-user layouts keep working untouched.
 export function userPaths(uid) {
   if (!uid) {
     return { sessionFile: join(DATA_DIR, 'session.json'), layoutsDir: join(DATA_DIR, 'layouts') };
@@ -120,8 +139,33 @@ export function userPaths(uid) {
 
 export function init(dataDir) {
   DATA_DIR = dataDir;
-  USERS_FILE = join(dataDir, 'users.json');
   USERS_SUBDIR = join(dataDir, 'users');
+  // Local fallback only. Named 'accounts' (not 'Users') so it can't collide with
+  // the layout dir 'users' on case-insensitive filesystems (Windows/macOS).
+  // The blob store uses the real "Users/" folder (see blob.js).
+  ACCOUNTS_DIR = join(dataDir, 'accounts');
+  SESSIONS_FILE = join(dataDir, 'sessions.json');
+  LEGACY_USERS_FILE = join(dataDir, 'users.json');
+  // Move any pre-existing accounts from the old single-file store into the new
+  // per-user layout (best-effort; runs once, never blocks startup).
+  migrateLegacyUsers().catch(() => {});
+}
+
+// One-time migration: data/users.json ({ users, sessions }) → per-user account
+// files (blob or local) + sessions.json. Renames the old file when done.
+async function migrateLegacyUsers() {
+  const legacy = await readJson(LEGACY_USERS_FILE, null);
+  if (!legacy || !legacy.users) return;
+  for (const [uid, rec] of Object.entries(legacy.users)) {
+    try {
+      if (!(await getAccount(uid))) await putAccount(uid, rec);
+    } catch { /* leave it for next start */ }
+  }
+  if (legacy.sessions) {
+    const sessions = await readSessions();
+    await writeSessions({ ...legacy.sessions, ...sessions });
+  }
+  try { await fs.rename(LEGACY_USERS_FILE, LEGACY_USERS_FILE + '.migrated'); } catch {}
 }
 
 // ---- Routes ----------------------------------------------------------------
@@ -143,24 +187,23 @@ export function installAuthRoutes(app) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
       }
       const uid = normUser(username);
-      const store = await readStore();
-      if (store.users[uid]) return res.status(409).json({ error: 'Username already taken' });
+      if (await getAccount(uid, true)) return res.status(409).json({ error: 'Username already taken' });
 
       const salt = token(16);
       const now = Date.now();
-      store.users[uid] = {
+      const record = {
         id: uid, username, displayName: username,
         salt, passwordHash: hashPassword(password, salt),
         createdAt: now, lastLogin: now,
       };
-      const sid = await createSession(store, uid);
-      await writeStore(store);
-      // The layouts folder is created lazily on first save too, so a transient
+      await putAccount(uid, record);          // → Users/<uid>.json (blob or local)
+      const sid = await createSession(uid);
+      // Chart-layout folder is created lazily on first save too, so a transient
       // failure here must not fail (or hang) the registration.
       try { await withRetry(() => fs.mkdir(join(USERS_SUBDIR, uid, 'layouts'), { recursive: true })); } catch { /* lazy */ }
 
       setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
-      res.json({ user: publicUser(store.users[uid]) });
+      res.json({ user: publicUser(record) });
     } catch (e) {
       res.status(500).json({ error: 'Could not create account — storage error, please retry.' });
     }
@@ -170,15 +213,14 @@ export function installAuthRoutes(app) {
     try {
       const uid = normUser(req.body?.username);
       const password = String(req.body?.password || '');
-      const store = await readStore();
-      const user = store.users[uid];
+      const user = await getAccount(uid);
       // Same response whether the user is missing or the password is wrong.
       if (!user || !verifyPassword(password, user.salt, user.passwordHash)) {
         return res.status(401).json({ error: 'Invalid username or password' });
       }
       user.lastLogin = Date.now();
-      const sid = await createSession(store, uid);
-      await writeStore(store);
+      try { await putAccount(uid, user); } catch { /* lastLogin is non-critical */ }
+      const sid = await createSession(uid);
       setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
       res.json({ user: publicUser(user) });
     } catch (e) {
@@ -190,8 +232,8 @@ export function installAuthRoutes(app) {
     try {
       const sid = parseCookies(req)[SESSION_COOKIE];
       if (sid) {
-        const store = await readStore();
-        if (store.sessions[sid]) { delete store.sessions[sid]; await writeStore(store); }
+        const sessions = await readSessions();
+        if (sessions[sid]) { delete sessions[sid]; await writeSessions(sessions); }
       }
     } catch { /* clear the cookie regardless */ }
     clearCookie(res, SESSION_COOKIE);

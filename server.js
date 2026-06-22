@@ -1,19 +1,35 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { promises as fs } from 'fs';
+import { promises as fs, readFileSync } from 'fs';
 import { EXCHANGES, TF_SECONDS } from './src/js/constants.js';
 import { init as initAuth, installAuthRoutes, currentUser, userPaths } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
+// Load .env (e.g. BLOB_READ_WRITE_TOKEN) before anything reads process.env.
+// Minimal parser so we don't add a dependency; existing env vars win.
+function loadEnv(file) {
+  try {
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([\w.]+)\s*=\s*(.*)\s*$/);
+      if (!m || line.trimStart().startsWith('#')) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (!(m[1] in process.env)) process.env[m[1]] = v;
+    }
+  } catch { /* no .env — fine */ }
+}
+loadEnv(join(__dirname, '.env'));
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '2mb' }));
 
-// Multi-user auth (SSO) — sessions & layouts are scoped to the signed-in user.
+// Multi-user auth — account JSON per user in the "Users/" blob folder (or local
+// fallback); sessions & chart layouts are scoped to the signed-in user.
 initAuth(join(__dirname, 'data'));
 installAuthRoutes(app);
 

@@ -4,6 +4,22 @@
 
 ---
 
+## v1.11.0 — 2026-06-22 · Store account info in the Vercel Blob "Users/" folder (Roadmap)
+
+### Feature — Per-user account JSON files in the blob store
+**Problem:** The roadmap asked to write account information to the blob store as separate JSON files per user in a "Users" folder, using the credentials in `.env` (`BLOB_READ_WRITE_TOKEN`, `BLOB_STORE_ID`). Previously all accounts (plus sessions) lived in one local `data/users.json`.
+
+**Fix:**
+- **`@vercel/blob` dependency** added (`npm install @vercel/blob`, v2.4.1).
+- **`blob.js` (new):** Thin wrapper over the SDK gated on `BLOB_READ_WRITE_TOKEN`. `putAccount(uid, rec)` writes `Users/<uid>.json` with `access:'private'`, `addRandomSuffix:false`, `allowOverwrite:true`. `getAccount(uid, fresh)` reads it back via `get(pathname,{access:'private',useCache:!fresh})` and streams the body to JSON (returns null on `BlobNotFoundError`). `delAccount`/`listAccountUids` round out CRUD. Every call carries a 12 s `abortSignal` so a slow network can't hang an auth request.
+- **`auth.js` (refactored storage):** Accounts now go through an account-store layer — **blob `Users/<uid>.json` when a token is set, else local `data/accounts/<uid>.json`** (named `accounts`, *not* `Users`, so it can't collide with the layout dir `data/users` on case-insensitive Windows/macOS filesystems). Sessions moved out of the account store into their own local `data/sessions.json` (ephemeral, not "account information", needs fast access). `currentUser`, `register`, `login`, `logout` rewritten against these stores; `register`'s uniqueness check uses an **uncached** read (`getAccount(uid, true)`) to avoid blob read-after-write staleness that would otherwise let a duplicate username overwrite an existing account. A one-time `migrateLegacyUsers()` copies any pre-existing `data/users.json` accounts into the new per-user store + sessions file, then renames the old file to `.migrated`.
+- **`server.js`:** Added a tiny `.env` loader (no new dependency) that runs before anything reads `process.env`, so the blob token is available. Updated the init comment.
+- **`.env.example` / `.gitignore`:** Documented the blob token vars; ignore `data/accounts/`, `data/sessions.json`, `data/users.json.migrated`.
+
+**Verification:** `node --check` on `blob.js`/`auth.js`/`server.js`. Direct round-trip against the **real** blob store: put → get → list (found) → del → get(null) all OK. Full server auth flow against the live blob: register writes `Users/<uid>.json`, `/api/me` resolves the session→blob account, duplicate register now returns **409** (uncached check fixed the earlier 200), wrong password → 401, fresh login + logout OK, and no local account files are created (blob path) while `data/users/<uid>/` holds only layouts. Also verified the **local fallback** by temporarily removing `.env`: register/duplicate(409)/me work and `data/accounts/<uid>.json` is written; `.env` restored afterward. Test users were deleted from the blob store. Footer/README/.env.example → v1.11.0.
+
+---
+
 ## v1.10.2 — 2026-06-22 · Fix: account creation stuck on "Creating account…" forever
 
 ### Bug — Register/login could hang the UI indefinitely (Bugs #1)

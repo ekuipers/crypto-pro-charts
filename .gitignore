@@ -7,4 +7,7 @@ data/session.json
 data/layouts/
 data/users/
 data/users.json
+data/users.json.migrated
+data/accounts/
+data/sessions.json
 .env

@@ -4,6 +4,23 @@
 
 ---
 
+## v1.12.0 — 2026-06-22 · Move persistence to Supabase (Postgres); retire blob/JSON storage (Roadmap)
+
+### Feature — Database-backed accounts, sessions & layouts
+**Problem:** The roadmap asked to replace the blob/JSON-file persistence with a Supabase (Postgres) database in Vercel, creating tables for user accounts and saved layouts. `.env` carries the Supabase credentials (`DBCRYPTOCHARTS_POSTGRES_*`, `DBCRYPTOCHARTS_SUPABASE_*`).
+
+**Fix:**
+- **Connectivity check first:** Tested both Postgres URLs with `pg`. They connect, but Supabase serves a cert outside Node's default trust store (`self-signed certificate in certificate chain`) and newer `pg` treats the connection-string `sslmode=require` as `verify-full`. Resolved by normalising the URL to `sslmode=no-verify` (TLS on, chain not verified) — both pooled and non-pooling connect and run queries.
+- **`db.js` (new):** `pg.Pool` over the Supabase connection string (prefers `DBCRYPTOCHARTS_POSTGRES_URL_NON_POOLING`, then pooled, then generic `POSTGRES_URL`/`DATABASE_URL`). `init()` runs `create table if not exists` for **`accounts`** (id, username, display_name, salt, password_hash, timestamps), **`sessions`** (sid PK, uid FK→accounts ON DELETE CASCADE, expires_at, + index), and **`layouts`** (uid, name, `jsonb` data, updated_at, PK `(uid,name)`). Exports account CRUD, session CRUD (with expiry pruning), and layout CRUD (`getLayout`/`putLayout` upsert/`deleteLayout`/`listLayouts`). Autosave session-state is a layout row named `__session__`; anonymous users use the `GUEST` (`__guest__`) uid. Queries retry once on transient connection errors.
+- **`auth.js` (rewritten):** Dropped all file/blob storage, `userPaths`, and the legacy-migration code. Accounts and sessions now go through `db.js`. Kept cookie handling and scrypt hashing. `register`/`login`/`logout` use DB; uniqueness check is a normal `getAccount` (DB is strongly consistent, so no cache workaround needed). Added `currentUid(req)` → signed-in account id or `GUEST`. Errors are logged and surfaced as 500s.
+- **`server.js`:** `db.init()` runs before `app.listen()` (DB failure logged, non-fatal — kline proxy still serves and the frontend falls back to localStorage). The `/api/session` and `/api/layouts` endpoints now read/write the `layouts` table via `currentUid`, replacing the per-user files. `.env` loader comment updated to Supabase.
+- **Removed:** `blob.js` and the `@vercel/blob` dependency. Added `pg`.
+- **Frontend:** No change needed — `persistence.js` already calls these endpoints and keeps its localStorage fallback.
+
+**Verification:** `node --check` on `db.js`/`auth.js`/`server.js`. Live run against the **real Supabase DB**: startup logged `[db] connected; tables ready`; then register → user, `/api/me` ok, duplicate → 409, wrong password → 401, session-state PUT/GET round-tripped the `jsonb`, named layout save/list/delete worked, and an anonymous **guest** session PUT/GET worked under the GUEST uid; logout cleared the session; no errors in the log. (A throwaway test account `dbu<ts>` remains in the dev DB — an unscoped cleanup DELETE was correctly blocked by the sandbox; it's harmless.) `.env` confirmed not committed. Footer/README/.env.example → v1.12.0.
+
+---
+
 ## v1.11.1 — 2026-06-22 · Fix: "Could not create account — storage error" (blob unreachable)
 
 ### Bug — Account creation failed with a storage error (Bugs #1)

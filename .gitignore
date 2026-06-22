@@ -3,6 +3,7 @@ dist/*
 build/*
 cache/*
 ruvector.db
+# Legacy file-based persistence (now in Supabase/Postgres) — ignore any leftovers
 data/session.json
 data/layouts/
 data/users/

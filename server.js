@@ -3,12 +3,13 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs, readFileSync } from 'fs';
 import { EXCHANGES, TF_SECONDS } from './src/js/constants.js';
-import { init as initAuth, installAuthRoutes, currentUser, userPaths } from './auth.js';
+import { installAuthRoutes, currentUid } from './src/auth.js';
+import * as db from './src/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 
-// Load .env (e.g. BLOB_READ_WRITE_TOKEN) before anything reads process.env.
+// Load .env (Supabase Postgres credentials) before anything reads process.env.
 // Minimal parser so we don't add a dependency; existing env vars win.
 function loadEnv(file) {
   try {
@@ -28,9 +29,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '2mb' }));
 
-// Multi-user auth — account JSON per user in the "Users/" blob folder (or local
-// fallback); sessions & chart layouts are scoped to the signed-in user.
-initAuth(join(__dirname, 'data'));
+// Multi-user auth — accounts, sessions & layouts persist in Supabase (Postgres).
 installAuthRoutes(app);
 
 // ---- Server-side kline cache (persists fetched bars to JSON files) ----------
@@ -183,56 +182,41 @@ app.get('/api/events', async (_req, res) => {
   }
 });
 
-// ---- Session & named layout persistence (scoped per signed-in user) --------
-// Resolve the storage paths for whoever made this request: a logged-in user
-// gets their own data/users/<uid>/ folder; an anonymous guest reuses the legacy
-// shared files (data/session.json + data/layouts/) so existing data survives.
-async function pathsFor(req) {
-  const user = await currentUser(req);
-  return userPaths(user?.id || null);
-}
+// ---- Session & named layout persistence (Postgres, scoped per user) --------
+// Each request's data belongs to the signed-in account, or the GUEST uid when
+// anonymous — exactly the scoping the old per-user folders provided.
 
-// Reject names that could escape the layouts directory.
+// Reject names used for our internal autosave row or that are over-long.
 function validLayoutName(name) {
-  return typeof name === 'string' && name.length > 0 && name.length <= 80
-    && !name.includes('..') && !/[/\\]/.test(name);
+  return typeof name === 'string' && name.length > 0 && name.length <= 80 && name !== db.SESSION_NAME;
 }
 
 app.get('/api/session', async (req, res) => {
-  const { sessionFile } = await pathsFor(req);
   try {
-    const raw = await fs.readFile(sessionFile, 'utf8');
-    res.type('application/json').send(raw);
-  } catch {
-    res.status(404).json(null);
+    const data = await db.getLayout(await currentUid(req), db.SESSION_NAME);
+    if (data == null) return res.status(404).json(null);
+    res.json(data);
+  } catch (e) {
+    console.error('[api] get session:', e.message);
+    res.status(500).json(null);
   }
 });
 
 app.put('/api/session', async (req, res) => {
-  const { sessionFile } = await pathsFor(req);
   try {
-    await fs.mkdir(dirname(sessionFile), { recursive: true });
-    await fs.writeFile(sessionFile, JSON.stringify(req.body));
+    await db.putLayout(await currentUid(req), db.SESSION_NAME, req.body);
     res.json({ ok: true });
   } catch (e) {
+    console.error('[api] put session:', e.message);
     res.status(500).json({ error: String(e.message) });
   }
 });
 
 app.get('/api/layouts', async (req, res) => {
-  const { layoutsDir } = await pathsFor(req);
   try {
-    await fs.mkdir(layoutsDir, { recursive: true });
-    const files = (await fs.readdir(layoutsDir)).filter(f => f.endsWith('.json'));
-    const result = {};
-    for (const f of files) {
-      try {
-        const name = decodeURIComponent(f.slice(0, -5));
-        result[name] = JSON.parse(await fs.readFile(join(layoutsDir, f), 'utf8'));
-      } catch { /* skip corrupt file */ }
-    }
-    res.json(result);
+    res.json(await db.listLayouts(await currentUid(req)));
   } catch (e) {
+    console.error('[api] list layouts:', e.message);
     res.status(500).json({});
   }
 });
@@ -240,12 +224,11 @@ app.get('/api/layouts', async (req, res) => {
 app.put('/api/layouts/:name', async (req, res) => {
   const name = req.params.name;
   if (!validLayoutName(name)) return res.status(400).json({ error: 'invalid name' });
-  const { layoutsDir } = await pathsFor(req);
   try {
-    await fs.mkdir(layoutsDir, { recursive: true });
-    await fs.writeFile(join(layoutsDir, encodeURIComponent(name) + '.json'), JSON.stringify(req.body));
+    await db.putLayout(await currentUid(req), name, req.body);
     res.json({ ok: true });
   } catch (e) {
+    console.error('[api] put layout:', e.message);
     res.status(500).json({ error: String(e.message) });
   }
 });
@@ -253,12 +236,13 @@ app.put('/api/layouts/:name', async (req, res) => {
 app.delete('/api/layouts/:name', async (req, res) => {
   const name = req.params.name;
   if (!validLayoutName(name)) return res.status(400).json({ error: 'invalid name' });
-  const { layoutsDir } = await pathsFor(req);
   try {
-    await fs.unlink(join(layoutsDir, encodeURIComponent(name) + '.json'));
+    const ok = await db.deleteLayout(await currentUid(req), name);
+    if (!ok) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true });
-  } catch {
-    res.status(404).json({ error: 'not found' });
+  } catch (e) {
+    console.error('[api] delete layout:', e.message);
+    res.status(500).json({ error: String(e.message) });
   }
 });
 
@@ -271,6 +255,13 @@ app.get('*', (_req, res) => {
   res.sendFile(join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`CryptoPro Charts running at http://localhost:${PORT}`);
-});
+// Create the database tables before accepting traffic, then start listening.
+// A DB failure is logged but not fatal — the kline proxy still works and the
+// frontend falls back to localStorage for persistence.
+db.init()
+  .catch(e => console.error('[db] init failed:', e?.message || e))
+  .finally(() => {
+    app.listen(PORT, () => {
+      console.log(`CryptoPro Charts running at http://localhost:${PORT}`);
+    });
+  });

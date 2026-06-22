@@ -50,15 +50,31 @@ async function readJson(file, fallback) {
   catch { return fallback; }
 }
 
-// ---- Account store (per-user JSON: blob "Users/" or local fallback) --------
-// `fresh` forces an uncached read (used for the registration uniqueness check).
+// ---- Account store (per-user JSON: blob "Users/" with local safety net) ----
+// The blob store is the primary home for account files. A local copy under
+// data/accounts/ acts as a fallback so a transient blob/network outage (e.g. a
+// corporate proxy hiccup) never blocks sign-in or account creation. Reads check
+// blob first then local; writes go to blob, and also to local if blob fails.
+const localAccountPath = (uid) => join(ACCOUNTS_DIR, `${uid}.json`);
+
+// `fresh` forces an uncached blob read (for the registration uniqueness check).
 async function getAccount(uid, fresh = false) {
-  if (blob.blobEnabled()) return blob.getAccount(uid, fresh);
-  return readJson(join(ACCOUNTS_DIR, `${uid}.json`), null);
+  if (blob.blobEnabled()) {
+    try {
+      const rec = await blob.getAccount(uid, fresh);
+      if (rec) return rec;
+    } catch (e) {
+      console.error('[auth] blob read failed, using local fallback:', e?.message || e);
+    }
+  }
+  return readJson(localAccountPath(uid), null);
 }
 async function putAccount(uid, record) {
-  if (blob.blobEnabled()) return blob.putAccount(uid, record);
-  return writeJson(join(ACCOUNTS_DIR, `${uid}.json`), record);
+  if (blob.blobEnabled()) {
+    try { await blob.putAccount(uid, record); return; }
+    catch (e) { console.error('[auth] blob write failed, saving locally:', e?.message || e); }
+  }
+  await writeJson(localAccountPath(uid), record);
 }
 
 // ---- Sessions (always local; ephemeral, not "account information") ---------
@@ -205,6 +221,7 @@ export function installAuthRoutes(app) {
       setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
       res.json({ user: publicUser(record) });
     } catch (e) {
+      console.error('[auth] register failed:', e?.stack || e);
       res.status(500).json({ error: 'Could not create account — storage error, please retry.' });
     }
   });
@@ -224,6 +241,7 @@ export function installAuthRoutes(app) {
       setCookie(res, SESSION_COOKIE, sid, SESSION_TTL_MS);
       res.json({ user: publicUser(user) });
     } catch (e) {
+      console.error('[auth] login failed:', e?.stack || e);
       res.status(500).json({ error: 'Sign-in failed — storage error, please retry.' });
     }
   });

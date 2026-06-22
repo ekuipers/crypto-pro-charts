@@ -4,6 +4,20 @@
 
 ---
 
+## v1.11.1 — 2026-06-22 · Fix: "Could not create account — storage error" (blob unreachable)
+
+### Bug — Account creation failed with a storage error (Bugs #1)
+**Problem:** Registering returned `Could not create account — storage error, please retry.` — the register route's 500 catch-all. v1.11.0 made the Vercel Blob store the only account store, so if a blob call failed (store unreachable/suspended, expired token, rate limit, or — likely in a Capgemini corporate-proxy network — a slow/blocked outbound HTTPS request), registration hard-failed. The catch also **swallowed the real error**, so the cause was invisible. Reproduced the exact failure class by pointing the server at a bogus token: `Vercel Blob: This store does not exist.`
+
+**Fix (resilience + observability):**
+- **`auth.js` — local safety net:** The account store now treats blob as primary with a **local `data/accounts/` fallback**. Reads try blob first, then fall back to the local copy on any blob error; writes go to blob and, **if blob throws, save locally instead of failing**. So a transient blob/network outage can no longer block sign-in or account creation. Both fallbacks log a clear `[auth] blob read/write failed …` line.
+- **`auth.js` — surface errors:** `register`/`login` catch blocks now `console.error(e.stack)` so the true cause is logged instead of hidden.
+- **`blob.js` — retry + longer timeout:** Transient blob errors (`BlobServiceNotAvailable`, `BlobServiceRateLimited`, `BlobRequestAbortedError`, `BlobUnknownError`, generic network `TypeError`/`AbortError`) are retried up to 3× with backoff; permanent errors (auth/store-not-found/not-found) throw immediately. Abort timeout raised 12 s → 20 s for slow corporate proxies.
+
+**Verification:** `node --check` on `blob.js`/`auth.js`. (A) With a **bogus token**, register now returns **200 via local fallback** (was the storage error), duplicate → 409, `/api/me` works, `data/accounts/fbk1.json` is written, and the log shows `blob write failed, saving locally: Vercel Blob: This store does not exist.` (B) With the **real token**, the normal blob path still works end-to-end (register/409/me) with no local files and no errors. Test users removed from the blob store. Footer/README → v1.11.1; bug moved out of `CLAUDE.md`.
+
+---
+
 ## v1.11.0 — 2026-06-22 · Store account info in the Vercel Blob "Users/" folder (Roadmap)
 
 ### Feature — Per-user account JSON files in the blob store

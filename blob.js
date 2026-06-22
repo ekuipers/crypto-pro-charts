@@ -5,7 +5,10 @@
 // All calls are gated on BLOB_READ_WRITE_TOKEN (loaded from .env) and carry an
 // abort timeout so a slow network can never hang an auth request.
 // ============================================================
-import { put, get, del, list, BlobNotFoundError } from '@vercel/blob';
+import {
+  put, get, del, list, BlobNotFoundError,
+  BlobServiceNotAvailable, BlobServiceRateLimited, BlobRequestAbortedError, BlobUnknownError,
+} from '@vercel/blob';
 
 const PREFIX = 'Users/';
 const token = () => process.env.BLOB_READ_WRITE_TOKEN;
@@ -14,7 +17,8 @@ export const blobEnabled = () => Boolean(token());
 const blobPath = (uid) => `${PREFIX}${uid}.json`;
 
 // Abort signal that fires after `ms` so blob calls can't hang indefinitely.
-function timeoutSignal(ms = 12000) {
+// Generous timeout — corporate proxies can make the first TLS handshake slow.
+function timeoutSignal(ms = 20000) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), ms);
   if (typeof t.unref === 'function') t.unref();
@@ -22,14 +26,30 @@ function timeoutSignal(ms = 12000) {
 }
 const opts = (extra = {}) => ({ token: token(), abortSignal: timeoutSignal(), ...extra });
 
+// Retry transient blob failures (rate limit, service blip, aborted/network).
+// Permanent errors (auth, store-not-found, not-found) are thrown immediately.
+const TRANSIENT_BLOB = [BlobServiceNotAvailable, BlobServiceRateLimited, BlobRequestAbortedError, BlobUnknownError];
+function isTransient(e) {
+  return TRANSIENT_BLOB.some(C => e instanceof C) || e?.name === 'TypeError' || e?.name === 'AbortError';
+}
+async function withBlobRetry(fn, tries = 3) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) {
+      if (i >= tries - 1 || !isTransient(e)) throw e;
+      await new Promise(r => setTimeout(r, 250 * (i + 1)));
+    }
+  }
+}
+
 // Write (create or overwrite) a user's account JSON.
 export async function putAccount(uid, record) {
-  await put(blobPath(uid), JSON.stringify(record, null, 2), opts({
+  await withBlobRetry(() => put(blobPath(uid), JSON.stringify(record, null, 2), opts({
     access: 'private',
     addRandomSuffix: false, // deterministic Users/<uid>.json
     allowOverwrite: true,
     contentType: 'application/json',
-  }));
+  })));
 }
 
 // Read a user's account JSON, or null if it doesn't exist. Pass fresh=true to
@@ -38,7 +58,7 @@ export async function putAccount(uid, record) {
 export async function getAccount(uid, fresh = false) {
   let res;
   try {
-    res = await get(blobPath(uid), opts({ access: 'private', useCache: !fresh }));
+    res = await withBlobRetry(() => get(blobPath(uid), opts({ access: 'private', useCache: !fresh })));
   } catch (e) {
     if (e instanceof BlobNotFoundError) return null;
     throw e;

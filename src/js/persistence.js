@@ -19,6 +19,12 @@ export function snapshot() {
     gridSizes: state.gridSizes,
     obGrouping: state.obGrouping,
     watchlists: state.watchlists,
+    // Explicit tab order. state.watchlists is a plain object, and the server
+    // stores the snapshot as Postgres JSONB — which does NOT preserve object
+    // key order — so the drag-reordered tab order would otherwise be lost on
+    // reload. Arrays keep their order through JSONB, so we persist the order
+    // separately and re-apply it on load.
+    watchlistOrder: Object.keys(state.watchlists),
     currentWatchlist: state.currentWatchlist,
     wlSort: state.wlSort,
     settings: state.settings,
@@ -88,6 +94,15 @@ export function applyLayoutData(data) {
   if (data.gridSizes) state.gridSizes = data.gridSizes;
   if (data.obGrouping) state.obGrouping = data.obGrouping;
   if (data.watchlists) state.watchlists = data.watchlists;
+  // Restore the drag-reordered tab order (JSONB doesn't preserve object key
+  // order). Honour the saved order, then append any watchlists not listed in it
+  // (e.g. created in an older session) so none are dropped.
+  if (data.watchlistOrder && Array.isArray(data.watchlistOrder)) {
+    const ordered = {};
+    data.watchlistOrder.forEach(n => { if (n in state.watchlists) ordered[n] = state.watchlists[n]; });
+    Object.keys(state.watchlists).forEach(n => { if (!(n in ordered)) ordered[n] = state.watchlists[n]; });
+    state.watchlists = ordered;
+  }
   if (data.currentWatchlist) state.currentWatchlist = data.currentWatchlist;
   if (data.wlSort) state.wlSort = data.wlSort;
   if (data.settings) state.settings = { ...state.settings, ...data.settings };

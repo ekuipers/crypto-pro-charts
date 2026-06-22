@@ -4,6 +4,23 @@
 
 ---
 
+## v1.16.1 — 2026-06-22 · Persist the re-ordered watchlist tab order (Roadmap)
+
+### Fix — drag-reordered watchlist tabs didn't survive a reload
+**Problem:** The roadmap asked to save the re-ordered watchlist to the user's context so it's persistent. The v1.16.0 tab reorder rebuilt `state.watchlists` in the new key order and called `scheduleAutosave()`, but the new order was **lost on reload**.
+
+**Root cause:** The autosave snapshot is stored server-side as **Postgres JSONB** (`layouts.data jsonb`, see `src/db.js`). JSONB does **not preserve object key order** — it normalizes keys — so the watchlist *tab* order (which was encoded purely as `state.watchlists`' key order) came back reordered after the server round-trip. (Symbol order *within* a watchlist was unaffected because each list is an **array**, and JSONB preserves array order.)
+
+**Fix:**
+- **`persistence.js`:**
+  - `snapshot()` now also emits `watchlistOrder: Object.keys(state.watchlists)` — an explicit array of tab names. Arrays keep their order through JSONB, so this captures the drag-reordered order reliably.
+  - `applyLayoutData()` re-applies it: after assigning `state.watchlists`, it rebuilds the object in `data.watchlistOrder` sequence (only for keys that still exist), then appends any watchlists not present in the saved order (e.g. lists created in an older session) so none are dropped.
+- Named layouts get this for free since they serialize via the same `snapshot()`.
+
+**Verification:** `node --check src/js/persistence.js` passes. Traced: reorder tabs → autosave writes `watchlistOrder` → JSONB round-trip scrambles `watchlists` keys but preserves the `watchlistOrder` array → on load the object is rebuilt in that array's order. Back-compat: sessions saved before this (no `watchlistOrder`) simply keep whatever key order they load with. Footer/readme → v1.16.1.
+
+---
+
 ## v1.16.0 — 2026-06-22 · Reorder watchlist tabs horizontally (Roadmap)
 
 ### Feature — drag the watchlist tabs to reorder them

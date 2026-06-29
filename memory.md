@@ -4,6 +4,24 @@
 
 ---
 
+## v1.19.0 — 2026-06-29 · Live current price next to the symbol name in the chart top bar (Roadmap)
+
+### Feature — bold current-price readout in each panel's top bar
+**Problem:** The roadmap asked for the current price shown in a bigger, bold font than the symbol name, right next to it in the chart's top bar. Previously the panel bar only showed the symbol button (base + quote); the live price was only visible on the vertical price axis.
+
+**Fix:**
+- **`charts.js`:**
+  - Added a `<span class="panel-sym-price">` to the `addPanel` panel-bar markup, immediately after the `.sym-btn`.
+  - New `updatePanelPrice(panel, price)` helper — writes `fmtPrice(price)` into the span and toggles `up`/`down` classes by comparing to `panel._lastPrice` so the value flashes green/red in the direction of the last move. Ignores null/non-finite prices.
+  - `loadPanelData` seeds the readout from the last REST candle's close (and resets `_lastPrice` so the colour starts neutral for the new symbol).
+  - The live `onCandle` handler calls `updatePanelPrice` on every tick (WS or REST poll), so the number tracks the chart in real time.
+  - `changeSymbol` clears the old symbol's price/colour immediately (before the async reload) to avoid showing a stale value during the switch.
+- **`style.css`:** `.panel-sym-price` is 18px / 800 weight (vs the symbol's 14px / 700), with `:empty { display:none }` so the slot collapses before data loads; `.up`/`.down` modifiers colour it with `--green`/`--red` and a short colour transition.
+
+**Verification:** `node --check` passes on `charts.js`. Traced the price flow: initial REST load → `updatePanelPrice` seeds the value; live kline WS / REST poll → `onCandle` → `updatePanelPrice` updates + colours each tick; `changeSymbol` and persistence restore reset cleanly (the separate span survives the `.sym-btn` innerHTML rebuild). Confirmed CSS vars `--green`/`--red` exist. Footer/readme → v1.19.0.
+
+---
+
 ## v1.18.0 — 2026-06-29 · Toggle indicators on/off from the indicator bar (Roadmap)
 
 ### Feature — deactivate / reactivate active indicators by clicking the chip

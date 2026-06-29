@@ -55,6 +55,22 @@ function dynamicPriceFormat(price) {
   return { type: 'price', precision: 8, minMove: 0.00000001 };
 }
 
+// ---------- Live price readout in the panel top bar (Roadmap 1) ----------
+// Shows the chart's current price in a bigger, bold font right next to the
+// symbol name. Colours the value green/red versus the previous tick so the
+// direction of the last move is visible at a glance.
+function updatePanelPrice(panel, price) {
+  const el = panel.el && panel.el.querySelector('.panel-sym-price');
+  if (!el || price == null || !isFinite(price)) return;
+  const prev = panel._lastPrice;
+  el.textContent = fmtPrice(price);
+  if (prev != null && price !== prev) {
+    el.classList.toggle('up', price > prev);
+    el.classList.toggle('down', price < prev);
+  }
+  panel._lastPrice = price;
+}
+
 // ---------- Candle countdown timer (Roadmap 5) ----------
 function fmtCountdown(secs) {
   secs = Math.max(0, secs);
@@ -173,6 +189,7 @@ export function addPanel(opts = {}) {
   el.innerHTML = `
     <div class="panel-bar">
       <button class="sym-btn">${opts.symbol ? baseAsset(opts.symbol) : 'BTC'}<span class="sym-quote">${opts.symbol ? quoteAsset(opts.symbol) : 'USDT'}</span></button>
+      <span class="panel-sym-price" title="Current price"></span>
       <div class="tf-group">
         ${['1m','5m','15m','30m','1h','4h','1d','1w'].map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
       </div>
@@ -322,7 +339,11 @@ export async function loadPanelData(panel) {
     const data = await getCachedKlines(panel.symbol, panel.tf, 500, panel.exchange);
     panel.data = data;
     panel.candleSeries.setData(data);
-    if (data.length) panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(data[data.length - 1].close) });
+    if (data.length) {
+      panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(data[data.length - 1].close) });
+      panel._lastPrice = null;            // reset direction colour for the new symbol
+      updatePanelPrice(panel, data[data.length - 1].close);
+    }
     panel.volumeSeries.setData(data.map(c => ({
       time: c.time, value: c.volume,
       color: c.close >= c.open ? state.settings.upColor + '80' : state.settings.downColor + '80',
@@ -376,6 +397,7 @@ function startKlineStream(panel) {
     }
     // A closed bar can finalise a fresh MA crossing — refresh the markers.
     if (candle.closed) rebuildCrossMarkers(panel);
+    updatePanelPrice(panel, candle.close);
     document.dispatchEvent(new CustomEvent('panel-live', { detail: { panel, price: candle.close } }));
   };
 
@@ -424,6 +446,9 @@ export async function changeSymbol(panel, symbol, name, exchange) {
   panel.symbolName = name || baseAsset(symbol);
   if (exchange) panel.exchange = exchange;
   panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(symbol)}<span class="sym-quote">${quoteAsset(symbol)}</span>`;
+  const priceEl = panel.el.querySelector('.panel-sym-price');
+  if (priceEl) { priceEl.textContent = ''; priceEl.classList.remove('up', 'down'); }
+  panel._lastPrice = null;
   await loadPanelData(panel);
   if (panel === state.activePanel) {
     document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));

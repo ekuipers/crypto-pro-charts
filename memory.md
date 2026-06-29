@@ -4,6 +4,26 @@
 
 ---
 
+## v1.18.0 — 2026-06-29 · Toggle indicators on/off from the indicator bar (Roadmap)
+
+### Feature — deactivate / reactivate active indicators by clicking the chip
+**Problem:** The roadmap asked for the ability to hide an active indicator without removing it: clicking it in the indicator bar should deactivate it (and dim the chip), clicking again should reactivate it. Previously the only way to remove an indicator was the × button, which deletes it entirely — so re-adding meant re-picking it and re-entering its params.
+
+**Fix:**
+- **`charts.js`:**
+  - `addIndicator` now takes an `active = true` flag and stores `ind.active`; it only builds the indicator's series when active (so a restored-inactive indicator stays hidden).
+  - Extracted `teardownIndicator(panel, ind)` — the shared logic that removes an indicator's rendered artifacts (chart series, histogram, oscillator sub-chart/pane, Heikin-Ashi candles, volume-profile layer, LuxAlgo markers) and nulls the live refs (`subChart`, `hist`, `_oscDiv`, `_spacer`) **without** removing it from `panel.indicators`. Both `removeIndicator` (delete) and the new toggle reuse it.
+  - New `setIndicatorActive(panel, ind, active)` — flips `ind.active`; reactivating calls `buildIndicator`, deactivating calls `teardownIndicator`; then re-layouts oscillators, rebuilds MA-cross markers, fires `indicators-changed`, and autosaves.
+  - `buildIndicator` early-returns when `ind.active === false`, so `recomputeIndicators` (run on data load / timeframe change) leaves deactivated indicators hidden.
+  - `rebuildCrossMarkers` now ignores inactive SMA/EMA overlays so golden/death-cross arrows disappear when an MA is toggled off.
+- **`ui.js`:** `renderIndChips` adds the `inactive` class to dimmed chips; clicking the **name** now toggles active/inactive (was: open settings), the colored **dot** opens settings, and **×** still removes. Added tooltips clarifying each affordance.
+- **`style.css`:** `.ind-chip.inactive` dims to 0.45 opacity with a line-through name.
+- **`persistence.js`:** Serializes `active` per indicator and passes it back through `addIndicator` on restore, so the on/off state survives reloads and saved layouts.
+
+**Verification:** `node --check` passes on `charts.js`, `ui.js`, and `persistence.js`. Traced each indicator class through `teardownIndicator`/`buildIndicator`: overlays (line series), oscillators (sub-chart pane + spacer), Heikin-Ashi (candle series), volume-profile (DOM layer), and LuxAlgo (markers) all tear down and rebuild cleanly via the existing add/remove paths. Footer/readme → v1.18.0.
+
+---
+
 ## v1.17.0 — 2026-06-22 · Refresh-all-charts button in the top bar (Roadmap)
 
 ### Feature — one-click refresh of every chart

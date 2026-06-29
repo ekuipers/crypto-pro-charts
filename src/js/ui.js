@@ -5,7 +5,7 @@ import { state, drawingState } from './state.js';
 import { INDICATORS_DEF, INDICATOR_DESC, COLORS, THEMES, EXCHANGES } from './constants.js';
 import { indDef } from './indicators.js';
 import {
-  setLayout, addIndicator, removeIndicator, recomputeIndicators,
+  setLayout, addIndicator, removeIndicator, recomputeIndicators, setIndicatorActive,
   applyThemeToCharts, resizeAllCharts, scheduleAutosave, refreshAllPanels,
 } from './charts.js';
 import { setTool, clearDrawings, exportDrawings, importDrawings } from './drawings.js';
@@ -133,10 +133,13 @@ export function renderIndChips() {
   if (!panel) return;
   panel.indicators.forEach(ind => {
     const def = indDef(ind.defId);
+    const inactive = ind.active === false;
     const chip = document.createElement('div');
-    chip.className = 'ind-chip';
-    chip.innerHTML = `<span class="chip-dot" style="background:${ind.color}"></span><span class="chip-name">${def.name}</span><button class="chip-x">×</button>`;
-    chip.querySelector('.chip-name').addEventListener('click', () => showIndicatorModal(ind.defId, ind, panel));
+    chip.className = inactive ? 'ind-chip inactive' : 'ind-chip';
+    chip.innerHTML = `<span class="chip-dot" style="background:${ind.color}" title="Edit settings"></span><span class="chip-name" title="Click to hide / show">${def.name}</span><button class="chip-x" title="Remove">×</button>`;
+    // Click the name toggles the indicator on/off (dimmed when off); the colored
+    // dot opens settings; × removes it entirely.
+    chip.querySelector('.chip-name').addEventListener('click', () => setIndicatorActive(panel, ind, ind.active === false));
     chip.querySelector('.chip-dot').addEventListener('click', () => showIndicatorModal(ind.defId, ind, panel));
     chip.querySelector('.chip-x').addEventListener('click', () => removeIndicator(panel, ind));
     wrap.appendChild(chip);

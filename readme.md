@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.17.0  
+**Version:** v1.18.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -14,7 +14,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca, Bitvavo. **Watchlists can mix symbols from several exchanges at once** — each symbol carries its own exchange, and Settings chooses which exchanges to query (not a single active one)
 - **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
 - **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)
-- **Top-bar indicator chips** — Active indicators on the selected chart show as removable/editable chips in the top navigation bar, right beside the Indicators picker (frees the full chart width)
+- **Top-bar indicator chips** — Active indicators on the selected chart show as toggleable/editable/removable chips in the top navigation bar, right beside the Indicators picker (frees the full chart width). Click a chip's **name** to hide/show it (dimmed when off, state persists), the colored **dot** to edit its settings, and **×** to remove it
 - **Oscillator panes** — RSI, MACD, Stochastic, ATR, ADX render in sub-panes below the main chart
 - **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
 - **Symbol overlay** — Compare multiple symbols on one chart with independent price scales

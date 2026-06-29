@@ -124,6 +124,8 @@ input:focus, select:focus { border-color: var(--accent); }
 .ind-chip { flex: none; display: flex; align-items: center; gap: 5px; background: var(--panel2); border: 1px solid var(--border); border-radius: 14px; padding: 3px 6px 3px 8px; font-size: 11px; white-space: nowrap; }
 .chip-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; }
 .chip-name { cursor: pointer; }
+.ind-chip.inactive { opacity: 0.45; }
+.ind-chip.inactive .chip-name { text-decoration: line-through; }
 .chip-x { color: var(--muted); font-size: 14px; line-height: 1; }
 .chip-x:hover { color: var(--red); }
 

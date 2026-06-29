@@ -485,31 +485,54 @@ export function resizeAllCharts() {
 }
 
 // ---------- Indicators ----------
-export function addIndicator(panel, defId, params, color) {
+export function addIndicator(panel, defId, params, color, active = true) {
   const def = indDef(defId);
   if (!def) return;
   const ind = {
     uid: uid('ind'), defId, params: params || {}, color: color || def.color,
+    active: active !== false,
     series: [], subChart: null, subSeries: [], hist: null,
   };
   // fill default params
   def.params.forEach(p => { if (ind.params[p.n] == null) ind.params[p.n] = p.d; });
   panel.indicators.push(ind);
-  buildIndicator(panel, ind);
+  if (ind.active) buildIndicator(panel, ind);
   rebuildCrossMarkers(panel);
   document.dispatchEvent(new CustomEvent('indicators-changed', { detail: { panel } }));
   scheduleAutosave();
   return ind;
 }
 
-export function removeIndicator(panel, ind) {
+// Remove an indicator's rendered artifacts (chart series, oscillator pane,
+// overlay layers, markers) without touching panel.indicators. Shared by
+// removeIndicator (delete) and setIndicatorActive (deactivate).
+function teardownIndicator(panel, ind) {
   ind.series.forEach(s => { try { panel.chart.removeSeries(s); } catch {} });
   if (ind.hist) { try { panel.chart.removeSeries(ind.hist); } catch {} }
   if (panel.heikinSeries && ind.defId === 'heikinashi') { try { panel.chart.removeSeries(panel.heikinSeries); } catch {} panel.heikinSeries = null; }
   if (ind.subChart) { try { ind.subChart.remove(); } catch {} ind._oscDiv?.remove(); }
-  if (ind.defId === 'volprofile') panel.el.querySelector('.vol-profile-layer').innerHTML = '';
+  if (ind.defId === 'volprofile') { const l = panel.el.querySelector('.vol-profile-layer'); if (l) l.innerHTML = ''; }
   if (ind.defId === 'luxalgo') { panel._luxAlgoMarkers = []; applyPanelMarkers(panel); }
+  ind.series = []; ind.subSeries = []; ind.subChart = null; ind.hist = null; ind._oscDiv = null; ind._spacer = null;
+}
+
+export function removeIndicator(panel, ind) {
+  teardownIndicator(panel, ind);
   panel.indicators = panel.indicators.filter(i => i !== ind);
+  layoutOscillators(panel);
+  rebuildCrossMarkers(panel);
+  document.dispatchEvent(new CustomEvent('indicators-changed', { detail: { panel } }));
+  scheduleAutosave();
+}
+
+// Toggle an indicator on/off without removing it from the panel. Deactivating
+// tears down its rendered artifacts but keeps the definition (so it can be
+// rebuilt). Reactivating rebuilds it from its stored params.
+export function setIndicatorActive(panel, ind, active) {
+  if (!!ind.active === !!active) return;
+  ind.active = !!active;
+  if (ind.active) buildIndicator(panel, ind);
+  else teardownIndicator(panel, ind);
   layoutOscillators(panel);
   rebuildCrossMarkers(panel);
   document.dispatchEvent(new CustomEvent('indicators-changed', { detail: { panel } }));
@@ -533,6 +556,7 @@ export function recomputeIndicators(panel) {
 }
 
 function buildIndicator(panel, ind) {
+  if (ind.active === false) return;
   const def = indDef(ind.defId);
   if (!def || !panel.data.length) return;
   const p = { ...ind.params, _color: ind.color };
@@ -825,7 +849,7 @@ const MA_CROSS_IDS = ['sma', 'ema'];
 
 export function rebuildCrossMarkers(panel) {
   if (!panel || !panel.candleSeries) return;
-  const mas = panel.indicators.filter(i => MA_CROSS_IDS.includes(i.defId));
+  const mas = panel.indicators.filter(i => i.active !== false && MA_CROSS_IDS.includes(i.defId));
   if (mas.length < 2 || !panel.data.length) {
     panel._crossMarkers = [];
     applyPanelMarkers(panel);

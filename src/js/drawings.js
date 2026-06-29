@@ -125,10 +125,34 @@ export function renderDrawings(panel, preview) {
   const all = preview ? [...panel.drawings, preview] : panel.drawings;
   for (const d of all) drawOne(panel, ctx, d, w, h);
 
+  // Lock badges sit on top of every locked shape so locked state is visible at a glance.
+  for (const d of panel.drawings) if (d.locked) drawLockBadge(panel, ctx, d);
+
   const sel = drawingState.selected;
-  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) drawHandles(panel, ctx, sel);
+  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel) && !sel.locked) drawHandles(panel, ctx, sel);
 
   refreshConfigCoords();
+}
+
+// A small padlock glyph drawn at the shape's primary anchor to mark it as locked.
+function drawLockBadge(panel, ctx, d) {
+  const anchor = d.p1 || d.p2;
+  if (!anchor) return;
+  let x = X(panel, anchor), y = Y(panel, anchor);
+  if (x == null || y == null) return;
+  if (d.type === 'hline') x = panel._drawCanvas.width - 60;
+  if (d.type === 'vline') y = 16;
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.translate(x + 8, y - 8);
+  ctx.fillStyle = 'rgba(20,22,28,.85)';
+  ctx.strokeStyle = '#f0b90b';
+  ctx.lineWidth = 1.2;
+  // body
+  ctx.beginPath(); ctx.rect(-4, -1, 8, 7); ctx.fill(); ctx.stroke();
+  // shackle
+  ctx.beginPath(); ctx.arc(0, -1, 3, Math.PI, 0); ctx.stroke();
+  ctx.restore();
 }
 
 function dashFor(d) { return d.lineStyle ? (d.lineStyle === 'dashed') : (d.type === 'hline' || d.type === 'vline'); }
@@ -249,7 +273,7 @@ function updateSelectHover(panel, e) {
   const hit = hitTest(panel, x, y);
   if (hit) {
     layer.style.pointerEvents = 'auto';
-    layer.style.cursor = hit.handleIdx >= 0 ? 'crosshair' : 'move';
+    layer.style.cursor = hit.drawing.locked ? 'not-allowed' : (hit.handleIdx >= 0 ? 'crosshair' : 'move');
   } else if (!dragInfo) {
     layer.style.pointerEvents = 'none';
     layer.style.cursor = 'default';
@@ -260,7 +284,7 @@ function hitTest(panel, x, y) {
   const w = panel.el.querySelector('.main-chart-div').clientWidth;
   // Prefer handles of the currently selected shape so they stay grabbable.
   const sel = drawingState.selected;
-  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) {
+  if (sel && !sel.locked && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) {
     const hs = getHandles(panel, sel);
     for (let i = 0; i < hs.length; i++) {
       let hx = X(panel, hs[i].pt), hy = Y(panel, hs[i].pt);
@@ -313,6 +337,7 @@ function handleSelectDown(panel, e) {
   if (!hit) { deselect(); return; }
   select(panel, hit.drawing);
   const d = hit.drawing;
+  if (d.locked) return;   // locked shapes can be selected (to unlock) but not moved or resized
   const startPt = ptFromEvent(panel, e);
   const orig = { p1: clonePt(d.p1), p2: clonePt(d.p2), p3: clonePt(d.p3) };
   dragInfo = { panel, d, handleIdx: hit.handleIdx, startPt, orig };
@@ -398,12 +423,24 @@ function showConfig(panel, d) {
       ${textRow}
       <div class="dc-coords">${coordRows}</div>
     </div>
-    <div class="dc-actions"><button id="dcDelete" class="dc-del">Delete</button></div>`;
+    <div class="dc-actions">
+      <button id="dcLock" class="dc-lock${d.locked ? ' active' : ''}">${d.locked ? '🔓 Unlock' : '🔒 Lock'}</button>
+      <button id="dcDelete" class="dc-del"${d.locked ? ' disabled' : ''}>Delete</button>
+    </div>`;
   document.body.appendChild(el);
   positionConfig(panel, el);
 
+  // Editing controls are read-only while the shape is locked.
+  if (d.locked) el.querySelectorAll('.dc-body input, .dc-body select').forEach(inp => { inp.disabled = true; });
+
   const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); };
   el.querySelector('#dcClose').addEventListener('click', deselect);
+  el.querySelector('#dcLock').addEventListener('click', () => {
+    d.locked = !d.locked;
+    document.dispatchEvent(new CustomEvent('drawings-changed'));
+    showConfig(panel, d);   // rebuild popover to reflect the new locked state
+    renderDrawings(panel);
+  });
   el.querySelector('#dcColor').addEventListener('input', e => { d.color = e.target.value; changed(); });
   el.querySelector('#dcWidth').addEventListener('input', e => { d.width = Math.max(1, +e.target.value || 1); changed(); });
   el.querySelector('#dcStyle')?.addEventListener('change', e => { d.lineStyle = e.target.value; changed(); });
@@ -474,6 +511,7 @@ function eraseNearest(panel, pt) {
   const px = X(panel, pt), py = Y(panel, pt);
   let best = -1, bestD = 25;
   panel.drawings.forEach((d, i) => {
+    if (d.locked) return;   // locked shapes are protected from the eraser
     const x1 = X(panel, d.p1), y1 = Y(panel, d.p1);
     let dist = Math.hypot(px - x1, py - y1);
     if (d.p2) { const x2 = X(panel, d.p2), y2 = Y(panel, d.p2); dist = Math.min(dist, Math.hypot(px - x2, py - y2)); }

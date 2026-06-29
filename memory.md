@@ -4,6 +4,27 @@
 
 ---
 
+## v1.20.0 — 2026-06-29 · Lock / unlock drawing objects on the charts (Roadmap)
+
+### Feature — protect a drawing from accidental move, resize, or deletion
+**Problem:** The roadmap asked for the ability to lock and unlock drawing objects. Previously every shape was always editable — a stray drag in select mode or a pass with the eraser could move or destroy a carefully placed trend line, level, or fib.
+
+**Fix:**
+- **`drawings.js`:**
+  - Shapes carry an optional `locked` boolean. When `true` the shape is rendered normally but interaction is disabled across every editing path.
+  - `renderDrawings` skips drawing resize handles for a locked selected shape and draws a small padlock badge (`drawLockBadge`) over every locked shape so the locked state is visible at a glance (badge sits at the primary anchor, with the same offset logic used for h/v-line handles).
+  - `hitTest` no longer offers grab handles for a locked shape; locked shapes are still body-hittable so they can be selected and unlocked.
+  - `updateSelectHover` shows a `not-allowed` cursor over locked shapes instead of `move`/`crosshair`.
+  - `handleSelectDown` selects a locked shape (to expose the unlock button) but returns before starting any drag — so locked shapes cannot be moved or resized.
+  - `eraseNearest` ignores locked shapes, so the eraser tool (and the Delete/Backspace shortcut, which switches to the eraser) cannot remove a locked drawing.
+  - The config popover gained a **🔒 Lock / 🔓 Unlock** toggle in the actions row. While locked, all body inputs (color, width, style, text, coordinates) are disabled and the **Delete** button is disabled; toggling rebuilds the popover and re-renders. The `locked` flag fires `drawings-changed` so it autosaves.
+- **`style.css`:** `.dc-actions` now spreads the lock + delete buttons (`space-between`); added `.dc-lock` (with an `.active` amber state for the locked/Unlock affordance) and disabled-state styling for `.dc-del`.
+- **Persistence:** `locked` lives on the drawing object, which `persistence.js` already serializes wholesale (`p.drawings`), so lock state survives reloads and saved layouts with no schema change.
+
+**Verification:** `node --check src/js/drawings.js` passes. Traced every mutation path — drag (`handleSelectDown`), eraser (`eraseNearest`), Delete shortcut (`ui.js` → eraser), and popover Delete button — all now gate on `locked`. Confirmed the whole drawing object (including the new flag) round-trips through `persistence.js`. Footer → v1.20.0.
+
+---
+
 ## v1.19.0 — 2026-06-29 · Live current price next to the symbol name in the chart top bar (Roadmap)
 
 ### Feature — bold current-price readout in each panel's top bar

@@ -401,9 +401,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .draw-cfg .dc-coord { display: grid; grid-template-columns: 1fr 64px 64px; align-items: center; gap: 5px; }
 .draw-cfg .dc-coord span { color: var(--muted); }
 .draw-cfg .dc-coord input { width: 100%; color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 4px; }
-.draw-cfg .dc-actions { padding: 8px 10px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+.draw-cfg .dc-actions { padding: 8px 10px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 8px; }
 .draw-cfg .dc-del { padding: 6px 12px; border-radius: 5px; background: var(--panel2); color: var(--red); }
 .draw-cfg .dc-del:hover { background: var(--red); color: #fff; }
+.draw-cfg .dc-del:disabled { opacity: .4; cursor: not-allowed; }
+.draw-cfg .dc-del:disabled:hover { background: var(--panel2); color: var(--red); }
+.draw-cfg .dc-lock { padding: 6px 12px; border-radius: 5px; background: var(--panel2); color: var(--text); }
+.draw-cfg .dc-lock:hover { background: var(--border); }
+.draw-cfg .dc-lock.active { color: #f0b90b; }
 
 /* ---------- Context menu ---------- */
 .ctx-menu { position: fixed; z-index: 200; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); min-width: 130px; }

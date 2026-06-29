@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.19.0  
+**Version:** v1.20.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -17,7 +17,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)
 - **Top-bar indicator chips** — Active indicators on the selected chart show as toggleable/editable/removable chips in the top navigation bar, right beside the Indicators picker (frees the full chart width). Click a chip's **name** to hide/show it (dimmed when off, state persists), the colored **dot** to edit its settings, and **×** to remove it
 - **Oscillator panes** — RSI, MACD, Stochastic, ATR, ADX render in sub-panes below the main chart
-- **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser
+- **Drawing tools** — Trend line, ray, extended line, horizontal/vertical lines, rectangle, channel, Fibonacci retracement/extension, text label, measurement tool, eraser. **Lock any drawing** from its config popover (🔒) to protect it from accidental move, resize, or deletion — a padlock badge marks locked shapes; unlock to edit again
 - **Symbol overlay** — Compare multiple symbols on one chart with independent price scales
 - **Watchlist** — Multiple named watchlists (**drag the tabs to reorder them horizontally**), drag-to-reorder symbols, live prices from WebSocket, colour tags, REST polling fallback for pairs not in Binance stream; the symbol shown on the currently selected chart is highlighted in the list. Selecting a symbol that's already open on another chart focuses that chart instead of duplicating it. **Right-click a symbol to move it to another watchlist** (or remove it)
 - **Symbol picker** — Searchable add-symbol dialog with an **exchange filter** (multi-select; none selected = all enabled exchanges) plus a quote-currency filter (All / USDT / USDC / USD / EUR) and a "Hide stablecoins" filter (on by default) that drops stable/stable pairs from both exchange and CoinGecko results. Picked symbols remember which exchange they came from

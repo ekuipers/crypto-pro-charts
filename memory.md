@@ -4,6 +4,25 @@
 
 ---
 
+## v1.21.0 — 2026-07-09 · Plain ＋ compare button + stable panel bar during live price ticks (Roadmap + Bug)
+
+### Feature — remove the chart icon from the "add overlay" (compare) button
+**Problem:** The roadmap asked to remove the chart icon from the "add overlay" button. The compare button in each panel's action row showed `＋📈`, which looked busy next to the other single-glyph actions.
+
+**Fix:** **`charts.js`** — the `.compare-btn` markup in `addPanel` now renders just `＋` (tooltip "Compare / overlay symbol" unchanged).
+
+### Bug — chart panel visually shifted on every live price update
+**Problem:** The v1.19.0 live price readout (`.panel-sym-price`) sits at the start of the panel bar's flex row, before the timeframe buttons, legend, OHLC readout, and action buttons. Its width changed on almost every tick — `fmtPrice` used `maximumFractionDigits: 2` without a minimum (so `118,234.5` → `118,235` → `118,234.56` all differ in length) and the font uses proportional digits. Each tick therefore reflowed everything to the right of the price, making the chart header contents jump ("chart canvas moving with the price update").
+
+**Fix:** Three layers, so a tick can never change the element's width:
+- **`utils.js` `fmtPrice`:** prices ≥ 1000 now format with `minimumFractionDigits: 2` **and** `maximumFractionDigits: 2`, so the string length is constant for a given integer-digit count (all other magnitude branches already used fixed `toFixed` widths).
+- **`style.css` `.panel-sym-price`:** added `font-variant-numeric: tabular-nums` (every digit occupies the same advance width) and `white-space: nowrap`.
+- **`charts.js` `updatePanelPrice`:** ratchets a `min-width` (in `ch`) up to the widest price string seen for the current symbol, so even a rare digit-count change (e.g. 999.99 → 1,000.00) only ever grows the slot once instead of jiggling. The ratchet (`panel._priceCh`) and inline `min-width` reset in `changeSymbol`/`loadPanelData` so a new symbol re-measures from scratch.
+
+**Verification:** `node --check` passes on `src/js/charts.js` and `src/js/utils.js`. Traced both live paths (WebSocket kline + REST poll fallback) — they funnel through `updatePanelPrice`, which now writes a constant-width string into a width-ratcheted, tabular-nums element. Footer → v1.21.0.
+
+---
+
 ## v1.20.0 — 2026-06-29 · Lock / unlock drawing objects on the charts (Roadmap)
 
 ### Feature — protect a drawing from accidental move, resize, or deletion

@@ -24,7 +24,9 @@ export async function fetchJSON(url, opts = {}, timeout = 15000) {
 export function fmtPrice(p) {
   if (p == null || isNaN(p)) return '--';
   const a = Math.abs(p);
-  if (a >= 1000) return p.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  // Fixed 2 decimals (not just max 2) so live readouts keep a constant width
+  // across ticks — variable-length strings made the panel bar reflow (Bug 1).
+  if (a >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (a >= 1)    return p.toFixed(2);
   if (a >= 0.01) return p.toFixed(4);
   if (a >= 0.0001) return p.toFixed(6);

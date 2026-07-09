@@ -165,7 +165,13 @@ input:focus, select:focus { border-color: var(--accent); }
 .sym-btn { font-weight: 700; font-size: 14px; padding: 4px 8px; border-radius: 5px; }
 .sym-btn:hover { background: var(--hover); }
 .sym-quote { color: var(--muted); font-weight: 400; font-size: 11px; margin-left: 2px; }
-.panel-sym-price { font-weight: 800; font-size: 18px; line-height: 1; color: var(--text); letter-spacing: -0.2px; transition: color var(--duration-fast, 150ms) ease; }
+.panel-sym-price {
+  font-weight: 800; font-size: 18px; line-height: 1; color: var(--text); letter-spacing: -0.2px;
+  transition: color var(--duration-fast, 150ms) ease;
+  /* Constant-width live readout: tabular digits + nowrap so a price tick can
+     never change the element's width and reflow the rest of the panel bar. */
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .panel-sym-price:empty { display: none; }
 .panel-sym-price.up { color: var(--green); }
 .panel-sym-price.down { color: var(--red); }

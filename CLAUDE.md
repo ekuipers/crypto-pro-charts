@@ -21,7 +21,7 @@ Add the creator to the footer of the website.
 10. Use favicon as Site logo.
 
 ## Roadmap
-1. 
+
 _No open roadmap items. Completed items are logged in `memory.md`._
 
 ## Bugs

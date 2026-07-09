@@ -63,7 +63,15 @@ function updatePanelPrice(panel, price) {
   const el = panel.el && panel.el.querySelector('.panel-sym-price');
   if (!el || price == null || !isFinite(price)) return;
   const prev = panel._lastPrice;
-  el.textContent = fmtPrice(price);
+  const text = fmtPrice(price);
+  el.textContent = text;
+  // Ratchet the slot to the widest price seen for this symbol (Bug 1): together
+  // with tabular-nums this keeps the element's width constant across ticks, so
+  // the rest of the panel bar never reflows when the live price updates.
+  if (!panel._priceCh || text.length > panel._priceCh) {
+    panel._priceCh = text.length;
+    el.style.minWidth = panel._priceCh + 'ch';
+  }
   if (prev != null && price !== prev) {
     el.classList.toggle('up', price > prev);
     el.classList.toggle('down', price < prev);
@@ -197,7 +205,7 @@ export function addPanel(opts = {}) {
       <div class="ohlc-info"></div>
       <span class="candle-timer" title="Time until candle closes"></span>
       <div class="panel-actions">
-        <button class="panel-act compare-btn" title="Compare / overlay symbol">＋📈</button>
+        <button class="panel-act compare-btn" title="Compare / overlay symbol">＋</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
         <button class="panel-act fs-btn" title="Fullscreen">⛶</button>
         <button class="panel-act close-btn" title="Close">✕</button>
@@ -342,6 +350,7 @@ export async function loadPanelData(panel) {
     if (data.length) {
       panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(data[data.length - 1].close) });
       panel._lastPrice = null;            // reset direction colour for the new symbol
+      panel._priceCh = 0;                 // and the reserved price-slot width
       updatePanelPrice(panel, data[data.length - 1].close);
     }
     panel.volumeSeries.setData(data.map(c => ({
@@ -447,8 +456,9 @@ export async function changeSymbol(panel, symbol, name, exchange) {
   if (exchange) panel.exchange = exchange;
   panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(symbol)}<span class="sym-quote">${quoteAsset(symbol)}</span>`;
   const priceEl = panel.el.querySelector('.panel-sym-price');
-  if (priceEl) { priceEl.textContent = ''; priceEl.classList.remove('up', 'down'); }
+  if (priceEl) { priceEl.textContent = ''; priceEl.classList.remove('up', 'down'); priceEl.style.minWidth = ''; }
   panel._lastPrice = null;
+  panel._priceCh = 0;              // new symbol → re-measure the price slot width
   await loadPanelData(panel);
   if (panel === state.activePanel) {
     document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));

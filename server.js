@@ -42,7 +42,7 @@ app.set('trust proxy', 1);
 // browser (everything else is proxied through our own /api/* routes).
 const CONNECT_SRC = [
   "'self'",
-  'https://api.binance.com', 'wss://stream.binance.com:9443', 'wss://fstream.binance.com',
+  'https://api.binance.com', 'https://fapi.binance.com', 'wss://stream.binance.com:9443', 'wss://fstream.binance.com',
   'https://api.bybit.com', 'wss://stream.bybit.com',
   'https://www.okx.com', 'https://api.gateio.ws', 'https://api.kucoin.com',
   'https://api.hyperliquid.xyz', 'https://www.bitstamp.net',

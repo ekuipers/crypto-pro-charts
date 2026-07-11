@@ -22,11 +22,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_Populated 2026-07-11 from a full project analysis. P1 core charting gaps shipped in v1.22.0; P2 pro-trader differentiators shipped in v1.23.0; P3 platform/performance/hardening shipped in v1.24.0 (9 of 10 items — see below for the one deferred item). Completed items move to `memory.md`._
-
-### Deferred (from P3)
-
-21. **Upgrade LightweightCharts 4.1.3 → v5** — deliberately deferred after research (not attempted): touches the core rendering engine (13 series-creation call sites, the shared markers pipeline, the watermark, and possibly the cross-panel price/time-scale sync logic) with real unknowns remaining even after reading the official migration guide (priceScale/timeScale API deltas, new-primitive disposal lifecycle, native-pane mechanics vs. the current one-LightweightCharts-instance-per-oscillator architecture). Full findings and a concrete call-site inventory are in `memory.md` under v1.24.0 (P3-21) so a future attempt doesn't have to re-derive them. Revisit as a dedicated, focused effort — not bundled with other work.
+_No open roadmap items. Shipped items move to `memory.md` (see v1.24.1)._
 
 ## Bugs
 

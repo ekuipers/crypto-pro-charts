@@ -34,7 +34,7 @@ let state = {
   wlHeatmap: false,   // P2-16: watchlist performance-heatmap view toggle
   klineCache: {},      // { 'binance:BTCUSDT:1h': { data, ts } }
   symColors: {},       // { 'BTCUSDT': '#color' }
-  showEventMarkers: true,
+  showEventMarkers: false,
 };
 
 // drawingState lives here so it can be imported without circular deps

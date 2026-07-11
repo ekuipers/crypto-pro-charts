@@ -823,7 +823,7 @@ function onLiquidation(panel, liq) {
 
 function startDerivatives(panel) {
   const el = panel.el.querySelector('.panel-deriv-info');
-  if (!derivativesAvailable(panel.symbol, panel.exchange)) {
+  if (!derivativesAvailable(panel.symbol)) {
     if (el) { el.style.display = ''; el.textContent = 'Futures data unavailable for this symbol/exchange'; }
     return;
   }

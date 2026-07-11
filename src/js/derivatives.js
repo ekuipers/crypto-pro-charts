@@ -14,9 +14,15 @@ export async function fetchOIHistory(symbol, period = '1h', limit = 200) {
   return j.data || [];
 }
 
-// A symbol is eligible for the Binance USDT-M futures feed used here.
-export function derivativesAvailable(symbol, exchange) {
-  return exchange === 'binance' && /USDT$/.test(symbol);
+// A symbol is eligible for the Binance USDT-M futures feed used here. Funding
+// rate/OI is always sourced from Binance regardless of which exchange the
+// chart's spot price comes from — symbols are stored in the same compact
+// Binance-style form (e.g. 'BTCUSDT') across every exchange in this app, so
+// the feed works for a Bybit/OKX/Gate/Bitvavo panel just as well as a native
+// Binance one. Only the USDT-quote requirement (what Binance futures lists)
+// still applies.
+export function derivativesAvailable(symbol) {
+  return /USDT$/.test(symbol);
 }
 
 // Live liquidation stream for one symbol. onLiq receives one order per event:

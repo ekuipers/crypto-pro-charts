@@ -4,6 +4,18 @@
 
 ---
 
+## v1.24.1 — 2026-07-11 · Roadmap rescan: event markers default + funding-rate availability fix
+
+### Roadmap item — event markers off by default
+**Fix:** **`src/js/state.js`** — `showEventMarkers` default changed `true` → `false`. **`public/index.html`** — removed the `active` class from `#evtMarkersBtn` so the topbar button's initial visual state matches. `applyEventMarkers` (`src/js/events.js`) already no-ops when `state.showEventMarkers` is false, so no other logic changed — event markers can still be turned on per-session via the 📅 button or the command palette.
+
+### Bug fix — funding-rate toggle wrongly said "unavailable" on non-Binance panels
+**Problem:** `derivativesAvailable(symbol, exchange)` in `src/js/derivatives.js` required `exchange === 'binance'`, so the Ⓕ funding/OI/liquidations toggle showed "Futures data unavailable for this symbol/exchange" for *any* panel charting a Bybit/OKX/Gate/Bitvavo/etc. symbol — even a plain BTCUSDT — even though the funding-rate feed (`src/derivatives.js`, backend) always queries Binance's futures API directly and is unrelated to which exchange supplies the panel's spot price. Every symbol in this app is stored in the same compact Binance-style form (e.g. `'BTCUSDT'`) regardless of source exchange (confirmed via `constants.js`/`data.js` — per-exchange fetchers convert that canonical form to their own REST format internally), so the exchange gate was serving no purpose other than false negatives once P3 added OKX/Gate/Bitvavo as first-class chart sources.
+**Fix:** `derivativesAvailable(symbol)` now only checks the existing `/USDT$/` suffix requirement (what Binance USDT-M futures actually lists), dropping the `exchange` parameter. **`src/js/charts.js`** call site updated to match (`derivativesAvailable(panel.symbol)`). The graceful `catch` fallback in `refreshDerivInfo` ("Derivatives data unavailable") already covers the case where a symbol has no matching Binance perp market, so no new error handling was needed.
+**Verified:** `node --check` on `derivatives.js`/`charts.js`/`state.js`; full `npm test` suite (35/35 passing, unaffected).
+
+---
+
 ## v1.24.0 — 2026-07-11 · P3 roadmap: platform, performance & hardening (10 of 10 items — 1 deliberately deferred)
 
 Shipped the P3 tier of the 2026-07-11 roadmap. Ordered here roughly safest→riskiest, which is also the order they were built and tested in. Verified with `node --check` on every touched file, the new `npm test` suite (35 unit tests), and multiple Playwright browser passes with `console --errors` checked clean each time — three real bugs were caught and fixed by that testing (see below), which is exactly why the passes kept happening after every risky change rather than only at the end.

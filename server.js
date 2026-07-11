@@ -219,10 +219,16 @@ app.get('/api/events', async (_req, res) => {
     // falls back to the curated file so the pane still shows something.
     console.error('[events] DB read failed, falling back to file:', e.message);
   }
-  // No DB configured, or the DB path just failed above — serve the curated file.
+  // No DB configured, or the DB path just failed above — serve the curated
+  // file, pruned to the same 1-week retention window as db.pruneOldEvents()
+  // so "remove events older than a week" holds on this path too, not just
+  // the DB-enabled one.
   try {
     const raw = await fs.readFile(join(__dirname, 'data', 'events.json'), 'utf8');
-    res.type('application/json').send(raw);
+    const parsed = JSON.parse(raw);
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    parsed.events = (parsed.events || []).filter(e => Date.parse(e.date) >= cutoff);
+    res.json(parsed);
   } catch (e) {
     console.error('[events] file fallback also failed:', e.message);
     res.status(500).json({ error: 'events unavailable', events: [] });

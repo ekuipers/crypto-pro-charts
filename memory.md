@@ -4,6 +4,17 @@
 
 ---
 
+## v1.25.2 — 2026-07-11 · Roadmap rescan: 1-week event pruning now applies on the file-fallback path too
+
+### Roadmap item — remove events older than a week from the events list
+**Problem:** `db.pruneOldEvents()` (v1.25.0) correctly deletes `market_events` rows older than 7 days on the DB-enabled path, but `/api/events`'s file-fallback branch — used whenever no DB is configured (every local dev run) and, since v1.25.1's fix for the empty-events bug, also whenever the DB path itself fails — served the raw `data/events.json` completely unfiltered. So "remove events older than a week" only actually held on the DB-enabled happy path; the fallback (which is the *only* path exercised in this sandbox, since there's no `.env`/DB credentials here) always showed the full 16-event curated list regardless of age.
+**Fix:** **`server.js`** — the file-fallback branch of `/api/events` now filters `parsed.events` to `Date.parse(e.date) >= (Date.now() - 7 days)` before responding, matching `db.pruneOldEvents()`'s exact retention window, and serves it via `res.json(parsed)` instead of piping the raw file through unmodified.
+**Verified:** `node --check` clean; `npm test` 35/35. Started the local server (DB disabled here, so this exercises the fallback path directly) and confirmed `/api/events` now returns 3 events (2026-07-14, 2026-07-29, 2026-08-12) instead of all 16 — matching the manual cutoff calculation against the current date (2026-07-11).
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer/readme → v1.25.2.
+
+---
+
 ## v1.25.1 — 2026-07-11 · Bug rescan: 3 fixes (drawing undo race, KuCoin relay leak, events-seed race)
 
 A user-requested bug rescan (`CLAUDE.md`'s Bugs section said "No open bugs," but nothing had re-checked since the v1.25.0 derivatives removal + events/Postgres migration). Delegated a read-only investigation pass first, then verified each candidate against the actual source before fixing. The derivatives-removal grep found zero leftover references (clean); the events/Postgres SQL, CSRF/rate-limiter logic, and panel-teardown timer cleanup all traced through correctly — three real, reproducible bugs found elsewhere:

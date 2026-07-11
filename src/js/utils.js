@@ -20,6 +20,16 @@ export async function fetchJSON(url, opts = {}, timeout = 15000) {
   }
 }
 
+// Key for state.prices — the same symbol can trade at different prices on
+// different exchanges (a chart pinned to a non-Binance venue vs. a plain
+// Binance-quoted watchlist row), so they must not share one cache slot.
+// Binance keeps the plain symbol (the overwhelmingly common case, and what
+// the Binance mini-ticker stream has always used) so existing entries don't
+// need migrating; every other exchange gets its own namespaced key.
+export function priceKey(symbol, exchange) {
+  return exchange && exchange !== 'binance' ? `${symbol}@${exchange}` : symbol;
+}
+
 // Format a price intelligently based on magnitude
 export function fmtPrice(p) {
   if (p == null || isNaN(p)) return '--';

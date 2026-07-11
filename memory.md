@@ -4,6 +4,85 @@
 
 ---
 
+## v1.27.0 — 2026-07-12 · Bug rescan: 14 fixes (crash-DoS, 5 leaks/races, 3 data-correctness, 3 UX, 2 gaps)
+
+A user-requested bug rescan. Delegated four parallel read-only investigation passes (backend, core charting, data/state, UI/auth) covering every `src/` module, then verified each candidate against the actual source — and, where reachable without live infra, against a running local server — before fixing. 17 candidates came back; 14 were real and fixed below, 3 were false positives or out of reach from this sandbox (noted at the end).
+
+### Bug 1 — CRITICAL: unauthenticated single-request crash of the whole server
+**Problem:** `server.js`'s `validKlineParams` (and two more call sites — `/api/paper`, `/api/alerts`) validated `exchange` with `EXCHANGES[req.query.exchange] ? ... : 'binance'`. Plain-object bracket lookups treat `'__proto__'` (and `'constructor'`, `'hasOwnProperty'`, etc.) as truthy — `EXCHANGES['__proto__']` resolves to `Object.prototype`, an object, not `undefined`. So `exchange` was set to the literal string `"__proto__"`, which then made `src/klines.js`'s `tfSupported`/`fetchBars`/`klineUrl` (`EXCHANGES[exId] || EXCHANGES.binance`) resolve `e = Object.prototype`, and `e.intervals[tf]` threw `TypeError: Cannot read properties of undefined (reading '1h')` — a synchronous throw inside an unwrapped `async` Express 4 handler, which Node 24 turns into an unhandled promise rejection that **kills the process**.
+**Verified live, not just reasoned about:** started the local server and sent `GET /api/klines?symbol=BTCUSDT&exchange=__proto__` — the process crashed and exited, confirmed by the stack trace in the server log and the port going dead.
+**Fix:** `src/klines.js` — added `resolveExchange()` (uses `Object.hasOwn`, not a truthy bracket lookup) and routed `klineUrl`/`fetchBars`/`tfSupported` through it. `server.js` — all three `EXCHANGES[x] ? ... : 'binance'` sites now use `Object.hasOwn(EXCHANGES, x)`.
+**Re-verified live after the fix:** the same exploit request now safely falls back to Binance data and returns `200`; a follow-up normal request confirmed the process was still alive.
+
+### Bug 2 — volume alerts silently ignored a "below" condition
+**Problem:** `src/alert-engine.js`'s volume-alert branch never read `a.condition` — it only ever checked "above". The `/api/alerts` POST route accepts `condition: 'below'` for any alert type with no type-specific restriction, so a "volume below Nx average" alert could be created but would never evaluate correctly.
+**Fix:** the evaluator now branches on `a.condition` (`<=` for below, `>=` for above) and reports the direction in the trigger message.
+
+### Bug 3 — password change didn't invalidate other sessions
+**Problem:** `/api/auth/change-password` updated the password hash but never touched the `sessions` table — a stolen/leaked session cookie stayed valid for up to 30 days after the password was changed, defeating the usual security assumption behind changing a password.
+**Fix:** `src/db.js` — new `deleteOtherSessions(uid, keepSid)`. `src/auth.js` — change-password now calls it after a successful update, invalidating every other session for the account while keeping the request's own session alive.
+
+### Bug 4 — bar replay rendered wrong/broken data on non-candlestick chart types
+**Problem:** `src/js/replay.js`'s `applyIndex` called `panel.candleSeries.setData(slice)` with raw OHLC objects unconditionally. Every other data path (`setMainData` in `charts.js`) adapts to `panel.chartType` — line/area need `{time,value}`, Heikin Ashi and Renko need transformed data. Starting replay on a Line/Area/Heikin/Renko chart fed the wrong shape into the series for the whole replay session.
+**Fix:** exported `setMainData` from `charts.js`; `replay.js`'s `applyIndex` now calls it instead of hitting the series directly.
+
+### Bug 5 — destroying a panel didn't cancel its in-flight worker indicator builds
+**Problem:** `destroyPanel` removed the chart but never set `panel.chart = null` or bumped indicators' `_gen` counters, so `buildIndicator`'s staleness guard (`ind._gen !== gen || !panel.chart`) couldn't detect a panel torn down while a Web Worker indicator computation was still in flight (a real window — session restore and TF/symbol changes can fire a burst of these). The resolved computation would then call methods on a disposed chart (overlay branch) or build a brand-new orphaned chart on a detached DOM node (oscillator branch) — an unhandled rejection plus a leaked chart/canvas/rAF loop per occurrence.
+**Fix:** `destroyPanel` now bumps every indicator's `_gen` and sets `panel.chart = null` before removal, so both branches' existing staleness guard correctly discards the stale result.
+
+### Bug 6 — rapid symbol/TF changes with an active compare-overlay leaked a series + WebSocket
+**Problem:** `rebuildOverlays` (fired on every symbol/TF change) replaces `panel.overlays` with fresh objects and fires new un-awaited `buildOverlay()` calls. If a second change landed before a prior `buildOverlay`'s fetch resolved, the orphaned `ov` object would still attach a live line series and open a WebSocket on resolution — permanently unreachable from `panel.overlays`, so `removeOverlay` could never find or close them.
+**Fix:** `buildOverlay` now checks `panel.overlays.includes(ov)` right after its fetch resolves and bails out if the overlay was already replaced or removed while the fetch was in flight (also covers the same race via manual `removeOverlay` during a build).
+
+### Bug 7 — a dropped kline WebSocket never reconnected, freezing the chart
+**Problem:** unlike the price-ticker stream (`main.js`'s `onPriceStreamClosed`, fixed previously with capped-backoff reconnect), none of the four kline-stream constructors (Binance, Bybit, Bitvavo, the OKX/Gate/KuCoin relay) had a reconnect path. A backgrounded tab or network blip silently dropped the socket and the chart froze on its last tick — indefinitely, until the user manually changed symbol/TF or reloaded.
+**Fix:** `charts.js`'s `startKlineStream` now attaches a `close` listener (mirroring the price stream's pattern) that reconnects with capped exponential backoff, unless the close was intentional (marked via `ws._intentional` at every deliberate `.close()` call site — reopening on symbol/TF change, panel destroy, entering replay) or the panel no longer exists / is in replay.
+
+### Bug 8 — `state.prices` was keyed by symbol only, colliding across exchanges
+**Problem:** the same symbol charted on two different exchanges (e.g. `BTCUSDT` on Binance in one panel, `BTCUSDT` on Bybit in another, or two watchlist rows with different `exchange` fields) shared one cache slot in `state.prices`. Whichever writer ran last won — a Binance-tagged watchlist row could silently show a different exchange's price, and `main.js`'s `isChartPinned` workaround (added to guard exactly this collision) only blocked the Binance ticker from updating the shared slot at all once any non-Binance chart existed for that symbol, so the "wrong" price could persist even after the pinning chart closed.
+**Fix:** `utils.js` — new `priceKey(symbol, exchange)` (plain `symbol` for Binance, `symbol@exchange` for everything else, so existing Binance-keyed data needs no migration). Threaded through every read/write site: `charts.js` (live candle price), `data.js` (`refreshMissingPrices` — also fixed a related bug where its `found` dedup set was keyed by symbol only, so a found Binance entry could wrongly suppress the individual fetch for a same-symbol row on a different exchange), `watchlist.js` (heatmap, sort, row render), `scanner.js`, `paper.js` (P&L, close-price default, new-trade default). `main.js`'s `isChartPinned` workaround removed — no longer needed once the keys can't collide.
+
+### Bug 9 — paper-trade "Close" pre-filled a price that silently truncated at the thousands separator
+**Problem:** `paper.js`'s close-trade prompt pre-fills the current price via `fmtPrice()`, which inserts thousands separators for prices ≥ 1000 (e.g. `"50,123.45"`). Bare `parseFloat("50,123.45")` stops at the comma and returns `50` — finite and positive, so it passed validation silently. Accepting the pre-filled default (the entire point of pre-filling it) on any BTC-magnitude trade recorded a wildly wrong exit price/P&L with no error shown.
+**Fix:** strip commas before `parseFloat` in `closeTrade`.
+
+### Bug 10 — stale order-book/tech-info responses could overwrite fresher ones
+**Problem:** `orderbook.js`'s `refreshOrderBook`/`refreshTechInfo` fire REST requests keyed to the panel's symbol/exchange at call time but never re-checked that the panel hadn't moved on by the time the response arrived. Rapidly switching panels/symbols could let an older, slower response land after a newer one and overwrite `state.obData` / the tech-info pane with the wrong symbol's data.
+**Fix:** both now capture the requested symbol/exchange and discard the response if the panel's current symbol/exchange (or active-panel/right-tab, for tech info) no longer matches by the time it resolves.
+
+### Bug 11 — global keyboard shortcuts fired behind open modals
+**Problem:** `ui.js`'s single global `keydown` handler only excludes `input, textarea, select` targets. None of the app's modals (`showModal` and friends) trap focus or stop propagation, and several never focus anything on open — so e.g. opening the Settings modal and pressing "t" silently switched the active drawing tool behind it, and Ctrl+S/Z/Y fired their global actions while a modal was open and visibly focused.
+**Fix:** `onKey` now checks for an open `#modalOverlay` (after handling Escape, which must still close it) and returns early for every other shortcut while one is open.
+
+### Bug 12 — drawing-tool letter shortcuts fired alongside browser/OS modifier combos
+**Problem:** the `t/h/v/r/f/m` tool-shortcut branch never checked `ctrlKey`/`metaKey`/`altKey`, so e.g. Ctrl+V (paste), Ctrl+F (browser find), Ctrl+T/R (new tab/refresh) or Alt+Backspace (back navigation) anywhere on the page also silently switched the active drawing tool.
+**Fix:** `onKey` now returns early for any of those modifiers before reaching the tool-shortcut map.
+
+### Bug 13 — command palette search results could be overwritten by a slower, stale response
+**Problem:** `palette.js`'s `render()` awaits `fetchAllPairs()` (a network call on cache-miss) with no request token. Typing two characters quickly before the first request resolved let whichever response arrived last win, regardless of which matched the current input — most reproducible on the first keystroke of a cold session.
+**Fix:** added a generation counter; a response is discarded if a newer `render()` call has started since it was issued.
+
+### Bug 14 — alert deletion removed the alert locally even when the server delete failed
+**Problem:** `alerts.js`'s `deleteServerAlert` swallowed the fetch in an empty `catch {}` and never checked `r.ok`, then unconditionally filtered the alert out of the local list. A failed delete (auth expired, 500, etc.) silently reappeared on the next 30s poll with no explanation.
+**Fix:** now checks `r.ok`, throws on failure, and shows a toast instead of removing the alert optimistically — matching the existing pattern in `createServerAlert`.
+
+### Bug 15 — Bitvavo's `1w` timeframe had no native interval *or* aggregation fallback
+**Problem:** `constants.js`'s comment claimed Bitvavo's missing weekly/monthly candles "fall back to server aggregation," and `1M`/`3d` really do — but `TF_AGGREGATE` had no `1w` entry at all, so clicking the (unconditionally rendered) 1w button on a Bitvavo chart hit a 400 "invalid timeframe" from the server.
+**Fix:** added `'1w': { base: '1d', factor: 7 }` to `TF_AGGREGATE`. Verified live: `GET /api/klines?exchange=bitvavo&tf=1w` now returns aggregated weekly bars instead of a 400.
+
+### Investigated, not fixed (false positives / out of reach here)
+- A reported XSS surface across alert notes/template names/drawing text was checked — all pass through `esc()` before `innerHTML`; no issue found.
+- The service worker's cache-name versioning and `/api/*`/`/ws/*` exclusions were checked — correct, no change needed.
+- `indicators.js`'s math functions and the indicator Worker request/response bridge were checked — no bugs found.
+
+**Verification (whole batch):** `node --check` clean on every touched file. `npm test` — 35/35 passing, unaffected. Two fixes reproduced live against a running local server (Bug 1's crash-and-recovery, Bug 15's 400→200). The rest were verified by tracing the exact code path against the actual source (not just the investigation agents' reports) — DB-dependent fixes (Bugs 2, 3) and most pure frontend logic (Bugs 4, 6–14) couldn't be exercised end-to-end without a live Postgres instance or a browser automation tool, neither available in this sandbox; no Playwright tool was available this session, unlike prior rescans.
+
+**A new bug report and a new roadmap item arrived in `CLAUDE.md` mid-session** ("Account sign-in results in a database error"; a per-chart timeframe-favorites roadmap item) — not addressed in this pass; see the next entry once evidence is available (this sandbox has no live Postgres to reproduce a DB-side sign-in failure against).
+
+Footer/readme → v1.27.0.
+
+---
+
 ## v1.26.0 — 2026-07-11 · Roadmap rescan: per-chart toggles consolidated into a hamburger menu
 
 ### Roadmap item — move chart toggles into a dropdown behind a hamburger button

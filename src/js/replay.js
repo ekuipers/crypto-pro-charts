@@ -5,7 +5,7 @@
 // loadPanelData() path, so nothing here needs to duplicate that logic.
 // ============================================================
 import { state } from './state.js';
-import { recomputeIndicators, loadPanelData, updatePanelMenuBtn } from './charts.js';
+import { recomputeIndicators, loadPanelData, updatePanelMenuBtn, setMainData } from './charts.js';
 import { renderDrawings } from './drawings.js';
 import { toast } from './utils.js';
 
@@ -23,7 +23,7 @@ function toggleReplay(panel) {
 
 function startReplay(panel) {
   if (!panel.data || panel.data.length < MIN_START * 2) { toast('Not enough history to replay', 'warn'); return; }
-  if (panel.klineWS) { try { panel.klineWS.close(); } catch {} panel.klineWS = null; }
+  if (panel.klineWS) { panel.klineWS._intentional = true; try { panel.klineWS.close(); } catch {} panel.klineWS = null; }
   if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
   const full = panel.data.slice();
   panel._replay = { full, idx: Math.max(MIN_START, full.length - 150), playing: false, speed: 1, timer: null };
@@ -48,7 +48,7 @@ function applyIndex(panel) {
   const r = panel._replay;
   const slice = r.full.slice(0, r.idx);
   panel.data = slice;
-  panel.candleSeries.setData(slice);
+  setMainData(panel); // adapts to the panel's chart type (line/area/heikin/renko/candles)
   panel.volumeSeries.setData(slice.map(c => ({
     time: c.time, value: c.volume,
     color: c.close >= c.open ? state.settings.upColor + '80' : state.settings.downColor + '80',

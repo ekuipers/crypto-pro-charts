@@ -453,6 +453,13 @@ export function updateWSStatus(s) {
 // ---------- Keyboard ----------
 function onKey(e) {
   if (e.target.matches('input, textarea, select')) return;
+  // Escape always works (even with a modal open, to close it) — everything
+  // else below is a global shortcut that must not fire behind an open modal
+  // (none of the modals opened via showModal()/showThemeMenu()/etc. trap
+  // focus or stop propagation, so without this guard e.g. pressing "t" while
+  // the Settings modal is open silently switches the active drawing tool).
+  if (e.key === 'Escape') { closeModal(); selectTool('select'); state.activePanel?._cancelDraw?.(); return; }
+  if (document.getElementById('modalOverlay')) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); showSaveLayoutModal(); return; }
   // P3-24: Ctrl/Cmd+Z undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redo (on the active chart's drawings).
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -461,8 +468,11 @@ function onKey(e) {
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(state.activePanel); return; }
+  // Single-letter tool shortcuts must not fire alongside a modifier — otherwise
+  // e.g. Ctrl+V (paste), Ctrl+F (find), Ctrl+T/R (tab/refresh) or Alt+Backspace
+  // (back navigation) anywhere on the page also silently switches drawing tools.
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const map = { t: 'trend', h: 'hline', v: 'vline', r: 'rect', f: 'fibret', m: 'measure' };
   if (map[e.key.toLowerCase()]) selectTool(map[e.key.toLowerCase()]);
   if (e.key === 'Backspace' || e.key === 'Delete') selectTool('eraser');
-  if (e.key === 'Escape') { selectTool('select'); state.activePanel?._cancelDraw?.(); closeModal(); }
 }

@@ -14,6 +14,7 @@ export const TF_AGGREGATE = {
   '6h':  { base: '1h', factor: 6 },
   '12h': { base: '1h', factor: 12 },
   '3d':  { base: '1d', factor: 3 },
+  '1w':  { base: '1d', factor: 7 },
   '1M':  { base: '1d', factor: 30 },
 };
 const COLORS = ['#2962ff','#f7a600','#9c27b0','#00bcd4','#4caf50','#ff5722','#e91e63','#607d8b','#795548','#009688','#ff9800','#3f51b5'];

@@ -3,7 +3,7 @@
 // ============================================================
 import { state } from './state.js';
 import { fetchAllPairs, getCachedKlines, defaultExchange } from './data.js';
-import { baseAsset, fmtPrice, fmtPct, fmtVol, toast } from './utils.js';
+import { baseAsset, fmtPrice, fmtPct, fmtVol, toast, priceKey } from './utils.js';
 import { changeSymbol } from './charts.js';
 
 const SCAN_TYPES = [
@@ -57,7 +57,7 @@ async function runScan(silent = false) {
   try {
     let rows;
     if (['gainers', 'losers', 'volume'].includes(type)) {
-      const priced = universe.map(u => ({ sym: u.sym, ex: u.ex, p: state.prices[u.sym] })).filter(r => r.p);
+      const priced = universe.map(u => ({ sym: u.sym, ex: u.ex, p: state.prices[priceKey(u.sym, u.ex)] })).filter(r => r.p);
       if (type === 'gainers') priced.sort((a, b) => (b.p.change ?? 0) - (a.p.change ?? 0));
       if (type === 'losers') priced.sort((a, b) => (a.p.change ?? 0) - (b.p.change ?? 0));
       if (type === 'volume') priced.sort((a, b) => (b.p.price * 1) - (a.p.price * 1)); // approx by price; vol unavailable in miniticker map

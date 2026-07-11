@@ -119,7 +119,7 @@ function storeBars(exchange, symbol, tf, bars) {
 function validKlineParams(req) {
   const symbol = String(req.query.symbol || '').toUpperCase();
   const tf = String(req.query.tf || '1h');
-  const exchange = EXCHANGES[req.query.exchange] ? String(req.query.exchange) : 'binance';
+  const exchange = Object.hasOwn(EXCHANGES, req.query.exchange) ? String(req.query.exchange) : 'binance';
   // Validate to keep the upstream URL safe (no SSRF — fixed hosts + clean params).
   if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return { error: 'invalid symbol' };
   // A timeframe is valid when the exchange supports it natively OR the server
@@ -381,7 +381,7 @@ app.post('/api/paper', async (req, res) => {
   if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
   const b = req.body || {};
   const symbol = String(b.symbol || '').toUpperCase();
-  const exchange = EXCHANGES[b.exchange] ? String(b.exchange) : 'binance';
+  const exchange = Object.hasOwn(EXCHANGES, b.exchange) ? String(b.exchange) : 'binance';
   const side = b.side === 'short' ? 'short' : 'long';
   const qty = Number(b.qty), entryPrice = Number(b.entryPrice);
   if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
@@ -445,7 +445,7 @@ app.post('/api/alerts', async (req, res) => {
   if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
   const b = req.body || {};
   const symbol = String(b.symbol || '').toUpperCase();
-  const exchange = EXCHANGES[b.exchange] ? String(b.exchange) : 'binance';
+  const exchange = Object.hasOwn(EXCHANGES, b.exchange) ? String(b.exchange) : 'binance';
   const tf = TF_SECONDS[String(b.tf)] ? String(b.tf) : '1h';
   const type = ALERT_TYPES.has(b.type) ? b.type : 'price';
   const condition = b.condition === 'below' ? 'below' : 'above';

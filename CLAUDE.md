@@ -1,13 +1,13 @@
 # Introduction
 
-You are the designer and builder of a professional trading charting website, make sure that, it supports multiple graphs on a single page. It has the same like user interface as traidingview.
+You are the designer and builder of a professional trading charting website, make sure that, it supports multiple graphs on a single page. It has the same like user interface as tradingview.
 
 Title: CryptoPro Charts
 Creator: Erik Kuipers
 
 Add the creator to the footer of the website.
 
-# Workflow rule
+# Workflow rules
 
 1. After every change to a code file, append a dated entry to `memory.md` describing what changed and why (problem, fix, and how it was verified). Treat `memory.md` as the running changelog — no code edit is complete until `memory.md` is updated. 
 2. Only start local node server for testing purpose.
@@ -15,15 +15,14 @@ Add the creator to the footer of the website.
 4. Automatically commit changes to git and sync with remote repo
 5. Update documentation.
 6. Update version number in the footer with the lastest version in the change log.
-7. Always directly implement roadmap after the roadmap scan.
+7. Always directly implement roadmap and fix bugs after the roadmap scan.
 8. Allow all edits and commands automatically.
 9. Place frontend .js files in the /src/js folder and backend .js files in the /src folder.
 10. Use favicon as Site logo.
+11. When the session is complex and has a lot of tasks, issue the compact command in between tasks to save tokens.
 
 ## Roadmap
 
-_No open roadmap items. Shipped items move to `memory.md` (see v1.26.0)._
+1. Add the time frame selectors to a dropdown list per chart. Create the ability to choose favorite time frames did are permanently shown in the top bar of the chart.
 
 ## Bugs
-
-_No open bugs. Fixed bugs are logged in `memory.md` (see v1.25.1)._

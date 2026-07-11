@@ -77,7 +77,16 @@ async function createServerAlert(payload) {
 }
 
 async function deleteServerAlert(id) {
-  try { await fetch(`/api/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch {}
+  try {
+    const r = await fetch(`/api/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  } catch {
+    // Server delete failed (or never reached it) — leave the alert in the
+    // list rather than removing it optimistically; it would just silently
+    // reappear on the next pollServer() with no explanation otherwise.
+    toast('Failed to delete alert', 'error');
+    return;
+  }
   serverAlerts = serverAlerts.filter(a => a.id !== id);
   renderAlerts(); updateBadge();
 }

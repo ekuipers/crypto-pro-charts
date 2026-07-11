@@ -327,6 +327,11 @@ export async function getSessionUid(sid) {
 export async function deleteSession(sid) {
   await q('delete from sessions where sid = $1', [sid]);
 }
+// Invalidates every other session for this account (e.g. on password change),
+// keeping the caller's own current session (`keepSid`) alive.
+export async function deleteOtherSessions(uid, keepSid) {
+  await q('delete from sessions where uid = $1 and sid != $2', [uid, keepSid]);
+}
 
 // ---- Layouts (named layouts + autosave session-state) ----------------------
 export async function getLayout(uid, name) {

@@ -113,8 +113,12 @@ async function evalAlert(a, getBars) {
     const closed = bars[bars.length - 2];
     const prev = bars.slice(-22, -2);
     const avg = prev.reduce((s, b) => s + b.volume, 0) / prev.length;
-    if (avg > 0 && closed.volume > a.value * avg) {
-      await trigger(a, `${a.symbol} volume spike on ${a.tf}: ${(closed.volume / avg).toFixed(1)}× the 20-bar average (threshold ${fmt(a.value)}×)${a.note ? ` (${a.note})` : ''}`);
+    if (avg <= 0) return;
+    const mult = closed.volume / avg;
+    const hit = a.condition === 'below' ? mult <= a.value : mult >= a.value;
+    if (hit) {
+      const dir = a.condition === 'below' ? 'drop' : 'spike';
+      await trigger(a, `${a.symbol} volume ${dir} on ${a.tf}: ${mult.toFixed(1)}× the 20-bar average (threshold ${a.condition === 'below' ? '≤' : '≥'}${fmt(a.value)}×)${a.note ? ` (${a.note})` : ''}`);
     }
   }
 }

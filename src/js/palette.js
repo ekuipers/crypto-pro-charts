@@ -88,8 +88,16 @@ async function open() {
     selectedIdx = 0;
 
     let current = [];
+    let renderGen = 0;
     const render = async () => {
-      current = await buildResults(input.value);
+      // buildResults() awaits fetchAllPairs() (network on cache-miss), so two
+      // keystrokes typed in quick succession can resolve out of order — discard
+      // a response that isn't for the latest keystroke instead of letting a
+      // slower, stale one overwrite a newer, correct result list.
+      const gen = ++renderGen;
+      const results = await buildResults(input.value);
+      if (gen !== renderGen) return;
+      current = results;
       selectedIdx = Math.min(selectedIdx, Math.max(0, current.length - 1));
       list.innerHTML = current.length ? current.map((r, i) => `
         <div class="cmdk-item${i === selectedIdx ? ' sel' : ''}" data-i="${i}">

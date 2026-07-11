@@ -18,10 +18,15 @@ export function refreshOrderBook() {
   closeOrderBookStream();
   if (pollTimer) clearInterval(pollTimer);
 
-  fetchOrderBook(symbol, 20, exId).then(ob => { state.obData = ob; renderActiveSubtab(); }).catch(() => {});
-  const ws = openOrderBookStream(symbol, ob => { state.obData = ob; renderActiveSubtab(); }, exId);
+  // Discard a response that lands after the panel's symbol/exchange has
+  // already moved on (rapid panel/symbol switching can reorder these REST
+  // calls) — otherwise a slow, stale response can overwrite fresher data.
+  const stillCurrent = () => panel.symbol === symbol && panel.exchange === exId;
+  const applyBook = ob => { if (stillCurrent()) { state.obData = ob; renderActiveSubtab(); } };
+  fetchOrderBook(symbol, 20, exId).then(applyBook).catch(() => {});
+  const ws = openOrderBookStream(symbol, applyBook, exId);
   if (!ws) {
-    pollTimer = setInterval(() => fetchOrderBook(symbol, 20, exId).then(ob => { state.obData = ob; renderActiveSubtab(); }).catch(() => {}), 5000);
+    pollTimer = setInterval(() => fetchOrderBook(symbol, 20, exId).then(applyBook).catch(() => {}), 5000);
   }
   setupTradeStream(panel);
   renderActiveSubtab();
@@ -294,12 +299,17 @@ export async function refreshTechInfo() {
   const el = document.getElementById('techContent');
   if (!panel || !el) return;
   if (state.rightTab !== 'techinfo') return;
+  const symbol = panel.symbol, exchange = panel.exchange;
   el.innerHTML = '<div class="muted">Loading…</div>';
   try {
     const [p, bars] = await Promise.all([
-      fetchPrice(panel.symbol, panel.exchange),
-      getCachedKlines(panel.symbol, '1d', 400, panel.exchange).catch(() => []),
+      fetchPrice(symbol, exchange),
+      getCachedKlines(symbol, '1d', 400, exchange).catch(() => []),
     ]);
+    // The user may have switched panels/symbols while these requests were in
+    // flight — a slower, now-stale response landing after a newer one would
+    // otherwise overwrite the pane with the wrong symbol's data.
+    if (state.activePanel !== panel || panel.symbol !== symbol || panel.exchange !== exchange || state.rightTab !== 'techinfo') return;
     const up = p.change >= 0;
     const closes = bars.map(b => b.close);
     const last = closes[closes.length - 1] || p.price;

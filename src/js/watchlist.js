@@ -2,7 +2,7 @@
 // WATCHLIST — right panel symbol selector + search
 // ============================================================
 import { state } from './state.js';
-import { baseAsset, quoteAsset, fmtPrice, fmtPct, fmtVol, esc, toast, debounce, paintSparkline } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtPct, fmtVol, esc, toast, debounce, paintSparkline, priceKey } from './utils.js';
 import { fetchAllPairs, validateSymbol, searchCoinGecko, enabledExchanges, defaultExchange, getCachedKlines } from './data.js';
 import { selectWatchlistSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
@@ -62,7 +62,7 @@ function renderHeatmap() {
   if (!wl.length) { el.innerHTML = '<div class="muted">Watchlist is empty.</div>'; return; }
   el.innerHTML = wl.map(s => {
     const ex = itemExchange(s);
-    const p = state.prices[s.symbol] || {};
+    const p = state.prices[priceKey(s.symbol, ex)] || {};
     const chg = p.change ?? 0;
     // Intensity scales with |%change|, capped at 8% so a single outlier doesn't wash out the rest.
     const intensity = Math.min(1, Math.abs(chg) / 8);
@@ -232,7 +232,11 @@ function computeSorted(wl) {
   return wl.slice().sort((a, b) => {
     let av, bv;
     if (col === 'name') { av = a.symbol; bv = b.symbol; }
-    else { av = state.prices[a.symbol]?.[col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change'] ?? 0; bv = state.prices[b.symbol]?.[col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change'] ?? 0; }
+    else {
+      const field = col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change';
+      av = state.prices[priceKey(a.symbol, itemExchange(a))]?.[field] ?? 0;
+      bv = state.prices[priceKey(b.symbol, itemExchange(b))]?.[field] ?? 0;
+    }
     if (av < bv) return dir === 'asc' ? -1 : 1;
     if (av > bv) return dir === 'asc' ? 1 : -1;
     return 0;
@@ -278,7 +282,7 @@ export function renderSymbolList() {
   items.forEach(s => {
     const ex = itemExchange(s);
     const key = itemKey(s);
-    const p = state.prices[s.symbol] || {};
+    const p = state.prices[priceKey(s.symbol, ex)] || {};
     const up = (p.change ?? 0) >= 0;
     const row = document.createElement('div');
     row.className = 'sym-row' + (s.symbol === activeSym && ex === activeEx ? ' active' : '');

@@ -3,7 +3,7 @@
 // live P&L while open, and a closed-trade journal with notes.
 // ============================================================
 import { state } from './state.js';
-import { fmtPrice, fmtPct, esc, toast, baseAsset, quoteAsset } from './utils.js';
+import { fmtPrice, fmtPct, esc, toast, baseAsset, quoteAsset, priceKey } from './utils.js';
 import { showModal, closeModal } from './alerts.js';
 import { defaultExchange } from './data.js';
 
@@ -58,7 +58,7 @@ function render() {
       </div>
       <div class="paper-row-sub">
         <span>Entry ${fmtPrice(t.entryPrice)}</span>
-        ${pnlHtml(pnl(t, state.prices[t.symbol]?.price))}
+        ${pnlHtml(pnl(t, state.prices[priceKey(t.symbol, t.exchange)]?.price))}
       </div>
       <div class="paper-row-actions">
         <button class="paper-close-btn" data-id="${t.id}">Close</button>
@@ -95,10 +95,13 @@ function wireRows() {
 async function closeTrade(id) {
   const trade = cache.find(t => t.id === id);
   if (!trade) return;
-  const cur = state.prices[trade.symbol]?.price;
+  const cur = state.prices[priceKey(trade.symbol, trade.exchange)]?.price;
   const input = prompt('Exit price:', cur ? fmtPrice(cur) : '');
   if (!input) return;
-  const exitPrice = parseFloat(input);
+  // Strip thousands separators — fmtPrice() pre-fills e.g. "50,123.45" for
+  // BTC-magnitude prices, and bare parseFloat() would silently truncate at
+  // the comma (→ 50), passing validation with a wildly wrong exit price.
+  const exitPrice = parseFloat(String(input).replace(/,/g, ''));
   if (!Number.isFinite(exitPrice) || exitPrice <= 0) { toast('Invalid exit price', 'warn'); return; }
   try { await apiSend('PUT', `/api/paper/${id}/close`, { exitPrice }); toast('Trade closed', 'info'); refreshPaper(); }
   catch { toast('Failed to close trade', 'error'); }
@@ -121,7 +124,7 @@ function showNewTradeModal() {
   const panel = state.activePanel;
   const symbol = panel?.symbol || 'BTCUSDT';
   const exchange = panel?.exchange || defaultExchange();
-  const curPrice = state.prices[symbol]?.price;
+  const curPrice = state.prices[priceKey(symbol, exchange)]?.price;
   showModal(`
     <h3>New Paper Trade</h3>
     <label>Symbol<input id="ptSym" value="${esc(symbol)}"></label>

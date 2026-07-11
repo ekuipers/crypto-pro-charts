@@ -3,7 +3,7 @@
 // ============================================================
 import { EXCHANGES, TF_SECONDS } from './constants.js';
 import { state } from './state.js';
-import { fetchJSON, baseAsset, quoteAsset, log, warn } from './utils.js';
+import { fetchJSON, baseAsset, quoteAsset, log, warn, priceKey } from './utils.js';
 
 // Quote currencies to include when fetching all pairs
 const SUPPORTED_QUOTES = ['USDT', 'USDC', 'EUR', 'USD'];
@@ -268,7 +268,7 @@ export async function fetchPrice(symbol, exId = defaultExchange()) {
 export async function refreshMissingPrices(items) {
   // Tolerate plain string symbols for backward compatibility.
   const norm = items.map(s => typeof s === 'string' ? { symbol: s, exchange: defaultExchange() } : s);
-  const missing = norm.filter(s => !state.prices[s.symbol] || !state.prices[s.symbol].price);
+  const missing = norm.filter(s => { const k = priceKey(s.symbol, s.exchange); return !state.prices[k] || !state.prices[k].price; });
   if (!missing.length) return;
   const found = new Set();
   // Batch only the symbols actually sourced from Binance.
@@ -285,11 +285,13 @@ export async function refreshMissingPrices(items) {
     } catch (e2) { warn('refreshMissingPrices batch', e2.message); }
   }
   // Everything else: fetch individually from the item's own exchange.
-  const remaining = missing.filter(s => !found.has(s.symbol));
+  // (Filtered by exchange, not just symbol — a symbol can be missing on one
+  // exchange but already satisfied by the Binance batch above on another.)
+  const remaining = missing.filter(s => s.exchange !== 'binance' || !found.has(s.symbol));
   await Promise.allSettled(remaining.map(async ({ symbol, exchange }) => {
     try {
       const p = await fetchPrice(symbol, exchange);
-      state.prices[symbol] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
+      state.prices[priceKey(symbol, exchange)] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
     } catch {}
   }));
 }

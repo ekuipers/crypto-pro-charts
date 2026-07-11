@@ -5,7 +5,7 @@ import { state, drawingState } from './state.js';
 import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES } from './constants.js';
 import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
-import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast, priceKey } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
 import { exportPanelPNG, exportPanelCSV } from './snapshot.js';
 import { computeInWorker } from './indicator-client.js';
@@ -172,7 +172,7 @@ function mainSeriesData(panel) {
   return panel.data;
 }
 
-function setMainData(panel) {
+export function setMainData(panel) {
   panel.candleSeries.setData(mainSeriesData(panel));
   if ((panel.chartType || 'candles') === 'heikin') {
     const ha = calcHeikinAshi(panel.data);
@@ -687,7 +687,8 @@ export async function loadPanelData(panel) {
 }
 
 function startKlineStream(panel) {
-  if (panel.klineWS) { try { panel.klineWS.close(); } catch {} panel.klineWS = null; }
+  clearTimeout(panel._klineReconnectTimer);
+  if (panel.klineWS) { panel.klineWS._intentional = true; try { panel.klineWS.close(); } catch {} panel.klineWS = null; }
   if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
 
   const onCandle = candle => {
@@ -707,12 +708,13 @@ function startKlineStream(panel) {
     updateMainSeries(panel, candle);
     panel.volumeSeries.update({ time: candle.time, value: candle.volume,
       color: candle.close >= candle.open ? state.settings.upColor + '80' : state.settings.downColor + '80' });
-    // Keep the charted symbol's watchlist price on the SAME exchange as the chart.
-    // The Binance mini-ticker stream (main.js) feeds every other watchlist row, but
-    // for a non-Binance exchange its price would diverge from this chart — so the
-    // chart owns its symbol's price here (main.js skips pinned symbols).
+    // Keep the charted symbol's watchlist price fresh for non-Binance exchanges
+    // too — the Binance mini-ticker stream (main.js) only ever feeds the plain
+    // (Binance) key. Namespaced under exchange (priceKey) so this can never
+    // collide with — or get clobbered by — a Binance-quoted row for the same symbol.
     if (panel.exchange !== 'binance') {
-      state.prices[panel.symbol] = { ...(state.prices[panel.symbol] || {}), price: candle.close };
+      const k = priceKey(panel.symbol, panel.exchange);
+      state.prices[k] = { ...(state.prices[k] || {}), price: candle.close };
     }
     // A closed bar can finalise a fresh MA crossing — refresh the markers.
     if (candle.closed) rebuildCrossMarkers(panel);
@@ -725,7 +727,19 @@ function startKlineStream(panel) {
   // CryptoCompare, Alpaca, Hyperliquid) would otherwise freeze the chart at the
   // last REST candle, leaving the vertical price axis showing stale values. Poll
   // the latest bar so the chart keeps tracking the current price.
-  if (!panel.klineWS) startKlinePoll(panel, onCandle);
+  if (!panel.klineWS) { startKlinePoll(panel, onCandle); return; }
+  panel._klineReconnectAttempts = 0;
+  // Unlike the price stream (main.js), a dropped kline socket previously had
+  // no reconnect path at all — the chart just froze on its last tick (backgrounded
+  // tab, network blip, server-side drop) until the user manually changed
+  // symbol/TF or reloaded. Mirror the price stream's capped-backoff reconnect.
+  panel.klineWS.addEventListener('close', function onClose() {
+    if (this._intentional) return;
+    if (!state.panels.includes(panel) || panel._replay) return; // panel gone or replay owns the stream now
+    const retry = panel._klineReconnectAttempts = (panel._klineReconnectAttempts || 0) + 1;
+    const delay = Math.min(15000, 1000 * 2 ** Math.min(retry, 4));
+    panel._klineReconnectTimer = setTimeout(() => startKlineStream(panel), delay);
+  });
 }
 
 // REST polling fallback for exchanges without a kline WebSocket. Refreshes the
@@ -822,11 +836,17 @@ export function destroyPanel(panel) {
   stopAlignMonitor(panel);
   try { panel._ro?.disconnect(); } catch {}
   if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
+  clearTimeout(panel._klineReconnectTimer);
+  if (panel.klineWS) panel.klineWS._intentional = true;
   try { panel.klineWS?.close(); } catch {}
   if (panel._replay?.timer) clearInterval(panel._replay.timer);
   panel.overlays?.forEach(o => { try { o.ws?.close(); } catch {} });
-  panel.indicators.forEach(ind => { try { ind.subChart?.remove(); } catch {} });
+  // Bump every indicator's generation so a worker computation still in flight
+  // for this panel (buildIndicator's `ind._gen !== gen` guard) discards its
+  // result instead of calling methods on a chart that's about to be disposed.
+  panel.indicators.forEach(ind => { ind._gen = (ind._gen || 0) + 1; try { ind.subChart?.remove(); } catch {} });
   try { panel.chart?.remove(); } catch {}
+  panel.chart = null; // belt-and-suspenders: buildIndicator also checks `!panel.chart`
   panel.el.remove();
   state.panels = state.panels.filter(p => p !== panel);
   if (state.activePanel === panel) setActivePanel(state.panels[0] || null);
@@ -1180,6 +1200,11 @@ export async function addOverlaySymbol(panel, symbol, name, exchange) {
 async function buildOverlay(panel, ov) {
   try {
     const data = await getCachedKlines(ov.symbol, panel.tf, 500, ov.exchange || panel.exchange);
+    // `ov` can be orphaned while this fetch was in flight — removeOverlay()
+    // or a second rebuildOverlays() (symbol/TF change) may have already
+    // dropped it from panel.overlays. Attaching a series/WS to an orphaned
+    // `ov` would leak both (nothing left holding a reference to close them).
+    if (!panel.overlays.includes(ov)) return;
     ov.data = data;
     const scaleId = 'ov_' + ov.symbol;
     ov.series = panel.chart.addLineSeries({

@@ -18,21 +18,15 @@ import { initPaper } from './paper.js';
 import { initCommandPalette } from './palette.js';
 import { debounce, log, toast } from './utils.js';
 
-// A symbol charted on a non-Binance exchange has its price owned by that chart
-// (see charts.js startKlineStream), so the Binance mini-ticker must not clobber
-// it — otherwise the charted symbol's watchlist row would disagree with the
-// chart's own price axis.
-function isChartPinned(symbol) {
-  return state.panels.some(p => p.symbol === symbol && p.exchange !== 'binance');
-}
-
 function startPriceStream() {
   // Cancel any pending reconnect so we don't stack duplicate sockets when a
   // reconnect timer and a focus/visibility check both fire.
   clearTimeout(startPriceStream._reconnect);
   updateWSStatus('');
   const ws = openPriceStream(batch => {
-    if (isChartPinned(batch.symbol)) return;
+    // Binance mini-ticker always writes the plain (Binance) key — a chart on a
+    // different exchange for the same symbol now lives at its own namespaced
+    // key (see priceKey in utils.js), so the two can never collide.
     state.prices[batch.symbol] = { price: batch.price, open: batch.open, change: batch.change, chgVal: batch.chgVal };
   }, onPriceStreamClosed);
   if (ws) {

@@ -8,6 +8,13 @@
 // ============================================================
 import { EXCHANGES, TF_SECONDS, TF_AGGREGATE } from './js/constants.js';
 
+// Plain-object bracket lookups treat '__proto__'/'constructor'/etc. as truthy
+// (they resolve to Object.prototype), so callers must never trust
+// `EXCHANGES[x]` alone to mean "x is a real exchange id" — use this instead.
+function resolveExchange(exId) {
+  return Object.hasOwn(EXCHANGES, exId) ? EXCHANGES[exId] : EXCHANGES.binance;
+}
+
 export function toExSymbol(sym, exId) {
   const m = sym.match(/(USDT|USDC|BUSD|EUR|USD|BTC|ETH|BNB|DAI)$/);
   const quote = m ? m[1] : 'USDT';
@@ -27,7 +34,7 @@ export function toExSymbol(sym, exId) {
 // Build the upstream kline URL. `endSec` (optional) requests bars strictly
 // BEFORE that epoch-second — each exchange spells this differently.
 export function klineUrl(exId, symbol, tf, limit, endSec) {
-  const e = EXCHANGES[exId] || EXCHANGES.binance;
+  const e = resolveExchange(exId);
   const interval = e.intervals[tf] || tf;
   switch (exId) {
     case 'bybit': {
@@ -154,7 +161,7 @@ export function aggregateBars(bars, tf) {
 // when it has one, otherwise fetches the aggregation base TF and rolls it up
 // server-side (P1-8). Optional `endSec` pages history (bars before that time).
 export async function fetchBars(exId, symbol, tf, limit, endSec) {
-  const e = EXCHANGES[exId] || EXCHANGES.binance;
+  const e = resolveExchange(exId);
   if (e.intervals[tf]) return fetchUpstream(exId, symbol, tf, limit, endSec);
   const agg = TF_AGGREGATE[tf];
   if (!agg || !e.intervals[agg.base]) throw new Error(`timeframe ${tf} unsupported on ${exId}`);
@@ -165,6 +172,6 @@ export async function fetchBars(exId, symbol, tf, limit, endSec) {
 
 // A timeframe is valid for an exchange if it's native OR aggregatable.
 export function tfSupported(exId, tf) {
-  const e = EXCHANGES[exId] || EXCHANGES.binance;
+  const e = resolveExchange(exId);
   return Boolean(e.intervals[tf] || (TF_AGGREGATE[tf] && e.intervals[TF_AGGREGATE[tf].base]));
 }

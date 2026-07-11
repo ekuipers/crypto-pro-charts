@@ -184,6 +184,10 @@ export function installAuthRoutes(app) {
       if (next.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
       const salt = token(16);
       await db.updatePassword(uid, salt, hashPassword(next, salt));
+      // Invalidate any other signed-in session (e.g. a stolen cookie) —
+      // keep only the session that made this request alive.
+      const sid = parseCookies(req)[SESSION_COOKIE];
+      await db.deleteOtherSessions(uid, sid);
       res.json({ ok: true });
     } catch (e) {
       console.error('[auth] change-password failed:', e?.stack || e);

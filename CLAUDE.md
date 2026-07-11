@@ -22,8 +22,4 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Completed items are logged in `memory.md`._
-
-## Bugs
-
-_No open bugs. Fixed bugs are logged in `memory.md`._
+_Populated 2026-07-11 from a full project analysis. Ordered by priority: P1 = biggest gaps vs. pro-trader expectations, P2 = strong diffe

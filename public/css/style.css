@@ -705,6 +705,31 @@ body.resizing * { pointer-events: none; }
 .tf-group::-webkit-scrollbar { display: none; }
 .tf-btn { flex-shrink: 0; }
 
+/* Roadmap: favorite-timeframe dropdown (▾ next to the pinned TF pills) */
+.tf-drop-btn {
+  flex-shrink: 0; padding: 3px 5px; border-radius: 4px; font-size: 10px;
+  color: var(--muted); transition: background .12s, color .12s;
+}
+.tf-drop-btn:hover { background: var(--hover); color: var(--text); }
+.tf-dropdown {
+  position: fixed; z-index: 250; min-width: 160px; max-height: 70vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  padding: 4px;
+}
+.tfd-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  border-radius: 5px; cursor: pointer;
+}
+.tfd-item:hover { background: var(--hover); }
+.tfd-item.active .tfd-label { color: var(--accent); font-weight: 600; }
+.tfd-star {
+  padding: 7px 4px 7px 10px; font-size: 13px; color: var(--muted); line-height: 1;
+}
+.tfd-star.on { color: #f7a600; }
+.tfd-star:hover { color: #f7a600; }
+.tfd-label { flex: 1; text-align: left; padding: 7px 10px 7px 0; font-size: 13px; color: var(--text); }
+
 /* Chart type selector (P1-3) */
 .ctype-sel {
   background: var(--panel2); color: var(--muted); border: 1px solid transparent;

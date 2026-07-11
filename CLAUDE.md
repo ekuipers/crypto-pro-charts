@@ -23,6 +23,8 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-1. Add the time frame selectors to a dropdown list per chart. Create the ability to choose favorite time frames did are permanently shown in the top bar of the chart.
+_No open roadmap items. Shipped items move to `memory.md` (see v1.28.0)._
 
 ## Bugs
+
+_No open bugs. Fixed bugs are logged in `memory.md`._

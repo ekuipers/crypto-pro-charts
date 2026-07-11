@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.27.0  
+**Version:** v1.28.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -10,7 +10,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 ## Features
 
 - **Multi-panel layouts** — 1, 2, 4, 6, or 8-chart grid layouts; panels resizable via drag splitter
-- **13 timeframes** — 1m 5m 15m 30m 1h 2h 4h 6h 12h 1d 3d 1w 1M; timeframes an exchange lacks natively are aggregated server-side from a lower timeframe
+- **13 timeframes, favorites pinned to the top bar** — 1m 5m 15m 30m 1h 2h 4h 6h 12h 1d 3d 1w 1M; timeframes an exchange lacks natively are aggregated server-side from a lower timeframe. Each chart's top bar shows only your pinned favorite timeframes (1m/5m/15m/1h/4h/1d by default) plus a ▾ dropdown for the rest — star any timeframe in the dropdown to pin/unpin it, across every chart
 - **7 chart types per panel** — Candles, Hollow candles, OHLC Bars, Line, Area, Heikin Ashi, Renko (ATR-sized bricks)
 - **Infinite history scroll-back** — pan left and older bars stream in automatically (Postgres-backed kline store + exchange paging)
 - **Log & percent price scales** — per-panel `log` / `%` toggles in the chart's ☰ options menu (top right of the panel bar)

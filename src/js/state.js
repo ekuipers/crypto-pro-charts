@@ -1,7 +1,7 @@
 // ============================================================
 // APP STATE — singleton; import state everywhere
 // ============================================================
-import { WATCHLISTS_INIT, DEFAULT_THEME } from './constants.js';
+import { WATCHLISTS_INIT, DEFAULT_THEME, DEFAULT_FAVORITE_TIMEFRAMES } from './constants.js';
 
 let state = {
   theme: DEFAULT_THEME,
@@ -21,7 +21,12 @@ let state = {
   // `exchanges` is the list of exchanges to query for the symbol picker (multi-
   // exchange watchlists). `exchange` is kept as the legacy default/fallback used
   // when a watchlist item or panel has no explicit exchange of its own.
-  settings: { exchange: 'binance', exchanges: ['binance'], upColor: '#26a69a', downColor: '#ef5350' },
+  settings: {
+    exchange: 'binance', exchanges: ['binance'], upColor: '#26a69a', downColor: '#ef5350',
+    // Roadmap: timeframes pinned as always-visible pills per chart's top bar;
+    // the rest live in the ▾ dropdown. User-adjustable via its star toggle.
+    favoriteTimeframes: DEFAULT_FAVORITE_TIMEFRAMES.slice(),
+  },
   alerts: [],        // [{id, symbol, price, condition:'above'|'below', note, triggered}]
   alertIdCounter: 0,
   allPairs: null,    // cached all tradeable pairs (across enabled exchanges)

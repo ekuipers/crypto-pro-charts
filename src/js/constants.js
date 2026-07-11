@@ -5,8 +5,11 @@ const BINANCE = 'https://api.binance.com/api/v3';
 
 // Candle interval duration in seconds, keyed by timeframe id.
 export const TF_SECONDS = { '1m':60,'5m':300,'15m':900,'30m':1800,'1h':3600,'2h':7200,'4h':14400,'6h':21600,'12h':43200,'1d':86400,'3d':259200,'1w':604800,'1M':2592000 };
-// Ordered list of every selectable timeframe (panel TF buttons + server aggregation).
+// Ordered list of every selectable timeframe (panel TF dropdown + server aggregation).
 export const TIMEFRAMES = ['1m','5m','15m','30m','1h','2h','4h','6h','12h','1d','3d','1w','1M'];
+// Roadmap: timeframes pinned as always-visible pills in the panel top bar by
+// default (user-adjustable per-account via the star toggle in the TF dropdown).
+export const DEFAULT_FAVORITE_TIMEFRAMES = ['1m','5m','15m','1h','4h','1d'];
 // For timeframes an exchange has no native interval for, the server aggregates
 // from this base timeframe (factor = how many base bars form one target bar).
 export const TF_AGGREGATE = {

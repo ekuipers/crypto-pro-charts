@@ -2,7 +2,7 @@
 // CHARTS — panel + chart lifecycle, layouts, indicators glue
 // ============================================================
 import { state, drawingState } from './state.js';
-import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES } from './constants.js';
+import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES, DEFAULT_FAVORITE_TIMEFRAMES } from './constants.js';
 import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
 import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast, priceKey } from './utils.js';
@@ -421,9 +421,8 @@ export function addPanel(opts = {}) {
         ${[['candles','Candles'],['hollow','Hollow'],['bars','Bars'],['line','Line'],['area','Area'],['heikin','Heikin Ashi'],['renko','Renko']]
           .map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
       </select>
-      <div class="tf-group">
-        ${TIMEFRAMES.map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
-      </div>
+      <div class="tf-group"></div>
+      <button class="tf-drop-btn" title="More timeframes">▾</button>
       <div class="compare-legend"></div>
       <div class="ohlc-info"></div>
       <span class="candle-timer" title="Time until candle closes"></span>
@@ -469,11 +468,12 @@ export function addPanel(opts = {}) {
     setActivePanel(panel);
     document.dispatchEvent(new CustomEvent('open-symbol-search', { detail: { panel } }));
   });
-  el.querySelectorAll('.tf-btn').forEach(b => b.addEventListener('click', () => {
-    el.querySelectorAll('.tf-btn').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    changeTimeframe(panel, b.dataset.tf);
-  }));
+  renderTfGroup(panel);
+  el.querySelector('.tf-drop-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    setActivePanel(panel);
+    toggleTfDropdown(panel, e.currentTarget);
+  });
   // P1-3: chart type selector
   const ctypeSel = el.querySelector('.ctype-sel');
   ctypeSel.value = panel.chartType;
@@ -577,6 +577,96 @@ document.addEventListener('click', e => {
   if (!menu || menu.style.display === 'none') return;
   if (menu.contains(e.target) || e.target.closest?.('.panel-menu-btn')) return;
   closePanelMenu();
+}, true);
+
+// ---------- Per-chart timeframe pills + dropdown (Roadmap: favorite timeframes) ----------
+// Favorites are a global (account-level) preference in state.settings, not
+// per-panel, so every open chart's pill row reflects the same pinned set.
+function favoriteTfs() {
+  const f = state.settings.favoriteTimeframes;
+  return Array.isArray(f) && f.length ? f : DEFAULT_FAVORITE_TIMEFRAMES;
+}
+
+// Visible pills = the pinned favorites, plus the panel's own current TF if it
+// isn't one of them (so what's actually charted is never hidden behind the
+// dropdown, even for a one-off, non-favorited timeframe).
+export function renderTfGroup(panel) {
+  const group = panel.el.querySelector('.tf-group');
+  if (!group) return;
+  const favs = favoriteTfs();
+  const visible = TIMEFRAMES.filter(t => favs.includes(t) || t === panel.tf);
+  group.innerHTML = visible.map(t => `<button class="tf-btn${panel.tf === t ? ' active' : ''}" data-tf="${t}">${t}</button>`).join('');
+  group.querySelectorAll('.tf-btn').forEach(b => b.addEventListener('click', () => {
+    closeTfDropdown();
+    changeTimeframe(panel, b.dataset.tf);
+  }));
+}
+
+function toggleFavoriteTimeframe(tf) {
+  const favs = favoriteTfs().slice();
+  const idx = favs.indexOf(tf);
+  if (idx >= 0) {
+    if (favs.length <= 1) { toast('Keep at least one favorite timeframe', 'warn'); return; }
+    favs.splice(idx, 1);
+  } else {
+    favs.push(tf);
+  }
+  // Canonical TIMEFRAMES order, so the pill row's order stays stable regardless
+  // of the order favorites were toggled in.
+  state.settings.favoriteTimeframes = TIMEFRAMES.filter(t => favs.includes(t));
+  state.panels.forEach(renderTfGroup);
+  scheduleAutosave();
+}
+
+// A single shared dropdown (#tfDropdown, in index.html) is repositioned and
+// repopulated for whichever panel's ▾ button was clicked, mirroring the
+// panel-menu dropdown above.
+function renderTfDropdownContents(panel, menu) {
+  const favs = favoriteTfs();
+  menu.innerHTML = TIMEFRAMES.map(t => {
+    const isFav = favs.includes(t);
+    return `<div class="tfd-item${panel.tf === t ? ' active' : ''}" data-tf="${t}">
+      <button class="tfd-star${isFav ? ' on' : ''}" data-tf="${t}" title="${isFav ? 'Remove from favorites' : 'Pin as a favorite timeframe'}">${isFav ? '★' : '☆'}</button>
+      <span class="tfd-label">${t}</span>
+    </div>`;
+  }).join('');
+  menu.querySelectorAll('.tfd-star').forEach(s => s.addEventListener('click', e => {
+    e.stopPropagation();
+    toggleFavoriteTimeframe(s.dataset.tf);
+    renderTfDropdownContents(panel, menu); // refresh in place, stays open
+  }));
+  menu.querySelectorAll('.tfd-item').forEach(it => it.addEventListener('click', () => {
+    closeTfDropdown();
+    changeTimeframe(panel, it.dataset.tf);
+  }));
+}
+
+function closeTfDropdown() {
+  const menu = document.getElementById('tfDropdown');
+  if (menu) { menu.style.display = 'none'; menu.dataset.panelId = ''; }
+}
+
+function toggleTfDropdown(panel, btn) {
+  const menu = document.getElementById('tfDropdown');
+  if (!menu) return;
+  if (menu.style.display !== 'none' && menu.dataset.panelId === panel.id) { closeTfDropdown(); return; }
+  renderTfDropdownContents(panel, menu);
+  menu.dataset.panelId = panel.id;
+  menu.style.display = 'block';
+  const r = btn.getBoundingClientRect();
+  const mw = menu.offsetWidth;
+  let left = r.left;
+  if (left + mw > window.innerWidth - 4) left = window.innerWidth - mw - 4;
+  if (left < 4) left = 4;
+  menu.style.left = left + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+}
+
+document.addEventListener('click', e => {
+  const menu = document.getElementById('tfDropdown');
+  if (!menu || menu.style.display === 'none') return;
+  if (menu.contains(e.target) || e.target.closest?.('.tf-drop-btn')) return;
+  closeTfDropdown();
 }, true);
 
 function initChart(panel) {
@@ -776,6 +866,7 @@ function exitReplayIfActive(panel) {
 export function changeTimeframe(panel, tf) {
   exitReplayIfActive(panel);
   panel.tf = tf;
+  renderTfGroup(panel);
   loadPanelData(panel);
   scheduleAutosave();
 }

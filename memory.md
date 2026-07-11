@@ -4,6 +4,45 @@
 
 ---
 
+## v1.22.0 — 2026-07-11 · P1 roadmap: core charting gaps vs. TradingView (8 items)
+
+Shipped the entire P1 tier of the 2026-07-11 roadmap in one release. Verified with `node --check` on every touched file plus a local server smoke test (`/api/klines` on a native and an aggregated timeframe, `/api/klines/history` paging, alert route responses).
+
+### P1-8 — Extended timeframes (2h, 6h, 12h, 3d, 1M)
+**Problem:** Only 8 timeframes (1m–1w); pros expect the full TradingView set.
+**Fix:** **`constants.js`** — `TF_SECONDS` + new `TIMEFRAMES` list + `TF_AGGREGATE` map (aggregation base/factor per synthetic TF); every exchange's `intervals` map extended with its native spellings (Binance/OKX full set, Bybit `120/360/720/M`, KuCoin `2hour…1month`, Bitstamp second-steps, CryptoCompare `histohour|N`, Alpaca `NHour/1Month`, Bitvavo `2h/6h/12h`, Gate `30d`). **`src/klines.js`** — for TFs an exchange lacks natively, `fetchBars()` fetches the base TF and rolls it up server-side (`aggregateBars`; `1M` uses calendar-month UTC buckets). **`server.js`** — timeframe validation now accepts native-or-aggregatable (`tfSupported`). **`charts.js`** — panel TF buttons render from `TIMEFRAMES`; **`style.css`** lets the pill-group scroll on narrow panels.
+
+### P1-4 — Server-side kline database (Postgres)
+**Problem:** Bars only lived in per-request JSON cache files; no durable history.
+**Fix:** **`db.js`** — new `klines` table (PK exchange+symbol+tf+time) with chunked `upsertKlines`, `getKlinesBefore`, `oldestKlineTime`. **`server.js`** — every upstream fetch is persisted fire-and-forget (`storeBars`); JSON file cache still serves hot requests.
+
+### P1-1 — Infinite history scroll-back
+**Problem:** Charts were capped at one 500–1000 bar fetch; panning left hit a wall.
+**Fix:** **`server.js`** — new `GET /api/klines/history?before=<sec>` serves older bars from Postgres and tops up from the exchange (each exchange's "end time" paging param wired in **`src/klines.js`** `klineUrl`), persisting what it fetched; returns `exhausted` when upstream is dry. **`data.js`** — `fetchOlderKlines()`. **`charts.js`** — `maybeLoadHistory()` on `subscribeVisibleLogicalRangeChange`: within 20 bars of the left edge it prepends a 500-bar page, rebuilds series/indicators, and shifts the visible logical range by the prepended count so the viewport doesn't jump; 3-failure circuit breaker; the old 1500-bar cap in the live-candle path was removed so history can grow unbounded.
+
+### P1-2 — Log & percent price scales
+**Fix:** **`charts.js`** — per-panel `log`/`%` pill buttons (`setScaleMode`, price-scale mode 0/1/2), persisted and restored. **`style.css`** — `.scale-group`/`.scale-btn`.
+
+### P1-3 — Chart types (candles, hollow, bars, line, area, Heikin Ashi, Renko)
+**Problem:** Candles only (Heikin Ashi existed only as an overlay indicator).
+**Fix:** **`charts.js`** — per-panel chart-type `<select>`; `createMainSeries` builds the right LWC series while everything downstream keeps using `panel.candleSeries`; `mainSeriesData` transforms bars (HA via existing `calcHeikinAshi`, Renko via new ATR-brick `calcRenko` that merges same-bar bricks to keep times strictly ascending); `updateMainSeries` handles live ticks per type (incremental HA via `_haPrev`, Renko rebuilds on closed bars); crosshair OHLC readout handles value-only types; `applyCandleColors` is type-aware. Persisted per panel (snapshot v4).
+
+### P1-5 — Symbol link groups + cross-panel crosshair sync
+**Fix:** **`charts.js`** — ⛓ button cycles link group (none/1/2/3, colored); `changeSymbol` propagates to same-group panels (recursion-guarded). Crosshair moves mirror onto every other panel by time via `setCrosshairPosition` (binary-search nearest bar, recursion-guarded). Persisted per panel.
+
+### P1-7 — Complete the oscillator set
+**Finding:** OBV, MFI, CCI, Williams %R, StochRSI, CMF, ROC, DMI, TSI, UO already existed — only **Awesome Oscillator** was missing.
+**Fix:** **`constants.js`** — AO definition + description; **`indicators.js`** — AO calc (SMA5−SMA34 of bar midpoint) returning a direction-colored histogram; **`charts.js`** — `buildOscillator` honors `histByDirection` (rising green / falling red).
+
+### P1-6 — Server-side alert engine
+**Problem:** Alerts lived in the browser and died with the tab.
+**Fix:** **`db.js`** — `alerts` table + CRUD/trigger helpers. **`src/alert-engine.js`** (new) — evaluates active alerts every 30 s (per-pass fetch de-dup): price cross, %-move over a window, RSI level on any TF, volume spike vs 20-bar average; notifies via Telegram (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`) and generic webhook (`ALERT_WEBHOOK_URL`); marks triggered in DB. **`server.js`** — `/api/alerts` CRUD + `/api/alerts/triggered?since=` feed; engine starts after `db.init()`. **`alerts.js`** — server-mode client (typed create modal, 30 s poll surfaces triggers as toast + browser notification, including ones fired while the tab was closed); falls back to the legacy in-browser price alerts when the DB is unavailable. **`.env.example`** documents the notifier vars.
+
+### Infrastructure
+**`src/klines.js`** (new) — exchange URL building, payload normalization, paging and aggregation extracted from `server.js` so the alert engine reuses one code path. Footer/readme → v1.22.0.
+
+---
+
 ## v1.21.0 — 2026-07-09 · Plain ＋ compare button + stable panel bar during live price ticks (Roadmap + Bug)
 
 ### Feature — remove the chart icon from the "add overlay" (compare) button

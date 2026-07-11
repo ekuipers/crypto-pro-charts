@@ -4,12 +4,12 @@
 import { state } from './state.js';
 import { LEGACY_THEME, THEMES, DEFAULT_THEME } from './constants.js';
 import { debounce, toast, esc, baseAsset, quoteAsset } from './utils.js';
-import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData } from './charts.js';
+import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData, applyPanelViewOptions } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
 
 const AUTOSAVE_KEY = 'cryptopro_autosave';
 const LAYOUTS_KEY  = 'cryptopro_layouts';
-const VERSION = 3;
+const VERSION = 4;
 
 export function snapshot() {
   return {
@@ -32,6 +32,7 @@ export function snapshot() {
     symColors: state.symColors,
     panels: state.panels.map(p => ({
       symbol: p.symbol, symbolName: p.symbolName, exchange: p.exchange, tf: p.tf,
+      chartType: p.chartType || 'candles', scaleMode: p.scaleMode || 0, linkGroup: p.linkGroup || null,
       indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color, active: i.active !== false })),
       overlays: (p.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange, color: o.color })),
       drawings: p.drawings,
@@ -124,6 +125,10 @@ export function applyLayoutData(data) {
     if (!pd) return;
     panel.symbol = pd.symbol; panel.symbolName = pd.symbolName; panel.tf = pd.tf;
     panel.exchange = pd.exchange || (state.settings.exchanges?.[0] || state.settings.exchange || 'binance');
+    panel.chartType = pd.chartType || 'candles';
+    panel.scaleMode = pd.scaleMode || 0;
+    panel.linkGroup = pd.linkGroup || null;
+    applyPanelViewOptions(panel);
     panel.drawings = pd.drawings || [];
     panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange || panel.exchange, color: o.color, series: null, data: [], ws: null }));
     panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(pd.symbol)}<span class="sym-quote">${quoteAsset(pd.symbol)}</span>`;

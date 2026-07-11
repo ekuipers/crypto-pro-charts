@@ -90,8 +90,134 @@ export async function init() {
     updated_at timestamptz not null default now(),
     primary key (uid, name)
   )`);
+  // Server-side kline store (P1-4): persisted bars keyed by exchange+symbol+tf.
+  // Enables deep history paging (P1-1) beyond any single upstream fetch limit.
+  await q(`create table if not exists klines (
+    exchange text not null,
+    symbol   text not null,
+    tf       text not null,
+    time     bigint not null,
+    open     double precision not null,
+    high     double precision not null,
+    low      double precision not null,
+    close    double precision not null,
+    volume   double precision not null,
+    primary key (exchange, symbol, tf, time)
+  )`);
+  // Server-side alerts (P1-6): evaluated by src/alert-engine.js even when no
+  // browser tab is open. uid scopes alerts per account (GUEST when anonymous).
+  await q(`create table if not exists alerts (
+    id           text primary key,
+    uid          text not null,
+    symbol       text not null,
+    exchange     text not null default 'binance',
+    tf           text not null default '1h',
+    type         text not null default 'price',
+    condition    text not null default 'above',
+    value        double precision not null,
+    params       jsonb not null default '{}'::jsonb,
+    note         text not null default '',
+    active       boolean not null default true,
+    created_at   timestamptz not null default now(),
+    triggered_at timestamptz,
+    trigger_msg  text
+  )`);
+  await q(`create index if not exists alerts_active_idx on alerts(active) where active`);
   console.log('[db] connected; tables ready');
   return true;
+}
+
+// ---- Klines (P1-4) ----------------------------------------------------------
+// Batch upsert normalized bars. Chunked multi-row inserts keep this fast enough
+// for 1000-bar pages without needing COPY.
+export async function upsertKlines(exchange, symbol, tf, bars) {
+  if (!dbEnabled() || !bars?.length) return 0;
+  const CHUNK = 500;
+  let n = 0;
+  for (let i = 0; i < bars.length; i += CHUNK) {
+    const chunk = bars.slice(i, i + CHUNK);
+    const vals = [];
+    const params = [exchange, symbol, tf];
+    chunk.forEach((b, j) => {
+      const base = 3 + j * 6;
+      vals.push(`($1,$2,$3,$${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6})`);
+      params.push(b.time, b.open, b.high, b.low, b.close, b.volume);
+    });
+    await q(
+      `insert into klines (exchange, symbol, tf, time, open, high, low, close, volume)
+       values ${vals.join(',')}
+       on conflict (exchange, symbol, tf, time)
+       do update set open = excluded.open, high = excluded.high, low = excluded.low,
+                     close = excluded.close, volume = excluded.volume`,
+      params,
+    );
+    n += chunk.length;
+  }
+  return n;
+}
+
+// Bars strictly BEFORE `before` (epoch sec), newest-first internally, returned
+// ascending — the shape the chart expects for a history page.
+export async function getKlinesBefore(exchange, symbol, tf, before, limit = 500) {
+  if (!dbEnabled()) return [];
+  const { rows } = await q(
+    `select time, open, high, low, close, volume from klines
+     where exchange = $1 and symbol = $2 and tf = $3 and time < $4
+     order by time desc limit $5`,
+    [exchange, symbol, tf, before, limit],
+  );
+  return rows.map(r => ({ time: +r.time, open: +r.open, high: +r.high, low: +r.low, close: +r.close, volume: +r.volume })).reverse();
+}
+
+export async function oldestKlineTime(exchange, symbol, tf) {
+  if (!dbEnabled()) return null;
+  const { rows } = await q(
+    'select min(time) as t from klines where exchange = $1 and symbol = $2 and tf = $3',
+    [exchange, symbol, tf],
+  );
+  return rows[0]?.t != null ? +rows[0].t : null;
+}
+
+// ---- Alerts (P1-6) -----------------------------------------------------------
+function toAlert(r) {
+  return r && {
+    id: r.id, uid: r.uid, symbol: r.symbol, exchange: r.exchange, tf: r.tf,
+    type: r.type, condition: r.condition, value: +r.value, params: r.params || {},
+    note: r.note, active: r.active, createdAt: r.created_at,
+    triggeredAt: r.triggered_at, triggerMsg: r.trigger_msg,
+  };
+}
+export async function createAlert(rec) {
+  await q(
+    `insert into alerts (id, uid, symbol, exchange, tf, type, condition, value, params, note)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
+    [rec.id, rec.uid, rec.symbol, rec.exchange, rec.tf, rec.type, rec.condition, rec.value,
+     JSON.stringify(rec.params || {}), rec.note || ''],
+  );
+}
+export async function listAlerts(uid) {
+  const { rows } = await q('select * from alerts where uid = $1 order by created_at desc', [uid]);
+  return rows.map(toAlert);
+}
+export async function deleteAlert(uid, id) {
+  const { rowCount } = await q('delete from alerts where uid = $1 and id = $2', [uid, id]);
+  return rowCount > 0;
+}
+export async function listActiveAlerts() {
+  const { rows } = await q('select * from alerts where active');
+  return rows.map(toAlert);
+}
+export async function markAlertTriggered(id, msg) {
+  await q('update alerts set active = false, triggered_at = now(), trigger_msg = $2 where id = $1', [id, msg]);
+}
+// Triggered alerts for a user since a timestamp (ms) — client polls this to
+// show notifications for alerts that fired while the tab was closed.
+export async function listTriggeredSince(uid, sinceMs) {
+  const { rows } = await q(
+    'select * from alerts where uid = $1 and triggered_at is not null and triggered_at > to_timestamp($2 / 1000.0) order by triggered_at asc',
+    [uid, sinceMs || 0],
+  );
+  return rows.map(toAlert);
 }
 
 // ---- Accounts --------------------------------------------------------------

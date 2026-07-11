@@ -164,6 +164,18 @@ export async function fetchKlines(symbol, tf, limit = 500, exId = defaultExchang
   throw new Error(`No data source returned bars for ${symbol} ${tf}`);
 }
 
+// ---- History paging (P1-1) ---------------------------------
+// Older bars strictly BEFORE `before` (epoch sec) via the server's Postgres
+// kline store (which tops itself up from the exchange). Returns ascending bars;
+// an empty array means history is exhausted.
+export async function fetchOlderKlines(symbol, tf, before, limit = 500, exId = defaultExchange()) {
+  const j = await fetchJSON(
+    `/api/klines/history?exchange=${ex(exId).id}&symbol=${encodeURIComponent(symbol)}&tf=${tf}&before=${Math.floor(before)}&limit=${limit}`,
+    {}, 20000,
+  );
+  return (j && Array.isArray(j.bars)) ? j.bars : [];
+}
+
 // Cached wrapper (1 min TTL)
 export async function getCachedKlines(symbol, tf, limit = 500, exId = defaultExchange()) {
   const key = `${exId}:${symbol}:${tf}`;

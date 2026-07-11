@@ -598,6 +598,42 @@ body.resizing * { pointer-events: none; }
 }
 .tf-btn.active { background: var(--accent); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
 
+/* Many timeframes (P1-8): let the pill-group scroll instead of overflowing */
+.tf-group { overflow-x: auto; scrollbar-width: none; flex-shrink: 1; min-width: 0; }
+.tf-group::-webkit-scrollbar { display: none; }
+.tf-btn { flex-shrink: 0; }
+
+/* Chart type selector (P1-3) */
+.ctype-sel {
+  background: var(--panel2); color: var(--muted); border: 1px solid transparent;
+  border-radius: 6px; font-size: 11px; padding: 3px 4px; cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.ctype-sel:hover { color: var(--text); border-color: var(--border); }
+.ctype-sel:focus { outline: none; border-color: var(--accent); }
+
+/* Log / percent scale toggles (P1-2) */
+.scale-group { display: flex; gap: 1px; background: var(--panel2); border-radius: 6px; padding: 2px; }
+.scale-btn {
+  padding: 3px 6px; font-size: 10px; border-radius: 4px; color: var(--muted);
+  transition: background .12s, color .12s;
+}
+.scale-btn:hover { background: var(--hover); color: var(--text); }
+.scale-btn.active { background: var(--accent); color: #fff; }
+
+/* Symbol link-group button (P1-5) — colored when in a group */
+.link-btn.active { background: var(--hover); }
+
+/* Server-side alert list extras (P1-6) */
+.alert-type-tag {
+  font-size: 10px; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: middle;
+}
+.alert-server-tag {
+  font-size: 10px; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 1px 5px; font-weight: 500; vertical-align: middle;
+}
+
 /* Time-scale range buttons */
 .panel-timescale { gap: 1px; }
 .ts-btn { border-radius: 4px; transition: background .12s, color .12s; }

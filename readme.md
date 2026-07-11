@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.21.0  
+**Version:** v1.22.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -10,6 +10,11 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 ## Features
 
 - **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
+- **13 timeframes** — 1m 5m 15m 30m 1h 2h 4h 6h 12h 1d 3d 1w 1M; timeframes an exchange lacks natively are aggregated server-side from a lower timeframe
+- **7 chart types per panel** — Candles, Hollow candles, OHLC Bars, Line, Area, Heikin Ashi, Renko (ATR-sized bricks)
+- **Infinite history scroll-back** — pan left and older bars stream in automatically (Postgres-backed kline store + exchange paging)
+- **Log & percent price scales** — per-panel `log` / `%` toggles next to the timeframe buttons
+- **Symbol link groups & crosshair sync** — put panels in a colored link group (⛓) so a symbol change follows across them; the crosshair mirrors across all panels by time
 - **Live price readout** — Each chart's current price shows in a bigger, bold font right next to the symbol name in the panel's top bar, flashing green/red in the direction of the last tick
 - **Refresh all** — a ⟳ button in the top bar drops the kline cache and reloads every chart's data in one click
 - **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca, Bitvavo. **Watchlists can mix symbols from several exchanges at once** — each symbol carries its own exchange, and Settings chooses which exchanges to query (not a single active one)
@@ -28,7 +33,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Scanner** — Configurable symbol scanner across the watchlist or top pairs
 - **Multi-user accounts** — Application-only sign-in with a username and password (no third-party SSO). Passwords are salted + scrypt-hashed. Accounts, auth sessions, and chart layouts are persisted in a **Supabase (Postgres) database** (`accounts`, `sessions`, `layouts` tables, created automatically on startup). Each user's autosave session-state and named layouts are scoped to their account; anonymous users share a guest scope. Account button in the top bar (Sign in / Create account)
 - **Layout persistence** — Autosave + named layouts saved to the Postgres database (scoped per signed-in user); layout selector dropdown in the toolbar; falls back to browser localStorage if the server/DB is unavailable
-- **Alerts** — Price alerts with browser notifications
+- **Server-side alerts** — Price cross, % move, RSI level, and volume-spike alerts evaluated on the server every 30 s, so they fire even with the browser closed; optional Telegram / webhook notifications (`.env`), with toast + browser notifications in-app. Falls back to in-browser price alerts when no database is configured
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
 - **Responsive footer** — Creator attribution and version number
 
@@ -80,13 +85,15 @@ DBCRYPTOCHARTS_POSTGRES_URL_NON_POOLING="postgresql://...:5432/postgres?sslmode=
 DBCRYPTOCHARTS_POSTGRES_URL="postgresql://...:6543/postgres?sslmode=require"
 ```
 
-The server creates three tables on startup if they don't exist:
+The server creates five tables on startup if they don't exist:
 
 | Table | Purpose |
 |---|---|
 | `accounts` | user id, username, salt, password hash, timestamps |
 | `sessions` | opaque session token → account, with expiry (FK to `accounts`) |
 | `layouts` | per-user autosave session-state and named layouts (`jsonb`), keyed by `(uid, name)` |
+| `klines` | server-side bar store keyed by `(exchange, symbol, tf, time)` — powers infinite history scroll-back |
+| `alerts` | per-user server-side alerts (price / % move / RSI / volume spike), evaluated by the alert engine |
 
 Without a connection string the database is disabled and the frontend falls back
 to browser `localStorage`. Set `NODE_ENV=production` to mark session cookies
@@ -115,7 +122,9 @@ crypto-pro-charts/
 │   ├── utils.js         # helpers (baseAsset, quoteAsset, fmtPrice…)
 │   └── watchlist.js     # watchlist UI + symbol picker
 ├── auth.js              # server-side auth: username/password (scrypt) + DB sessions
-├── db.js                # Supabase/Postgres: accounts, sessions, layouts tables
+├── db.js                # Supabase/Postgres: accounts, sessions, layouts, klines, alerts tables
+├── klines.js            # shared exchange kline fetch, history paging, TF aggregation
+├── alert-engine.js      # server-side alert evaluation + Telegram/webhook notify
 ├── server.js            # Express server + kline proxy/cache + .env loader
 ├── .env.example         # PORT / NODE_ENV / Supabase Postgres connection string
 ├── data/                # kline cache + curated events.json (no user data here now)

@@ -2,9 +2,9 @@
 // CHARTS — panel + chart lifecycle, layouts, indicators glue
 // ============================================================
 import { state, drawingState } from './state.js';
-import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS } from './constants.js';
-import { getCachedKlines, fetchKlines, openKlineStream, defaultExchange } from './data.js';
-import { indDef, calcOverlay, calcOscillator } from './indicators.js';
+import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES } from './constants.js';
+import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
+import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
 import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
 
@@ -100,6 +100,242 @@ setInterval(() => {
     el.textContent = fmtCountdown((Math.floor(now / sec) + 1) * sec - now);
   });
 }, 1000);
+
+// ---------- Chart types (P1-3) ----------
+// The panel's "main series" (panel.candleSeries) can be one of several series
+// kinds. Everything downstream (markers, priceToCoordinate for drawings and the
+// volume profile, crosshair info) keeps using panel.candleSeries regardless.
+function createMainSeries(panel) {
+  const t = panel.chartType || 'candles';
+  const up = state.settings.upColor, down = state.settings.downColor;
+  const accent = themeColors().accent;
+  let s;
+  if (t === 'bars') {
+    s = panel.chart.addBarSeries({ upColor: up, downColor: down, thinBars: false });
+  } else if (t === 'line') {
+    s = panel.chart.addLineSeries({ color: accent, lineWidth: 2 });
+  } else if (t === 'area') {
+    s = panel.chart.addAreaSeries({ lineColor: accent, topColor: accent + '44', bottomColor: accent + '06', lineWidth: 2 });
+  } else if (t === 'hollow') {
+    s = panel.chart.addCandlestickSeries({
+      upColor: 'rgba(0,0,0,0)', downColor: down,
+      borderUpColor: up, borderDownColor: down, wickUpColor: up, wickDownColor: down,
+    });
+  } else { // candles, heikin, renko all render as candlesticks
+    s = panel.chart.addCandlestickSeries({
+      upColor: up, downColor: down,
+      borderUpColor: up, borderDownColor: down, wickUpColor: up, wickDownColor: down,
+    });
+  }
+  panel.candleSeries = s;
+  panel._builtType = t;
+}
+
+// ATR-sized Renko bricks. Each brick carries the time of the bar that completed
+// it; multiple bricks completed by one bar are merged into a single candle so
+// the time axis stays strictly ascending (an LWC requirement).
+function calcRenko(d) {
+  const n = d.length;
+  if (n < 15) return d;
+  let atr = 0;
+  for (let i = 1; i < n; i++) {
+    atr += Math.max(d[i].high - d[i].low, Math.abs(d[i].high - d[i - 1].close), Math.abs(d[i].low - d[i - 1].close));
+  }
+  atr /= (n - 1);
+  const brick = atr || d[n - 1].close * 0.01;
+  const out = [];
+  let anchor = Math.round(d[0].close / brick) * brick;
+  for (let i = 1; i < n; i++) {
+    const c = d[i].close;
+    while (c >= anchor + brick) { out.push({ time: d[i].time, open: anchor, high: anchor + brick, low: anchor, close: anchor + brick }); anchor += brick; }
+    while (c <= anchor - brick) { out.push({ time: d[i].time, open: anchor, high: anchor, low: anchor - brick, close: anchor - brick }); anchor -= brick; }
+  }
+  const merged = [];
+  for (const b of out) {
+    const last = merged[merged.length - 1];
+    if (last && last.time === b.time) {
+      last.close = b.close;
+      last.high = Math.max(last.high, b.high);
+      last.low = Math.min(last.low, b.low);
+    } else merged.push({ ...b });
+  }
+  return merged;
+}
+
+function mainSeriesData(panel) {
+  const t = panel.chartType || 'candles';
+  if (t === 'line' || t === 'area') return panel.data.map(c => ({ time: c.time, value: c.close }));
+  if (t === 'heikin') return calcHeikinAshi(panel.data);
+  if (t === 'renko') return calcRenko(panel.data);
+  return panel.data;
+}
+
+function setMainData(panel) {
+  panel.candleSeries.setData(mainSeriesData(panel));
+  if ((panel.chartType || 'candles') === 'heikin') {
+    const ha = calcHeikinAshi(panel.data);
+    panel._haPrev = ha.length > 1 ? ha[ha.length - 2] : null;
+  }
+}
+
+// Live tick → main series, respecting the panel's chart type.
+function updateMainSeries(panel, candle) {
+  const t = panel.chartType || 'candles';
+  try {
+    if (t === 'line' || t === 'area') { panel.candleSeries.update({ time: candle.time, value: candle.close }); return; }
+    if (t === 'heikin') {
+      const prev = panel._haPrev;
+      const close = (candle.open + candle.high + candle.low + candle.close) / 4;
+      const open = prev ? (prev.open + prev.close) / 2 : (candle.open + candle.close) / 2;
+      panel.candleSeries.update({
+        time: candle.time, open,
+        high: Math.max(candle.high, open, close), low: Math.min(candle.low, open, close), close,
+      });
+      if (candle.closed) panel._haPrev = { open, close };
+      return;
+    }
+    if (t === 'renko') { if (candle.closed) setMainData(panel); return; }
+    panel.candleSeries.update(candle);
+  } catch (e) { warn('updateMainSeries', e.message); }
+}
+
+// Rebuild the main series in the new type, keeping data, markers and drawings.
+function rebuildMainSeries(panel) {
+  try { panel.chart.removeSeries(panel.candleSeries); } catch {}
+  createMainSeries(panel);
+  if (panel.data.length) {
+    setMainData(panel);
+    panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(panel.data[panel.data.length - 1].close) });
+  }
+  applyPanelMarkers(panel);
+  renderDrawings(panel);
+}
+
+export function setChartType(panel, t) {
+  if ((panel.chartType || 'candles') === t) return;
+  panel.chartType = t;
+  const sel = panel.el.querySelector('.ctype-sel');
+  if (sel && sel.value !== t) sel.value = t;
+  rebuildMainSeries(panel);
+  scheduleAutosave();
+}
+
+// Re-apply persisted per-panel view options (chart type, scale mode, link
+// group) onto an already-created panel — used by persistence restore.
+export function applyPanelViewOptions(panel) {
+  const sel = panel.el.querySelector('.ctype-sel');
+  if (sel) sel.value = panel.chartType || 'candles';
+  if ((panel.chartType || 'candles') !== panel._builtType) rebuildMainSeries(panel);
+  try { panel.chart.priceScale('right').applyOptions({ mode: panel.scaleMode || 0 }); } catch {}
+  updateScaleButtons(panel);
+  updateLinkButton(panel);
+}
+
+// ---------- Price-scale modes (P1-2): 0 normal / 1 log / 2 percent ----------
+export function setScaleMode(panel, mode) {
+  panel.scaleMode = mode;
+  try { panel.chart.priceScale('right').applyOptions({ mode }); } catch {}
+  updateScaleButtons(panel);
+  scheduleAutosave();
+}
+
+function updateScaleButtons(panel) {
+  panel.el.querySelectorAll('.scale-btn').forEach(b => {
+    b.classList.toggle('active',
+      (b.dataset.scale === 'log' && panel.scaleMode === 1) ||
+      (b.dataset.scale === 'pct' && panel.scaleMode === 2));
+  });
+}
+
+// ---------- Symbol link groups (P1-5) ----------
+const LINK_COLORS = { 1: '#2962ff', 2: '#f7a600', 3: '#9c27b0' };
+
+export function cycleLinkGroup(panel) {
+  const order = [null, 1, 2, 3];
+  panel.linkGroup = order[(order.indexOf(panel.linkGroup ?? null) + 1) % order.length];
+  updateLinkButton(panel);
+  scheduleAutosave();
+}
+
+function updateLinkButton(panel) {
+  const b = panel.el.querySelector('.link-btn');
+  if (!b) return;
+  b.classList.toggle('active', !!panel.linkGroup);
+  b.style.color = panel.linkGroup ? LINK_COLORS[panel.linkGroup] : '';
+  b.title = panel.linkGroup
+    ? `Symbol link group ${panel.linkGroup} — linked charts follow symbol changes`
+    : 'Link symbol (click to join a colored link group)';
+}
+
+// ---------- Cross-panel crosshair sync (P1-5) ----------
+// Moving the crosshair on one chart mirrors it (by time) on every other panel,
+// TradingView-style. setCrosshairPosition needs a price, so each target panel
+// anchors to its own bar's close at (or just before) that time.
+let _xhairSyncing = false;
+
+function nearestBarAtOrBefore(d, time) {
+  if (!d.length || time < d[0].time) return null;
+  let lo = 0, hi = d.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (d[mid].time <= time) lo = mid; else hi = mid - 1;
+  }
+  return d[lo];
+}
+
+function syncCrosshair(panel, param) {
+  if (_xhairSyncing) return;
+  _xhairSyncing = true;
+  try {
+    state.panels.forEach(p => {
+      if (p === panel || !p.chart || !p.candleSeries) return;
+      if (!param.time) { try { p.chart.clearCrosshairPosition(); } catch {} return; }
+      const bar = nearestBarAtOrBefore(p.data, param.time);
+      if (!bar) { try { p.chart.clearCrosshairPosition(); } catch {} return; }
+      try { p.chart.setCrosshairPosition(bar.close, bar.time, p.candleSeries); } catch {}
+    });
+  } finally { _xhairSyncing = false; }
+}
+
+// ---------- Infinite history scroll-back (P1-1) ----------
+// When the user pans within 20 bars of the left edge, fetch an older page from
+// /api/klines/history (Postgres store + upstream top-up), prepend it and shift
+// the visible logical range so the viewport doesn't jump.
+const HISTORY_PAGE = 500;
+const HISTORY_EDGE_BARS = 20;
+
+async function maybeLoadHistory(panel) {
+  if (panel._loadingHistory || panel._historyDone || !panel.data.length || !panel.chart) return;
+  const r = panel.chart.timeScale().getVisibleLogicalRange();
+  if (!r || r.from > HISTORY_EDGE_BARS) return;
+  panel._loadingHistory = true;
+  try {
+    const older = (await fetchOlderKlines(panel.symbol, panel.tf, panel.data[0].time, HISTORY_PAGE, panel.exchange))
+      .filter(b => b.time < panel.data[0].time);
+    if (!older.length) { panel._historyDone = true; return; }
+    panel._histFails = 0;
+    const range = panel.chart.timeScale().getVisibleLogicalRange();
+    panel.data = [...older, ...panel.data];
+    setMainData(panel);
+    panel.volumeSeries.setData(panel.data.map(c => ({
+      time: c.time, value: c.volume,
+      color: c.close >= c.open ? state.settings.upColor + '80' : state.settings.downColor + '80',
+    })));
+    recomputeIndicators(panel);
+    renderDrawings(panel);
+    // Prepending N bars shifts every logical index by N — restore the viewport.
+    // (Renko re-bricks the whole series, so an exact shift doesn't apply there.)
+    if (range && (panel.chartType || 'candles') !== 'renko') {
+      try { panel.chart.timeScale().setVisibleLogicalRange({ from: range.from + older.length, to: range.to + older.length }); } catch {}
+    }
+  } catch (e) {
+    warn('history load failed', e.message);
+    panel._histFails = (panel._histFails || 0) + 1;
+    if (panel._histFails >= 3) panel._historyDone = true;   // stop hammering a dead endpoint
+  } finally {
+    panel._loadingHistory = false;
+  }
+}
 
 // ---------- Layout management ----------
 export function setLayout(mode) {
@@ -198,13 +434,22 @@ export function addPanel(opts = {}) {
     <div class="panel-bar">
       <button class="sym-btn">${opts.symbol ? baseAsset(opts.symbol) : 'BTC'}<span class="sym-quote">${opts.symbol ? quoteAsset(opts.symbol) : 'USDT'}</span></button>
       <span class="panel-sym-price" title="Current price"></span>
+      <select class="ctype-sel" title="Chart type">
+        ${[['candles','Candles'],['hollow','Hollow'],['bars','Bars'],['line','Line'],['area','Area'],['heikin','Heikin Ashi'],['renko','Renko']]
+          .map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+      </select>
       <div class="tf-group">
-        ${['1m','5m','15m','30m','1h','4h','1d','1w'].map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
+        ${TIMEFRAMES.map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
+      </div>
+      <div class="scale-group">
+        <button class="scale-btn" data-scale="log" title="Logarithmic price scale">log</button>
+        <button class="scale-btn" data-scale="pct" title="Percent price scale">%</button>
       </div>
       <div class="compare-legend"></div>
       <div class="ohlc-info"></div>
       <span class="candle-timer" title="Time until candle closes"></span>
       <div class="panel-actions">
+        <button class="panel-act link-btn" title="Link symbol (click to join a colored link group)">⛓</button>
         <button class="panel-act compare-btn" title="Compare / overlay symbol">＋</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
         <button class="panel-act fs-btn" title="Fullscreen">⛶</button>
@@ -231,6 +476,9 @@ export function addPanel(opts = {}) {
     symbolName: opts.symbolName || 'Bitcoin',
     exchange: opts.exchange || defaultExchange(),
     tf: opts.tf || '1h',
+    chartType: opts.chartType || 'candles',   // P1-3: candles|hollow|bars|line|area|heikin|renko
+    scaleMode: opts.scaleMode || 0,           // P1-2: 0 normal, 1 log, 2 percent
+    linkGroup: opts.linkGroup || null,        // P1-5: 1|2|3 colored symbol-link group
     data: [],
     chart: null, candleSeries: null, volumeSeries: null,
     heikinSeries: null,
@@ -255,6 +503,17 @@ export function addPanel(opts = {}) {
     setActivePanel(panel);
     document.dispatchEvent(new CustomEvent('open-indicators'));
   });
+  // P1-3: chart type selector
+  const ctypeSel = el.querySelector('.ctype-sel');
+  ctypeSel.value = panel.chartType;
+  ctypeSel.addEventListener('change', () => setChartType(panel, ctypeSel.value));
+  // P1-2: log / percent price-scale toggles
+  el.querySelectorAll('.scale-btn').forEach(b => b.addEventListener('click', () => {
+    const want = b.dataset.scale === 'log' ? 1 : 2;
+    setScaleMode(panel, panel.scaleMode === want ? 0 : want);
+  }));
+  // P1-5: colored symbol-link group cycler
+  el.querySelector('.link-btn').addEventListener('click', () => cycleLinkGroup(panel));
   el.querySelector('.compare-btn').addEventListener('click', () => {
     setActivePanel(panel);
     document.dispatchEvent(new CustomEvent('open-compare-search', { detail: { panel } }));
@@ -285,24 +544,30 @@ function initChart(panel) {
     const div = panel.el.querySelector('.main-chart-div');
     const chart = LWC().createChart(div, { ...chartTheme(), autoSize: false });
     panel.chart = chart;
-    panel.candleSeries = chart.addCandlestickSeries({
-      upColor: state.settings.upColor, downColor: state.settings.downColor,
-      borderUpColor: state.settings.upColor, borderDownColor: state.settings.downColor,
-      wickUpColor: state.settings.upColor, wickDownColor: state.settings.downColor,
-    });
+    createMainSeries(panel);
     panel.volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' }, priceScaleId: 'vol',
     });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    // P1-2: restore the persisted price-scale mode (0 normal / 1 log / 2 percent)
+    if (panel.scaleMode) { try { chart.priceScale('right').applyOptions({ mode: panel.scaleMode }); } catch {} }
+    updateScaleButtons(panel);
+    updateLinkButton(panel);
 
-    // crosshair OHLC display
+    // crosshair OHLC display + cross-panel crosshair sync (P1-5)
     chart.subscribeCrosshairMove(param => {
       const info = panel.el.querySelector('.ohlc-info');
-      if (!param.time || !param.seriesData?.get(panel.candleSeries)) { info.innerHTML = ''; return; }
-      const c = param.seriesData.get(panel.candleSeries);
-      const up = c.close >= c.open;
-      const col = up ? state.settings.upColor : state.settings.downColor;
-      info.innerHTML = `<span style="color:${col}">O ${fmtPrice(c.open)} H ${fmtPrice(c.high)} L ${fmtPrice(c.low)} C ${fmtPrice(c.close)}</span>`;
+      const c = param.time ? param.seriesData?.get(panel.candleSeries) : null;
+      if (!c) { info.innerHTML = ''; }
+      else if (c.close == null) {
+        // line/area chart types expose only { value }
+        info.innerHTML = `<span>C ${fmtPrice(c.value)}</span>`;
+      } else {
+        const up = c.close >= c.open;
+        const col = up ? state.settings.upColor : state.settings.downColor;
+        info.innerHTML = `<span style="color:${col}">O ${fmtPrice(c.open)} H ${fmtPrice(c.high)} L ${fmtPrice(c.low)} C ${fmtPrice(c.close)}</span>`;
+      }
+      syncCrosshair(panel, param);
     });
 
     // resize observer
@@ -317,12 +582,14 @@ function initChart(panel) {
 
     initDrawingsForPanel(panel);
 
-    // re-render drawings / vol profile on scroll-zoom, and keep the
-    // main + oscillator time axes aligned as price labels change width
+    // re-render drawings / vol profile on scroll-zoom, keep the main +
+    // oscillator time axes aligned, and lazy-load older history when the
+    // user pans near the left edge (P1-1).
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       renderDrawings(panel);
       renderVolProfile(panel);
       alignPriceScales(panel);
+      maybeLoadHistory(panel);
     });
 
     // Continuous watchdog: vertical price-axis scaling changes label
@@ -346,7 +613,9 @@ export async function loadPanelData(panel) {
   try {
     const data = await getCachedKlines(panel.symbol, panel.tf, 500, panel.exchange);
     panel.data = data;
-    panel.candleSeries.setData(data);
+    panel._historyDone = false;             // new symbol/TF → history can page again (P1-1)
+    panel._histFails = 0;
+    setMainData(panel);
     if (data.length) {
       panel.candleSeries.applyOptions({ priceFormat: dynamicPriceFormat(data[data.length - 1].close) });
       panel._lastPrice = null;            // reset direction colour for the new symbol
@@ -389,12 +658,13 @@ function startKlineStream(panel) {
       Object.assign(last, candle);
     } else if (candle.time > last.time) {
       d.push(candle);
-      if (d.length > 1500) d.shift();
+      // No cap on stored bars — infinite history scroll-back (P1-1) can grow
+      // panel.data far beyond the initial fetch.
       // A new bar appeared on the main chart — extend every oscillator's spacer
       // grid with the same time so the panes stay aligned at the right edge.
       panel.indicators.forEach(ind => { if (ind._spacer) { try { ind._spacer.update({ time: candle.time }); } catch {} } });
     } else return;
-    panel.candleSeries.update(candle);
+    updateMainSeries(panel, candle);
     panel.volumeSeries.update({ time: candle.time, value: candle.volume,
       color: candle.close >= candle.open ? state.settings.upColor + '80' : state.settings.downColor + '80' });
     // Keep the charted symbol's watchlist price on the SAME exchange as the chart.
@@ -450,7 +720,7 @@ export async function refreshAllPanels() {
   await Promise.all(state.panels.map(p => loadPanelData(p)));
 }
 
-export async function changeSymbol(panel, symbol, name, exchange) {
+export async function changeSymbol(panel, symbol, name, exchange, _fromLink = false) {
   panel.symbol = symbol;
   panel.symbolName = name || baseAsset(symbol);
   if (exchange) panel.exchange = exchange;
@@ -459,6 +729,12 @@ export async function changeSymbol(panel, symbol, name, exchange) {
   if (priceEl) { priceEl.textContent = ''; priceEl.classList.remove('up', 'down'); priceEl.style.minWidth = ''; }
   panel._lastPrice = null;
   panel._priceCh = 0;              // new symbol → re-measure the price slot width
+  // P1-5: propagate to every other panel in the same colored link group.
+  if (!_fromLink && panel.linkGroup) {
+    state.panels
+      .filter(p => p !== panel && p.linkGroup === panel.linkGroup && !(p.symbol === symbol && (!exchange || p.exchange === exchange)))
+      .forEach(p => changeSymbol(p, symbol, name, exchange, true));
+  }
   await loadPanelData(panel);
   if (panel === state.activePanel) {
     document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));
@@ -674,7 +950,12 @@ function buildOscillator(panel, ind, p) {
 
   if (res.hist) {
     ind.hist = sub.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });
-    ind.hist.setData(res.hist.map(h => ({ time: h.time, value: h.value, color: h.value >= 0 ? '#26a69a80' : '#ef535080' })));
+    // AO-style oscillators color bars by momentum direction (rising/falling);
+    // MACD-style ones color by sign.
+    ind.hist.setData(res.hist.map(h => ({
+      time: h.time, value: h.value,
+      color: res.histByDirection ? (h.rising ? '#26a69a' : '#ef5350') : (h.value >= 0 ? '#26a69a80' : '#ef535080'),
+    })));
   }
   res.lines.forEach(l => {
     const s = sub.addLineSeries({ color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
@@ -948,12 +1229,18 @@ export function applyThemeToCharts() {
 }
 
 export function applyCandleColors() {
+  const up = state.settings.upColor, down = state.settings.downColor;
   state.panels.forEach(p => {
-    p.candleSeries?.applyOptions({
-      upColor: state.settings.upColor, downColor: state.settings.downColor,
-      borderUpColor: state.settings.upColor, borderDownColor: state.settings.downColor,
-      wickUpColor: state.settings.upColor, wickDownColor: state.settings.downColor,
-    });
+    const t = p.chartType || 'candles';
+    try {
+      if (t === 'line' || t === 'area') return;               // themed by accent color
+      if (t === 'bars') { p.candleSeries?.applyOptions({ upColor: up, downColor: down }); return; }
+      p.candleSeries?.applyOptions({
+        upColor: t === 'hollow' ? 'rgba(0,0,0,0)' : up, downColor: down,
+        borderUpColor: up, borderDownColor: down,
+        wickUpColor: up, wickDownColor: down,
+      });
+    } catch {}
   });
 }
 

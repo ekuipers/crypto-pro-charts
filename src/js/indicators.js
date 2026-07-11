@@ -411,6 +411,21 @@ export function calcOscillator(id, d, p) {
       const out = ds.map((v, i) => v == null || !das[i] ? null : 100 * v / das[i]);
       return { lines: [{ vals: toLine(d, out), color: p._color }], refs: [0] };
     }
+    case 'ao': {
+      // Awesome Oscillator: SMA(fast) − SMA(slow) of the bar midpoint (H+L)/2.
+      // Rendered as a histogram colored by momentum direction (rising = green).
+      const mid = d.map(x => (x.high + x.low) / 2);
+      const f = sma(mid, p.fast), s = sma(mid, p.slow);
+      const ao = f.map((v, i) => v == null || s[i] == null ? null : v - s[i]);
+      const hist = [];
+      let prev = null;
+      for (let i = 0; i < d.length; i++) {
+        if (ao[i] == null) continue;
+        hist.push({ time: d[i].time, value: ao[i], rising: prev != null && ao[i] >= prev });
+        prev = ao[i];
+      }
+      return { lines: [], hist, histByDirection: true, refs: [] };
+    }
     case 'uo': {
       const out = new Array(d.length).fill(null);
       const bp = new Array(d.length).fill(0), tr = new Array(d.length).fill(0);

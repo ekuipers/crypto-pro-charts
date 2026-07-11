@@ -22,18 +22,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_Populated 2026-07-11 from a full project analysis. Ordered by priority: P2 = strong differentiators, P3 = polish/platform. Completed items move to `memory.md` (P1 core charting gaps shipped in v1.22.0)._
-
-### P2 — Pro-trader differentiators
-
-9. **Derivatives data overlays** — funding rate, open interest, and liquidation levels (Binance/Bybit/OKX futures APIs). This is the #1 thing crypto pros check that generic charting tools lack.
-10. **Bar replay mode** — step through history candle-by-candle at chosen speed for setup training; pairs naturally with the kline database (item 4).
-11. **Long/short position drawing tool** — risk/reward box with entry, target, stop and R:R readout; the most-used TradingView drawing missing here. Also add pitchfork, fib time zones, and magnet/snap-to-OHLC for existing tools.
-12. **Indicator templates** — save/load named indicator sets per user (DB-backed like layouts) so a pro can flip between e.g. "Scalping" and "Swing" setups in one click.
-13. **Full-market screener upgrade** — extend `scanner.js` from watchlist-only to all enabled-exchange pairs with indicator-based filters (RSI, volume spike, % change), saved scans, and scan-hit alerts.
-14. **Time & sales + depth chart** — trades tape pane and cumulative depth visualization next to the existing order book.
-15. **Paper trading & trade journal** — simulated orders placed on-chart, P&L tracking, and a journal with notes/tags per trade, persisted per account.
-16. **Watchlist enrichment** — mini sparklines, 24h volume column, funding/OI columns, and performance heatmap view.
+_Populated 2026-07-11 from a full project analysis. Ordered by priority: P3 = polish/platform. Completed items move to `memory.md` (P1 core charting gaps shipped in v1.22.0; P2 pro-trader differentiators shipped in v1.23.0)._
 
 ### P3 — Platform, performance & hardening
 

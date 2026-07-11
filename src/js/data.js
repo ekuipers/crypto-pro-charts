@@ -294,6 +294,22 @@ export async function refreshMissingPrices(items) {
   }));
 }
 
+// P2-16: 24h quote volume for Binance-listed watchlist symbols, merged into
+// state.prices[sym].volume. Other exchanges are skipped (no cheap batch
+// endpoint) — their rows simply show no volume figure.
+export async function refreshVolumes(items) {
+  const binanceSyms = items.filter(s => s.exchange === 'binance').map(s => s.symbol);
+  if (!binanceSyms.length) return;
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(binanceSyms));
+    const arr = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbols=${encoded}`);
+    for (const t of (Array.isArray(arr) ? arr : [])) {
+      if (!state.prices[t.symbol]) state.prices[t.symbol] = {};
+      state.prices[t.symbol].volume = +t.quoteVolume;
+    }
+  } catch (e) { warn('refreshVolumes failed', e.message); }
+}
+
 // ---- All tradeable pairs (USDT + USDC + EUR) from the active exchange --------
 async function fetchBinancePairs() {
   const j = await fetchJSON(`${EXCHANGES.binance.rest}/exchangeInfo`);
@@ -592,4 +608,26 @@ export function openOrderBookStream(symbol, onBook, exId = defaultExchange()) {
 
 export function closeOrderBookStream() {
   if (state.orderBookWS) { try { state.orderBookWS.close(); } catch {} state.orderBookWS = null; }
+}
+
+// ---- WebSocket: live trade tape (P2-14 time & sales) -------
+// onTrade({ time(ms), price, qty, side: 'buy'|'sell' }). side is the taker's
+// side, derived from Binance's "buyer is maker" flag.
+export function openTradeStream(symbol, onTrade, exId = defaultExchange()) {
+  const e = ex(exId);
+  if (e.id !== 'binance') return null;
+  try {
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@trade`);
+    ws.onmessage = ev => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.e !== 'trade') return;
+      onTrade({ time: m.T, price: +m.p, qty: +m.q, side: m.m ? 'sell' : 'buy' });
+    };
+    ws.onerror = () => warn('trade stream error');
+    return ws;
+  } catch (e2) {
+    warn('openTradeStream failed', e2.message);
+    return null;
+  }
 }

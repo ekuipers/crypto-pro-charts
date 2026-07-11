@@ -68,6 +68,7 @@
         <button class="right-tab" data-tab="orderbook">Book</button>
         <button class="right-tab" data-tab="techinfo">Info</button>
         <button class="right-tab" data-tab="scanner">Scanner</button>
+        <button class="right-tab" data-tab="paper">Paper</button>
       </div>
 
       <div class="right-tab-content active" data-tab="watchlist">
@@ -80,14 +81,16 @@
           <span class="col-spacer"></span>
           <span class="col-spacer"></span>
           <span class="col" data-col="name">Symbol</span>
+          <span class="col-spacer" title="24h trend"></span>
           <span class="col num" data-col="price">Price</span>
-          <span class="col num" data-col="chg">Chg</span>
           <span class="col num" data-col="chgpct">%</span>
         </div>
         <div id="symList" class="sym-list"></div>
+        <div id="symHeatmap" class="sym-heatmap" style="display:none"></div>
         <div class="wl-footer">
           <button id="newWatchlistBtn">+ Watchlist</button>
           <button id="addSymbolBtn">+ Symbol</button>
+          <button id="heatmapToggleBtn" title="Toggle performance heatmap view">▦ Heatmap</button>
         </div>
       </div>
 
@@ -100,6 +103,11 @@
       </div>
 
       <div class="right-tab-content" data-tab="orderbook">
+        <div class="ob-subtabs">
+          <button class="ob-subtab active" data-sub="book">Book</button>
+          <button class="ob-subtab" data-sub="trades">Trades</button>
+          <button class="ob-subtab" data-sub="depth">Depth</button>
+        </div>
         <div id="obContent" class="ob-content"><div class="muted">Select the Book tab to load.</div></div>
       </div>
 
@@ -112,11 +120,27 @@
           <select id="scanType"></select>
           <select id="scanScope">
             <option value="watchlist">Watchlist</option>
-            <option value="all">All pairs (100)</option>
+            <option value="all">All pairs</option>
           </select>
           <button id="scanRun" class="primary-btn">Scan</button>
         </div>
+        <div class="scan-controls scan-controls2">
+          <select id="scanSaved"><option value="">Saved scans…</option></select>
+          <button id="scanSaveBtn" title="Save current scan">💾</button>
+          <label class="scan-auto" title="Re-run every 20s and toast new hits"><input type="checkbox" id="scanAuto"> Auto</label>
+        </div>
         <div id="scanResults" class="scan-results"></div>
+      </div>
+
+      <div class="right-tab-content" data-tab="paper">
+        <div class="paper-head">
+          <span>Paper Trading</span>
+          <button id="paperNewBtn" class="primary-btn">+ New Trade</button>
+        </div>
+        <div class="paper-sep">Open Positions</div>
+        <div id="paperOpenList" class="paper-list"><div class="muted">No open positions.</div></div>
+        <div class="paper-sep">Journal (closed)</div>
+        <div id="paperJournalList" class="paper-list"><div class="muted">No closed trades yet.</div></div>
       </div>
     </aside>
   </div>
@@ -131,7 +155,7 @@
     <span class="footer-sep">·</span>
     <span>© 2026</span>
     <span class="footer-sep">·</span>
-    <span class="footer-version">v1.22.0</span>
+    <span class="footer-version">v1.23.0</span>
   </footer>
 
   <!-- Alerts slide-out -->

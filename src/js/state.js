@@ -30,6 +30,8 @@ let state = {
   orderBookWS: null,
   obData: { bids: [], asks: [], symbol: null },
   rightTab: 'watchlist',
+  obSubTab: 'book',   // P2-14: 'book' | 'trades' | 'depth' within the Book right-tab
+  wlHeatmap: false,   // P2-16: watchlist performance-heatmap view toggle
   klineCache: {},      // { 'binance:BTCUSDT:1h': { data, ts } }
   symColors: {},       // { 'BTCUSDT': '#color' }
   showEventMarkers: true,
@@ -45,6 +47,7 @@ let drawingState = {
   pendingType: null,
   selected: null,        // currently selected drawing object (for handles/config)
   selectedPanel: null,   // panel that owns the selected drawing
+  magnet: false,         // P2-11: snap new points to the nearest bar's OHLC
 };
 
 export { state, drawingState };

@@ -175,6 +175,10 @@ input:focus, select:focus { border-color: var(--accent); }
 .panel-sym-price:empty { display: none; }
 .panel-sym-price.up { color: var(--green); }
 .panel-sym-price.down { color: var(--red); }
+.panel-deriv-info { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.panel-deriv-info .up { color: var(--green); }
+.panel-deriv-info .down { color: var(--red); }
+.deriv-btn.active { background: var(--accent); color: #fff; }
 .tf-group { display: flex; gap: 1px; }
 .tf-btn { padding: 4px 7px; font-size: 11px; border-radius: 4px; color: var(--muted); }
 .tf-btn:hover { background: var(--hover); color: var(--text); }
@@ -239,7 +243,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .wl-tab.drop-before { box-shadow: inset 2px 0 0 0 var(--accent); }
 .wl-tab.drop-after { box-shadow: inset -2px 0 0 0 var(--accent); }
 .sym-list-head, .sym-row {
-  display: grid; grid-template-columns: 16px 14px 1fr 70px 56px 52px 18px; align-items: center; gap: 4px; padding: 5px 8px;
+  display: grid; grid-template-columns: 16px 14px 1fr 44px 70px 52px 18px; align-items: center; gap: 4px; padding: 5px 8px;
 }
 .sym-list-head { font-size: 10px; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
 .sym-list-head .col { cursor: pointer; }
@@ -264,11 +268,21 @@ input:focus, select:focus { border-color: var(--accent); }
 .sym-name { font-weight: 600; }
 .sym-quote-tag { font-weight: 400; font-size: 10px; color: var(--muted); margin-left: 2px; vertical-align: baseline; }
 .sym-ex-tag { font-weight: 600; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: var(--hover); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-left: 4px; vertical-align: middle; }
+.sym-spark { display: flex; align-items: center; justify-content: center; }
 .sym-price { text-align: right; }
-.sym-chgv, .sym-chg { text-align: right; font-size: 11px; }
+.sym-chg { text-align: right; font-size: 11px; }
 .sym-del { color: transparent; font-size: 14px; }
 .sym-row:hover .sym-del { color: var(--muted); }
 .sym-del:hover { color: var(--red); }
+
+/* Watchlist performance heatmap (P2-16) */
+.sym-heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; padding: 8px; overflow-y: auto; flex: 1; align-content: start; }
+.heat-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 6px; padding: 10px 4px; cursor: pointer; text-align: center; }
+.heat-tile:hover { outline: 1px solid var(--accent); }
+.heat-sym { font-weight: 700; font-size: 12px; }
+.heat-chg { font-size: 11px; font-weight: 600; }
+.heat-vol { font-size: 9px; color: var(--muted); }
+#heatmapToggleBtn.active { background: var(--accent); color: #fff; }
 .wl-footer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
 .wl-footer button { flex: 1; padding: 7px; border-radius: 5px; background: var(--panel2); font-size: 12px; }
 .wl-footer button:hover { background: var(--hover); }
@@ -282,6 +296,40 @@ input:focus, select:focus { border-color: var(--accent); }
 .ob-price.bid { color: var(--green); } .ob-price.ask { color: var(--red); }
 .ob-qty { position: relative; z-index: 1; text-align: right; color: var(--muted); }
 .ob-spread { text-align: center; padding: 6px; font-size: 11px; color: var(--muted); border-block: 1px solid var(--border); margin: 4px 0; }
+
+/* Order book sub-tabs: Book / Trades / Depth (P2-14) */
+.ob-subtabs { display: flex; gap: 2px; padding: 6px 6px 0; }
+.ob-subtab { flex: 1; padding: 5px 0; font-size: 11px; border-radius: 4px; color: var(--muted); background: var(--panel2); }
+.ob-subtab:hover { color: var(--text); }
+.ob-subtab.active { background: var(--accent); color: #fff; }
+
+/* Time & sales tape */
+.tape-head, .tape-row { display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 3px 6px; font-size: 11px; }
+.tape-head { color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+.tape-row .tape-price { text-align: center; }
+.tape-row .tape-qty { text-align: right; color: var(--muted); }
+.tape-row.buy .tape-price { color: var(--green); }
+.tape-row.sell .tape-price { color: var(--red); }
+
+/* Depth chart */
+.depth-chart { padding: 6px; }
+.depth-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* Paper trading & journal (P2-15) */
+.paper-head { display: flex; align-items: center; justify-content: space-between; padding: 8px; }
+.paper-sep { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px 2px; }
+.paper-list { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px; }
+.paper-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 12px; }
+.paper-row-main { display: flex; align-items: center; gap: 6px; }
+.paper-side { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+.paper-side.long { background: rgba(38,166,154,.18); color: var(--green); }
+.paper-side.short { background: rgba(239,83,80,.18); color: var(--red); }
+.paper-qty { color: var(--muted); margin-left: auto; }
+.paper-row-sub { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.paper-row-actions { display: flex; gap: 6px; margin-top: 6px; }
+.paper-row-actions button { flex: 1; padding: 4px; border-radius: 5px; background: var(--panel2); font-size: 11px; }
+.paper-row-actions button:hover { background: var(--hover); }
+.dc-log { margin-right: auto; }
 
 /* Tech info */
 .tech-content { padding: 12px; overflow-y: auto; flex: 1; }
@@ -325,6 +373,9 @@ input:focus, select:focus { border-color: var(--accent); }
 
 /* Scanner */
 .scan-controls { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.scan-controls2 { padding-top: 0; flex-direction: row; align-items: center; gap: 6px; }
+.scan-controls2 #scanSaved { flex: 1; min-width: 0; }
+.scan-auto { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .scan-results { flex: 1; overflow-y: auto; }
 .scan-row { display: flex; justify-content: space-between; padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
 .scan-row:hover { background: var(--hover); }
@@ -378,9 +429,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .modal.modal-settings .set-ex-list { flex: 1 1 auto; min-height: 120px; max-height: none; }
 
 .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-.tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; flex: 1; }
 .tpl-card:hover { border-color: var(--accent); background: var(--hover); }
 .tpl-card span { font-size: 10px; color: var(--muted); }
+.tpl-sep { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 4px 0 8px; }
+.tpl-user-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.tpl-user-row { display: flex; gap: 6px; align-items: stretch; }
+.tpl-user-del { width: 30px; border-radius: 8px; color: var(--muted); }
+.tpl-user-del:hover { background: var(--hover); color: var(--red); }
 
 .layout-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .layout-item { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
@@ -456,6 +512,18 @@ input:focus, select:focus { border-color: var(--accent); }
 .ts-btn { padding: 3px 9px; font-size: 11px; border-radius: 4px; color: var(--muted); white-space: nowrap; }
 .ts-btn:hover { background: var(--hover); color: var(--text); }
 .ts-btn.active { background: var(--accent); color: #fff; }
+
+/* ---------- Bar replay bar (P2-10) ---------- */
+.replay-bar {
+  height: 30px; min-height: 30px; display: flex; align-items: center; gap: 8px;
+  padding: 0 8px; background: var(--panel2); border-top: 1px solid var(--border);
+}
+.replay-act { width: 24px; height: 24px; border-radius: 4px; color: var(--text); font-size: 12px; }
+.replay-act:hover { background: var(--hover); }
+.replay-speed { font-size: 11px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 2px 4px; }
+.replay-scrub { flex: 1; accent-color: var(--accent); }
+.replay-pos { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.replay-btn.active { background: var(--accent); color: #fff; }
 
 /* ---------- Pane resize handles ---------- */
 .panel-resize-r, .panel-resize-b { position: absolute; z-index: 12; display: none; }

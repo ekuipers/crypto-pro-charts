@@ -2,7 +2,7 @@
 // MAIN — app entry point
 // ============================================================
 import { state } from './state.js';
-import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, defaultExchange } from './data.js';
+import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, refreshVolumes, defaultExchange } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
@@ -10,9 +10,11 @@ import { initAlerts } from './alerts.js';
 import { initSettings } from './settings.js';
 import { initScanner } from './scanner.js';
 import { initEvents } from './events.js';
-import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
+import { refreshOrderBook, refreshTechInfo, initOrderBookSubtabs } from './orderbook.js';
 import { autosave, loadAutosave } from './persistence.js';
 import { initAuth } from './auth.js';
+import { initReplay } from './replay.js';
+import { initPaper } from './paper.js';
 import { debounce, log, toast } from './utils.js';
 
 // A symbol charted on a non-Binance exchange has its price owned by that chart
@@ -46,7 +48,7 @@ function startPriceStream() {
     const pollMissing = async () => {
       const wl = state.watchlists[state.currentWatchlist] || [];
       const items = wl.map(s => ({ symbol: s.symbol, exchange: s.exchange || defaultExchange() }));
-      if (items.length) { await refreshMissingPrices(items); updatePriceRows(); }
+      if (items.length) { await Promise.all([refreshMissingPrices(items), refreshVolumes(items)]); updatePriceRows(); }
     };
     setTimeout(pollMissing, 2000);
     startPriceStream._missingTimer = setInterval(pollMissing, 30000);
@@ -92,6 +94,9 @@ async function init() {
   initSettings();
   initScanner();
   initEvents();
+  initReplay();
+  initOrderBookSubtabs();
+  initPaper();
 
   startPriceStream();
   document.addEventListener('restart-price-stream', startPriceStream);

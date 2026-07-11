@@ -6,9 +6,13 @@
 // ============================================================
 import { state, drawingState } from './state.js';
 import { fmtPrice } from './utils.js';
+import { logDrawingAsTrade } from './paper.js';
 
 const FIB_RET = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_EXT = [0, 0.618, 1, 1.618, 2.618];
+// Fibonacci sequence used for fib time zones (bar offsets from the anchor,
+// in units of the anchor-to-second-point distance).
+const FIB_TIME_SEQ = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
 const HANDLE_HIT = 9;   // px radius to grab a handle
 const BODY_HIT = 6;     // px distance to select a shape body
@@ -16,10 +20,12 @@ const BODY_HIT = 6;     // px distance to select a shape body
 const TYPE_LABELS = {
   hline: 'Horizontal line', vline: 'Vertical line', trend: 'Trend line',
   ray: 'Ray', extended: 'Extended line', rect: 'Rectangle', channel: 'Parallel channel',
-  fibret: 'Fib retracement', fibext: 'Fib extension', measure: 'Measure', text: 'Text',
+  fibret: 'Fib retracement', fibext: 'Fib extension', fibtime: 'Fib time zones',
+  measure: 'Measure', text: 'Text', pitchfork: 'Pitchfork',
+  long: 'Long position', short: 'Short position',
 };
 // Which shapes expose a solid/dashed style control
-const STYLEABLE = new Set(['hline', 'vline', 'trend', 'ray', 'extended', 'rect', 'channel', 'measure']);
+const STYLEABLE = new Set(['hline', 'vline', 'trend', 'ray', 'extended', 'rect', 'channel', 'measure', 'pitchfork', 'fibtime']);
 
 let dragInfo = null;   // active handle/body drag
 
@@ -49,10 +55,10 @@ export function initDrawingsForPanel(panel) {
     if (tool === 'hline') { panel.drawings.push({ type: 'hline', p1: pt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); fin(); return; }
     if (tool === 'vline') { panel.drawings.push({ type: 'vline', p1: pt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); fin(); return; }
 
-    const need = (tool === 'channel') ? 3 : 2;
+    const need = (tool === 'channel' || tool === 'pitchfork') ? 3 : 2;
     tempPts.push(pt);
     if (tempPts.length >= need) {
-      panel.drawings.push({ type: tool, p1: tempPts[0], p2: tempPts[1], p3: tempPts[2] || null, color: drawingState.color, width: drawingState.width });
+      panel.drawings.push(buildShape(tool, tempPts));
       tempPts = [];
       renderDrawings(panel);
       fin();
@@ -65,7 +71,15 @@ export function initDrawingsForPanel(panel) {
     if (drawingState.tool === 'select') { updateSelectHover(panel, e); return; }
     if (!tempPts.length) return;
     const pt = ptFromEvent(panel, e);
-    renderDrawings(panel, { type: drawingState.tool, p1: tempPts[0], p2: tempPts[1] || pt, p3: tempPts[2] || (tempPts.length === 2 ? pt : null), color: drawingState.color, width: drawingState.width });
+    const tool = drawingState.tool;
+    const p2 = tempPts[1] || pt;
+    let p3 = tempPts[2] || (tempPts.length === 2 ? pt : null);
+    // Position tool: synthesize a live stop preview (1:2 R:R) while dragging the target.
+    if ((tool === 'long' || tool === 'short') && tempPts.length === 1 && !p3) {
+      const risk = Math.abs(p2.price - tempPts[0].price) / 2;
+      p3 = { logical: p2.logical, price: tool === 'long' ? tempPts[0].price - risk : tempPts[0].price + risk };
+    }
+    renderDrawings(panel, { type: tool, p1: tempPts[0], p2, p3, color: drawingState.color, width: drawingState.width });
   });
 
   // In select mode the layer is click-through (pointer-events:none) over empty
@@ -102,14 +116,39 @@ function canvasXY(panel, e) {
   const rect = panel._drawCanvas.getBoundingClientRect();
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
+// Snap to the nearest bar's OHLC price when the magnet tool is on (P2-11).
+function magnetSnap(panel, logical, price) {
+  if (!panel.data?.length || logical == null || price == null) return { logical, price };
+  const idx = Math.max(0, Math.min(panel.data.length - 1, Math.round(logical)));
+  const bar = panel.data[idx];
+  if (!bar) return { logical, price };
+  const candidates = [bar.open, bar.high, bar.low, bar.close];
+  const snapped = candidates.reduce((best, v) => Math.abs(v - price) < Math.abs(best - price) ? v : best, candidates[0]);
+  return { logical: idx, price: snapped };
+}
+
 function ptFromEvent(panel, e) {
   const { x, y } = canvasXY(panel, e);
-  const logical = panel.chart.timeScale().coordinateToLogical(x);
-  const price = panel.candleSeries.coordinateToPrice(y);
+  let logical = panel.chart.timeScale().coordinateToLogical(x);
+  let price = panel.candleSeries.coordinateToPrice(y);
+  if (drawingState.magnet) ({ logical, price } = magnetSnap(panel, logical, price));
   return { logical, price, x, y };
 }
 function X(panel, pt) { return panel.chart.timeScale().logicalToCoordinate(pt.logical); }
 function Y(panel, pt) { return panel.candleSeries.priceToCoordinate(pt.price); }
+
+// Position tool (P2-11): entry (p1) + target (p2) drag; the stop (p3) is
+// auto-placed at a default 1:2 risk:reward and can be dragged independently.
+function buildShape(tool, pts) {
+  const shape = { type: tool, p1: pts[0], p2: pts[1] || null, p3: pts[2] || null, color: drawingState.color, width: drawingState.width };
+  if (tool === 'long' || tool === 'short') {
+    const entry = pts[0], target = pts[1];
+    const risk = Math.abs(target.price - entry.price) / 2;
+    const stopPrice = tool === 'long' ? entry.price - risk : entry.price + risk;
+    shape.p3 = { logical: target.logical, price: stopPrice };
+  }
+  return shape;
+}
 
 // ---------- rendering ----------
 export function renderDrawings(panel, preview) {
@@ -194,6 +233,9 @@ function drawOne(panel, ctx, d, w, h) {
     }
     case 'fibret': fib(panel, ctx, d, FIB_RET, w); break;
     case 'fibext': fib(panel, ctx, d, FIB_EXT, w); break;
+    case 'fibtime': fibTime(panel, ctx, d, h); break;
+    case 'pitchfork': pitchfork(panel, ctx, d, x1, y1, x2, y2, p3, w); break;
+    case 'long': case 'short': position(panel, ctx, d); break;
     case 'measure': {
       line(ctx, x1, y1, x2, y2);
       const dp = p2.price - p1.price, pct = (dp / p1.price) * 100;
@@ -232,6 +274,77 @@ function fib(panel, ctx, d, levels, w) {
   ctx.globalAlpha = 1;
 }
 
+// Fib time zones (P2-11): vertical lines at Fibonacci bar-offsets from the
+// anchor, spaced by the anchor-to-second-point distance.
+function fibTime(panel, ctx, d, h) {
+  if (!d.p2) return;
+  const unit = d.p2.logical - d.p1.logical;
+  if (!unit) return;
+  ctx.setLineDash([]);
+  ctx.font = '10px sans-serif';
+  FIB_TIME_SEQ.forEach(f => {
+    const x = panel.chart.timeScale().logicalToCoordinate(d.p1.logical + unit * f);
+    if (x == null) return;
+    ctx.strokeStyle = d.color; ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.fillStyle = d.color;
+    ctx.fillText(String(f), x + 2, 12);
+  });
+}
+
+// Andrews' Pitchfork (P2-11): a median line from the handle (p1) through the
+// midpoint of p2/p3, with two parallel teeth through p2 and p3, all extended
+// rightward.
+function pitchfork(panel, ctx, d, x1, y1, x2, y2, p3, w) {
+  if (!d.p2) return;
+  if (!p3) { line(ctx, x1, y1, x2, y2); dot(ctx, x1, y1); dot(ctx, x2, y2); return; }
+  const x3 = X(panel, p3), y3 = Y(panel, p3);
+  const midx = (x2 + x3) / 2, midy = (y2 + y3) / 2;
+  const dx = midx - x1, dy = midy - y1;
+  const [medEx, medEy] = extend(x1, y1, midx, midy, w, 1);
+  line(ctx, x1, y1, medEx, medEy);
+  const [e2x, e2y] = extend(x2, y2, x2 + dx, y2 + dy, w, 1);
+  line(ctx, x2, y2, e2x, e2y);
+  const [e3x, e3y] = extend(x3, y3, x3 + dx, y3 + dy, w, 1);
+  line(ctx, x3, y3, e3x, e3y);
+  dot(ctx, x1, y1); dot(ctx, x2, y2); dot(ctx, x3, y3);
+}
+
+// Long/short position tool (P2-11): a profit zone from entry (p1) to target
+// (p2) and a loss zone from entry to stop (p3), with an auto-computed R:R.
+function position(panel, ctx, d) {
+  if (!d.p2 || !d.p3) return;
+  const isLong = d.type === 'long';
+  const entryPrice = d.p1.price, targetPrice = d.p2.price, stopPrice = d.p3.price;
+  const xL = X(panel, d.p1);
+  const xR = Math.max(X(panel, d.p2), X(panel, d.p3));
+  const yEntry = Y(panel, d.p1);
+  const yTarget = panel.candleSeries.priceToCoordinate(targetPrice);
+  const yStop = panel.candleSeries.priceToCoordinate(stopPrice);
+  if ([xL, xR, yEntry, yTarget, yStop].some(v => v == null)) return;
+  const profitCol = isLong ? '#26a69a' : '#ef5350';
+  const lossCol = isLong ? '#ef5350' : '#26a69a';
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = profitCol;
+  ctx.fillRect(Math.min(xL, xR), Math.min(yEntry, yTarget), Math.abs(xR - xL), Math.abs(yTarget - yEntry));
+  ctx.fillStyle = lossCol;
+  ctx.fillRect(Math.min(xL, xR), Math.min(yEntry, yStop), Math.abs(xR - xL), Math.abs(yStop - yEntry));
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+  [yEntry, yTarget, yStop].forEach(y => {
+    ctx.beginPath(); ctx.moveTo(Math.min(xL, xR), y); ctx.lineTo(Math.max(xL, xR), y); ctx.stroke();
+  });
+  const rr = Math.abs(targetPrice - entryPrice) / (Math.abs(entryPrice - stopPrice) || 1);
+  const pctT = ((targetPrice - entryPrice) / entryPrice) * 100;
+  const pctS = ((stopPrice - entryPrice) / entryPrice) * 100;
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#fff';
+  const lx = Math.min(xL, xR) + 4;
+  ctx.fillText(`Entry ${fmtPrice(entryPrice)}`, lx, yEntry - 3);
+  ctx.fillText(`Target ${fmtPrice(targetPrice)} (${pctT >= 0 ? '+' : ''}${pctT.toFixed(2)}%)`, lx, yTarget - 3);
+  ctx.fillText(`Stop ${fmtPrice(stopPrice)} (${pctS >= 0 ? '+' : ''}${pctS.toFixed(2)}%)  R:R 1:${rr.toFixed(2)}`, lx, yStop + 11);
+}
+
 function drawHandles(panel, ctx, d) {
   ctx.save();
   ctx.setLineDash([]);
@@ -257,6 +370,16 @@ function getHandles(panel, d) {
       { pt: d.p1, axis: 'both', label: 'Point 1' },
       { pt: d.p2, axis: 'both', label: 'Point 2' },
       ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Width' }] : []),
+    ];
+    case 'pitchfork': return [
+      { pt: d.p1, axis: 'both', label: 'Handle' },
+      { pt: d.p2, axis: 'both', label: 'Point 2' },
+      ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Point 3' }] : []),
+    ];
+    case 'long': case 'short': return [
+      { pt: d.p1, axis: 'both', label: 'Entry' },
+      { pt: d.p2, axis: 'both', label: 'Target' },
+      ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Stop' }] : []),
     ];
     default: return [
       { pt: d.p1, axis: 'both', label: 'Point 1' },
@@ -325,6 +448,30 @@ function bodyHit(panel, d, x, y, w) {
         const yy = panel.candleSeries.priceToCoordinate(p1.price + (p2.price - p1.price) * lv);
         return yy != null && Math.abs(y - yy) <= BODY_HIT;
       });
+    }
+    case 'fibtime': {
+      if (!p2) return false;
+      const unit = p2.logical - p1.logical;
+      if (!unit) return false;
+      return FIB_TIME_SEQ.some(f => {
+        const xx = X(panel, { logical: p1.logical + unit * f });
+        return xx != null && Math.abs(x - xx) <= BODY_HIT;
+      });
+    }
+    case 'pitchfork': {
+      if (!p3) return distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT;
+      const x3 = X(panel, p3), y3 = Y(panel, p3);
+      const midx = (x2 + x3) / 2, midy = (y2 + y3) / 2;
+      return distToSeg(x, y, x1, y1, midx, midy) <= BODY_HIT
+        || distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT
+        || distToSeg(x, y, x1, y1, x3, y3) <= BODY_HIT;
+    }
+    case 'long': case 'short': {
+      if (!p3) return false;
+      const x3 = X(panel, p3), y3 = Y(panel, p3);
+      const lo = Math.min(x1, x2, x3), hi = Math.max(x1, x2, x3);
+      const top = Math.min(y1, y2, y3), bot = Math.max(y1, y2, y3);
+      return x >= lo - BODY_HIT && x <= hi + BODY_HIT && y >= top - BODY_HIT && y <= bot + BODY_HIT;
     }
   }
   return false;
@@ -424,6 +571,7 @@ function showConfig(panel, d) {
       <div class="dc-coords">${coordRows}</div>
     </div>
     <div class="dc-actions">
+      ${(d.type === 'long' || d.type === 'short') ? '<button id="dcLogTrade" class="dc-log">📝 Log Trade</button>' : ''}
       <button id="dcLock" class="dc-lock${d.locked ? ' active' : ''}">${d.locked ? '🔓 Unlock' : '🔒 Lock'}</button>
       <button id="dcDelete" class="dc-del"${d.locked ? ' disabled' : ''}>Delete</button>
     </div>`;
@@ -435,6 +583,7 @@ function showConfig(panel, d) {
 
   const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); };
   el.querySelector('#dcClose').addEventListener('click', deselect);
+  el.querySelector('#dcLogTrade')?.addEventListener('click', () => logDrawingAsTrade(panel, d));
   el.querySelector('#dcLock').addEventListener('click', () => {
     d.locked = !d.locked;
     document.dispatchEvent(new CustomEvent('drawings-changed'));

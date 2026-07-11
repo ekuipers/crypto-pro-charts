@@ -4,6 +4,41 @@
 
 ---
 
+## v1.23.0 — 2026-07-11 · P2 roadmap: pro-trader differentiators (8 items)
+
+Shipped the entire P2 tier of the 2026-07-11 roadmap in one release. Verified with `node --check` on every touched file, a local server smoke test hitting every new route (`/api/derivatives`, `/api/derivatives/oi-history`, `/api/templates`, `/api/scans`, `/api/paper` — all correctly 503 with DB disabled, malicious `symbol` params correctly 400), and a Playwright-driven browser pass against the running app (screenshots of every new panel/toggle, `console --errors` clean of JS exceptions). One real bug was caught and fixed during the browser pass (see P2-14 below).
+
+### P2-9 — Derivatives data overlays (funding rate, open interest, liquidations)
+**Fix:** **`src/derivatives.js`** (new, backend) — `fetchFundingOI`/`fetchOIHistory` hit Binance USDT-M futures (`fapi.binance.com`) public REST, no key needed. **`server.js`** — `GET /api/derivatives` (15s cache) and `GET /api/derivatives/oi-history`, both with fixed-host + regex-validated `symbol`/whitelisted `period` (no SSRF). **`src/js/derivatives.js`** (new, frontend) — fetch wrappers + `openLiquidationStream` (direct client WS to Binance's public `!forceOrder` stream per symbol). **`charts.js`** — new Ⓕ panel-action toggle; `.panel-deriv-info` span shows funding rate (colored) + countdown to next funding + OI; liquidations render as chart markers merged into the existing `applyPanelMarkers` pipeline (`panel._liqMarkers`). Scoped to Binance USDT-quoted symbols only (where the futures market actually exists); the toggle explains why it's unavailable otherwise.
+
+### P2-10 — Bar replay mode
+**Fix:** **`src/js/replay.js`** (new) — freezes `panel.data` to a historical slice, reveals bars one at a time via `candleSeries.update()`, recomputing indicators each step. Play/pause/step/speed (0.5–4×)/scrubber control bar (`.replay-bar`) appears under the panel. Exiting calls the existing `loadPanelData()` to cleanly restore full history and the live kline stream — no custom restore logic needed. **`charts.js`** — ⏮ panel-action button; `changeTimeframe`/`changeSymbol` force-exit replay first so a stale frozen slice can't fight the reload.
+
+### P2-11 — Position tool (long/short) + pitchfork + fib time zones + magnet snap
+**Fix:** **`drawings.js`** — two new drawing types, `long`/`short`: entry (p1) + target (p2) drag, with stop (p3) auto-placed at a default 1:2 R:R and independently draggable; renders a profit/loss zone box with live $ / % / R:R labels. `pitchfork` (3-point Andrews pitchfork: median + two parallel teeth, all extended rightward). `fibtime` (vertical lines at Fibonacci bar-offsets from a 2-point anchor). Magnet toggle (`drawingState.magnet`) snaps new points to the nearest bar's O/H/L/C via `magnetSnap()`. **`ui.js`** — toolbar icons for all four plus a magnet toggle button.
+
+### P2-12 — Indicator templates (user-saved)
+**Fix:** **`db.js`** — new `templates` table (uid, name, jsonb data), mirroring the existing `layouts` pattern. **`server.js`** — `GET/PUT/DELETE /api/templates(/:name)`. **`persistence.js`** — `getUserTemplates`/`saveUserTemplate`/`deleteUserTemplate` (server + `localStorage` fallback, same shape as named layouts). **`ui.js`** — `showTemplatesModal` now has a "My Templates" section (save current chart's indicators, load, delete) alongside the existing built-in presets.
+
+### P2-13 — Screener upgrade
+**Fix:** **`scanner.js`** — `scope=all` now covers every enabled-exchange pair (removed the 100-pair cap); added a **Volume Spike (≥2×)** scan type (last bar volume vs. 20-bar average); saved scans (name → `{type, scope}`) via new `saved_scans` DB table + `/api/scans` routes; an **Auto** checkbox re-runs the scan every 20s and toasts symbols that are newly matching (a lightweight client-side stand-in for full server-side scan-hit alerts, which would need alert-engine-level infrastructure — noted as a gap, not built here).
+
+### P2-14 — Time & sales + depth chart
+**Fix:** **`data.js`** — `openTradeStream` (Binance `@trade` WS, taker side derived from the `m` "buyer is maker" flag). **`orderbook.js`** — the "Book" right-tab gained Book/Trades/Depth sub-tabs; Trades renders a live-scrolling tape; Depth renders an SVG cumulative bid/ask area chart from the existing order-book snapshot. **`index.html`** — `.ob-subtabs`.
+**Bug caught during browser verification:** the trade tape's Qty column showed "0.00" for every row — `fmtVol()`'s fixed 2-decimal floor reads as zero for typical sub-0.01 BTC trade sizes. Fixed with a magnitude-aware `fmtQty()` local to `orderbook.js` (doesn't touch the shared `fmtVol` used elsewhere for larger aggregate volumes).
+
+### P2-15 — Paper trading & trade journal
+**Fix:** **`db.js`** — new `paper_trades` table (side, qty, entry/exit/stop/target, status, notes, tags). **`server.js`** — `GET/POST /api/paper`, `PUT /api/paper/:id/close`, `PUT /api/paper/:id/notes`, `DELETE /api/paper/:id`. **`src/js/paper.js`** (new) — new "Paper" right-tab: open positions with live unrealized P&L (polled every 2s from `state.prices`), a closed-trade journal with editable notes. **`drawings.js`** — the position-tool config popover gained a "📝 Log Trade" button that posts the drawing's entry/target/stop straight into a paper trade (`logDrawingAsTrade`), tying P2-11 and P2-15 together.
+
+### P2-16 — Watchlist enrichment
+**Fix:** **`watchlist.js`** — each row's `$ change` column was replaced with a 24h mini sparkline (canvas, cached per `exchange:symbol` for 5 min so the list's frequent 1.5s price-tick re-render doesn't refetch); 24h volume is shown as a hover tooltip on the price cell rather than a fixed column (kept — a persistent extra column risked overflowing the panel below ~300px width). **`data.js`** — `refreshVolumes()` batches Binance 24hr ticker stats for watchlist symbols every 30s (piggybacks the existing `pollMissing` cadence in `main.js`). New **Heatmap** view (`heatmapToggleBtn`) swaps the list for a tile grid colored by 24h %-change intensity, each tile also showing volume.
+
+**Scope notes (deliberate, to keep the batch shippable):** liquidation *levels* (aggregate liquidation-cluster estimation, vs. the live liquidation *events* shipped here) were out of scope; scan-hit alerts are client-side auto-refresh + toast, not server-side push; watchlist volume is a tooltip, not a column, for narrow-panel layout safety.
+
+**Verification:** `node --check` on every modified/new JS file (`server.js`, `src/db.js`, `src/derivatives.js`, `src/js/charts.js`, `src/js/drawings.js`, `src/js/ui.js`, `src/js/replay.js`, `src/js/derivatives.js`, `src/js/paper.js`, `src/js/scanner.js`, `src/js/orderbook.js`, `src/js/data.js`, `src/js/watchlist.js`, `src/js/persistence.js`, `src/js/main.js`, `src/js/state.js`). Local server start + curl against every new/changed route. Playwright screenshots of the derivatives readout, replay controls, all 4 new/changed drawing tools registering in the toolbar, the scanner's saved-scan controls, the Trades tape and Depth chart, the Paper Trading tab, the watchlist heatmap and sparklines, and the templates modal's new "My Templates" section — all rendered correctly against live Binance data with no console exceptions. Footer/readme/package.json → v1.23.0.
+
+---
+
 ## v1.22.0 — 2026-07-11 · P1 roadmap: core charting gaps vs. TradingView (8 items)
 
 Shipped the entire P1 tier of the 2026-07-11 roadmap in one release. Verified with `node --check` on every touched file plus a local server smoke test (`/api/klines` on a native and an aggregated timeframe, `/api/klines/history` paging, alert route responses).

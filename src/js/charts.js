@@ -5,8 +5,9 @@ import { state, drawingState } from './state.js';
 import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES } from './constants.js';
 import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
-import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtVol, uid, log, warn, toast } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
+import { fetchDerivatives, derivativesAvailable, openLiquidationStream } from './derivatives.js';
 
 const LWC = () => window.LightweightCharts;
 
@@ -434,6 +435,7 @@ export function addPanel(opts = {}) {
     <div class="panel-bar">
       <button class="sym-btn">${opts.symbol ? baseAsset(opts.symbol) : 'BTC'}<span class="sym-quote">${opts.symbol ? quoteAsset(opts.symbol) : 'USDT'}</span></button>
       <span class="panel-sym-price" title="Current price"></span>
+      <span class="panel-deriv-info" title="Funding rate · open interest (Binance USDT-M futures)" style="display:none"></span>
       <select class="ctype-sel" title="Chart type">
         ${[['candles','Candles'],['hollow','Hollow'],['bars','Bars'],['line','Line'],['area','Area'],['heikin','Heikin Ashi'],['renko','Renko']]
           .map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
@@ -450,6 +452,8 @@ export function addPanel(opts = {}) {
       <span class="candle-timer" title="Time until candle closes"></span>
       <div class="panel-actions">
         <button class="panel-act link-btn" title="Link symbol (click to join a colored link group)">⛓</button>
+        <button class="panel-act deriv-btn" title="Funding rate, open interest &amp; liquidations (Binance USDT-M futures)">Ⓕ</button>
+        <button class="panel-act replay-btn" title="Bar replay — step through history candle by candle">⏮</button>
         <button class="panel-act compare-btn" title="Compare / overlay symbol">＋</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
         <button class="panel-act fs-btn" title="Fullscreen">⛶</button>
@@ -466,6 +470,7 @@ export function addPanel(opts = {}) {
     <div class="panel-timescale">
       ${['1D','3D','1W','1M','3M','6M','1Y','All'].map(r => `<button class="ts-btn" data-range="${r}">${r}</button>`).join('')}
     </div>
+    <div class="replay-bar" style="display:none"></div>
     <div class="panel-resize-r" title="Drag to resize"></div>
     <div class="panel-resize-b" title="Drag to resize"></div>`;
   grid.appendChild(el);
@@ -486,6 +491,11 @@ export function addPanel(opts = {}) {
     overlays: [],            // {symbol, name, color, series, data, ws}
     drawings: opts.drawings || [],
     klineWS: null,
+    derivEnabled: false,      // P2-9: funding/OI readout + liquidation markers
+    derivTimer: null,
+    liqWS: null,
+    _liqMarkers: [],
+    _replay: null,             // P2-10: bar replay session, see replay.js
   };
   state.panels.push(panel);
 
@@ -514,6 +524,13 @@ export function addPanel(opts = {}) {
   }));
   // P1-5: colored symbol-link group cycler
   el.querySelector('.link-btn').addEventListener('click', () => cycleLinkGroup(panel));
+  // P2-9: funding rate / open interest / liquidations toggle
+  el.querySelector('.deriv-btn').addEventListener('click', () => toggleDerivatives(panel));
+  // P2-10: bar replay
+  el.querySelector('.replay-btn').addEventListener('click', () => {
+    setActivePanel(panel);
+    document.dispatchEvent(new CustomEvent('toggle-replay', { detail: { panel } }));
+  });
   el.querySelector('.compare-btn').addEventListener('click', () => {
     setActivePanel(panel);
     document.dispatchEvent(new CustomEvent('open-compare-search', { detail: { panel } }));
@@ -706,7 +723,21 @@ function startKlinePoll(panel, onCandle) {
   panel._klinePoll = setInterval(tick, periodMs);
 }
 
+// Bar replay (P2-10) freezes panel.data to a historical slice and owns the
+// candle/volume series directly — a TF or symbol change must drop that state
+// first so the upcoming loadPanelData() isn't immediately overwritten by a
+// stray replay tick.
+function exitReplayIfActive(panel) {
+  if (!panel._replay) return;
+  if (panel._replay.timer) clearInterval(panel._replay.timer);
+  panel._replay = null;
+  panel.el.querySelector('.replay-btn')?.classList.remove('active');
+  const bar = panel.el.querySelector('.replay-bar');
+  if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+}
+
 export function changeTimeframe(panel, tf) {
+  exitReplayIfActive(panel);
   panel.tf = tf;
   loadPanelData(panel);
   scheduleAutosave();
@@ -721,6 +752,7 @@ export async function refreshAllPanels() {
 }
 
 export async function changeSymbol(panel, symbol, name, exchange, _fromLink = false) {
+  exitReplayIfActive(panel);
   panel.symbol = symbol;
   panel.symbolName = name || baseAsset(symbol);
   if (exchange) panel.exchange = exchange;
@@ -736,10 +768,85 @@ export async function changeSymbol(panel, symbol, name, exchange, _fromLink = fa
       .forEach(p => changeSymbol(p, symbol, name, exchange, true));
   }
   await loadPanelData(panel);
+  if (panel.derivEnabled) restartDerivatives(panel); // new symbol/exchange — re-subscribe
   if (panel === state.activePanel) {
     document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));
   }
   scheduleAutosave();
+}
+
+// ---------- Derivatives (P2-9): funding rate, open interest, liquidations ---
+function fmtFunding(rate) {
+  const pct = rate * 100;
+  return (pct >= 0 ? '+' : '') + pct.toFixed(4) + '%';
+}
+function fmtFundingCountdown(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return `${h}h${String(m).padStart(2, '0')}m`;
+}
+
+async function refreshDerivInfo(panel) {
+  const el = panel.el.querySelector('.panel-deriv-info');
+  if (!el || !panel.derivEnabled) return;
+  try {
+    const d = await fetchDerivatives(panel.symbol);
+    const up = d.fundingRate >= 0;
+    el.innerHTML = `<span class="${up ? 'up' : 'down'}">Fund ${fmtFunding(d.fundingRate)}</span>` +
+      ` <span class="muted">(${fmtFundingCountdown(d.nextFundingTime - Date.now())})</span>` +
+      (d.openInterest != null ? ` · OI ${fmtVol(d.openInterest)}` : '');
+  } catch {
+    el.textContent = 'Derivatives data unavailable';
+  }
+}
+
+function onLiquidation(panel, liq) {
+  const bull = liq.side === 'BUY'; // a short was force-bought-back → bullish marker
+  panel._liqMarkers.push({
+    time: liq.time,
+    position: bull ? 'belowBar' : 'aboveBar',
+    color: bull ? '#26a69a' : '#ef5350',
+    shape: 'circle',
+    text: `Liq ${fmtVol(liq.value)}`,
+  });
+  // Cap the buffer so long-running sessions don't grow unbounded.
+  if (panel._liqMarkers.length > 200) panel._liqMarkers = panel._liqMarkers.slice(-200);
+  applyPanelMarkers(panel);
+}
+
+function startDerivatives(panel) {
+  const el = panel.el.querySelector('.panel-deriv-info');
+  if (!derivativesAvailable(panel.symbol, panel.exchange)) {
+    if (el) { el.style.display = ''; el.textContent = 'Futures data unavailable for this symbol/exchange'; }
+    return;
+  }
+  if (el) el.style.display = '';
+  refreshDerivInfo(panel);
+  panel.derivTimer = setInterval(() => refreshDerivInfo(panel), 20000);
+  panel.liqWS = openLiquidationStream(panel.symbol, liq => onLiquidation(panel, liq));
+}
+
+function stopDerivatives(panel) {
+  if (panel.derivTimer) { clearInterval(panel.derivTimer); panel.derivTimer = null; }
+  try { panel.liqWS?.close(); } catch {}
+  panel.liqWS = null;
+  panel._liqMarkers = [];
+  applyPanelMarkers(panel);
+  const el = panel.el.querySelector('.panel-deriv-info');
+  if (el) { el.style.display = 'none'; el.textContent = ''; }
+}
+
+function restartDerivatives(panel) {
+  stopDerivatives(panel);
+  panel.derivEnabled = true;
+  startDerivatives(panel);
+}
+
+function toggleDerivatives(panel) {
+  panel.derivEnabled = !panel.derivEnabled;
+  panel.el.querySelector('.deriv-btn').classList.toggle('active', panel.derivEnabled);
+  if (panel.derivEnabled) startDerivatives(panel);
+  else stopDerivatives(panel);
 }
 
 export function setActivePanel(panel) {
@@ -768,6 +875,9 @@ export function destroyPanel(panel) {
   try { panel._ro?.disconnect(); } catch {}
   if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
   try { panel.klineWS?.close(); } catch {}
+  if (panel.derivTimer) { clearInterval(panel.derivTimer); panel.derivTimer = null; }
+  try { panel.liqWS?.close(); } catch {}
+  if (panel._replay?.timer) clearInterval(panel._replay.timer);
   panel.overlays?.forEach(o => { try { o.ws?.close(); } catch {} });
   panel.indicators.forEach(ind => { try { ind.subChart?.remove(); } catch {} });
   try { panel.chart?.remove(); } catch {}
@@ -1209,7 +1319,7 @@ export function rebuildCrossMarkers(panel) {
 // series and each setMarkers replaces the previous list.
 export function applyPanelMarkers(panel) {
   if (!panel || !panel.candleSeries) return;
-  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || []), ...(panel._luxAlgoMarkers || [])];
+  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || []), ...(panel._luxAlgoMarkers || []), ...(panel._liqMarkers || [])];
   all.sort((a, b) => a.time - b.time);
   try { panel.candleSeries.setMarkers(all); } catch {}
 }

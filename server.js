@@ -7,6 +7,7 @@ import { installAuthRoutes, currentUid } from './src/auth.js';
 import * as db from './src/db.js';
 import { fetchBars, tfSupported } from './src/klines.js';
 import { startAlertEngine } from './src/alert-engine.js';
+import { fetchFundingOI, fetchOIHistory } from './src/derivatives.js';
 import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -210,6 +211,126 @@ app.delete('/api/layouts/:name', async (req, res) => {
   }
 });
 
+// ---- Indicator templates (P2-12): user-saved named indicator sets ----------
+function validTemplateName(name) {
+  return typeof name === 'string' && name.length > 0 && name.length <= 80;
+}
+
+app.get('/api/templates', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  try { res.json(await db.getTemplates(await currentUid(req))); }
+  catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.put('/api/templates/:name', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const name = req.params.name;
+  if (!validTemplateName(name)) return res.status(400).json({ error: 'invalid name' });
+  if (!Array.isArray(req.body)) return res.status(400).json({ error: 'invalid template data' });
+  try { await db.putTemplate(await currentUid(req), name, req.body); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.delete('/api/templates/:name', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const name = req.params.name;
+  if (!validTemplateName(name)) return res.status(400).json({ error: 'invalid name' });
+  try {
+    const ok = await db.deleteTemplate(await currentUid(req), name);
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+// ---- Saved screener scans (P2-13) -------------------------------------------
+function validScanName(name) {
+  return typeof name === 'string' && name.length > 0 && name.length <= 80;
+}
+
+app.get('/api/scans', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  try { res.json(await db.getScans(await currentUid(req))); }
+  catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.put('/api/scans/:name', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const name = req.params.name;
+  if (!validScanName(name)) return res.status(400).json({ error: 'invalid name' });
+  try { await db.putScan(await currentUid(req), name, req.body || {}); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.delete('/api/scans/:name', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const name = req.params.name;
+  if (!validScanName(name)) return res.status(400).json({ error: 'invalid name' });
+  try {
+    const ok = await db.deleteScan(await currentUid(req), name);
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+// ---- Paper trading & journal (P2-15) ----------------------------------------
+app.get('/api/paper', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  try { res.json(await db.listPaperTrades(await currentUid(req))); }
+  catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.post('/api/paper', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const b = req.body || {};
+  const symbol = String(b.symbol || '').toUpperCase();
+  const exchange = EXCHANGES[b.exchange] ? String(b.exchange) : 'binance';
+  const side = b.side === 'short' ? 'short' : 'long';
+  const qty = Number(b.qty), entryPrice = Number(b.entryPrice);
+  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
+  if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'invalid qty' });
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) return res.status(400).json({ error: 'invalid entry price' });
+  const stop = Number.isFinite(+b.stop) ? +b.stop : null;
+  const target = Number.isFinite(+b.target) ? +b.target : null;
+  const rec = {
+    id: crypto.randomBytes(9).toString('hex'),
+    uid: await currentUid(req),
+    symbol, exchange, side, qty, entryPrice, stop, target,
+    notes: String(b.notes || '').slice(0, 2000),
+    tags: String(b.tags || '').slice(0, 200),
+  };
+  try { await db.createPaperTrade(rec); res.json({ ok: true, id: rec.id }); }
+  catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.put('/api/paper/:id/close', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const exitPrice = Number(req.body?.exitPrice);
+  if (!Number.isFinite(exitPrice) || exitPrice <= 0) return res.status(400).json({ error: 'invalid exit price' });
+  try {
+    const trade = await db.closePaperTrade(await currentUid(req), String(req.params.id), exitPrice);
+    if (!trade) return res.status(404).json({ error: 'not found or already closed' });
+    res.json(trade);
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.put('/api/paper/:id/notes', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  try {
+    const ok = await db.updatePaperTradeNotes(await currentUid(req), String(req.params.id), req.body?.notes, req.body?.tags);
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+app.delete('/api/paper/:id', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  try {
+    const ok = await db.deletePaperTrade(await currentUid(req), String(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
 // ---- Server-side alerts (P1-6) ----------------------------------------------
 // CRUD + a triggered-feed the client polls to surface notifications for alerts
 // that fired while the tab was closed. All routes 503 when the DB is disabled —
@@ -258,6 +379,39 @@ app.get('/api/alerts/triggered', async (req, res) => {
   const since = parseInt(req.query.since, 10) || 0;
   try { res.json(await db.listTriggeredSince(await currentUid(req), since)); }
   catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+// ---- Derivatives (P2-9): funding rate, open interest, liquidations --------
+// Binance USDT-M futures only (the deepest, most-watched perp market). Liquid-
+// ations are streamed client-side directly from Binance's public forceOrder
+// WS feed (src/js/derivatives.js) — no server relay needed for that part.
+const DERIV_CACHE = new Map(); // symbol -> { ts, data }
+const DERIV_TTL_MS = 15_000;
+
+app.get('/api/derivatives', async (req, res) => {
+  const symbol = String(req.query.symbol || '').toUpperCase();
+  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
+  const cached = DERIV_CACHE.get(symbol);
+  if (cached && Date.now() - cached.ts < DERIV_TTL_MS) return res.json(cached.data);
+  try {
+    const data = await fetchFundingOI(symbol);
+    DERIV_CACHE.set(symbol, { ts: Date.now(), data });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: String(e.message || e) });
+  }
+});
+
+app.get('/api/derivatives/oi-history', async (req, res) => {
+  const symbol = String(req.query.symbol || '').toUpperCase();
+  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
+  const period = String(req.query.period || '1h');
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
+  try {
+    res.json({ data: await fetchOIHistory(symbol, period, limit) });
+  } catch (e) {
+    res.status(502).json({ error: String(e.message || e) });
+  }
 });
 
 // Serve static assets

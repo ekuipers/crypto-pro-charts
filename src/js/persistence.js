@@ -7,8 +7,9 @@ import { debounce, toast, esc, baseAsset, quoteAsset } from './utils.js';
 import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData, applyPanelViewOptions } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
 
-const AUTOSAVE_KEY = 'cryptopro_autosave';
-const LAYOUTS_KEY  = 'cryptopro_layouts';
+const AUTOSAVE_KEY  = 'cryptopro_autosave';
+const LAYOUTS_KEY   = 'cryptopro_layouts';
+const TEMPLATES_KEY = 'cryptopro_templates';
 const VERSION = 4;
 
 export function snapshot() {
@@ -184,6 +185,39 @@ export function showSaveLayoutModal() {
       if (n) { await saveNamedLayout(n); closeModal(); }
     });
   });
+}
+
+// ---- User-saved indicator templates (P2-12) ----
+export async function getUserTemplates() {
+  try { return await apiGet('/api/templates'); } catch {}
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '{}'); } catch { return {}; }
+}
+
+// `indicators` is an array of { defId, params, color } — see ui.js showTemplatesModal.
+export async function saveUserTemplate(name, indicators) {
+  try {
+    const all = await getUserTemplates();
+    if (Object.keys(all).length >= 20 && !all[name]) { toast('Max 20 saved templates', 'warn'); return; }
+    await apiPut(`/api/templates/${encodeURIComponent(name)}`, indicators);
+    toast(`Saved template "${name}"`, 'info');
+    return;
+  } catch {}
+  try {
+    const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '{}');
+    if (Object.keys(all).length >= 20 && !all[name]) { toast('Max 20 saved templates', 'warn'); return; }
+    all[name] = indicators;
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));
+    toast(`Saved template "${name}"`, 'info');
+  } catch {}
+}
+
+export async function deleteUserTemplate(name) {
+  try { await apiDelete(`/api/templates/${encodeURIComponent(name)}`); return; } catch {}
+  try {
+    const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '{}');
+    delete all[name];
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 export async function showLayoutsModal() {

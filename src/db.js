@@ -123,6 +123,44 @@ export async function init() {
     trigger_msg  text
   )`);
   await q(`create index if not exists alerts_active_idx on alerts(active) where active`);
+  // User-saved indicator templates (P2-12): named sets of indicators a user can
+  // apply to any chart in one click, alongside the built-in curated presets.
+  await q(`create table if not exists templates (
+    uid        text not null,
+    name       text not null,
+    data       jsonb not null,
+    updated_at timestamptz not null default now(),
+    primary key (uid, name)
+  )`);
+  // Saved screener scans (P2-13): a named scan type + scope combination the
+  // user can re-run in one click.
+  await q(`create table if not exists saved_scans (
+    uid        text not null,
+    name       text not null,
+    data       jsonb not null,
+    updated_at timestamptz not null default now(),
+    primary key (uid, name)
+  )`);
+  // Paper trading & journal (P2-15): simulated positions with a persisted P&L
+  // trail once closed.
+  await q(`create table if not exists paper_trades (
+    id          text primary key,
+    uid         text not null,
+    symbol      text not null,
+    exchange    text not null default 'binance',
+    side        text not null default 'long',
+    qty         double precision not null,
+    entry_price double precision not null,
+    exit_price  double precision,
+    stop        double precision,
+    target      double precision,
+    status      text not null default 'open',
+    notes       text not null default '',
+    tags        text not null default '',
+    opened_at   timestamptz not null default now(),
+    closed_at   timestamptz
+  )`);
+  await q(`create index if not exists paper_trades_uid_idx on paper_trades(uid, status)`);
   console.log('[db] connected; tables ready');
   return true;
 }
@@ -280,4 +318,80 @@ export async function listLayouts(uid) {
   const out = {};
   for (const r of rows) out[r.name] = r.data;
   return out;
+}
+
+// ---- Indicator templates (P2-12) --------------------------------------------
+export async function getTemplates(uid) {
+  const { rows } = await q('select name, data from templates where uid = $1 order by updated_at desc', [uid]);
+  const out = {};
+  for (const r of rows) out[r.name] = r.data;
+  return out;
+}
+export async function putTemplate(uid, name, data) {
+  await q(
+    `insert into templates (uid, name, data, updated_at) values ($1, $2, $3::jsonb, now())
+     on conflict (uid, name) do update set data = excluded.data, updated_at = now()`,
+    [uid, name, JSON.stringify(data)],
+  );
+}
+export async function deleteTemplate(uid, name) {
+  const { rowCount } = await q('delete from templates where uid = $1 and name = $2', [uid, name]);
+  return rowCount > 0;
+}
+
+// ---- Saved screener scans (P2-13) --------------------------------------------
+export async function getScans(uid) {
+  const { rows } = await q('select name, data from saved_scans where uid = $1 order by updated_at desc', [uid]);
+  const out = {};
+  for (const r of rows) out[r.name] = r.data;
+  return out;
+}
+export async function putScan(uid, name, data) {
+  await q(
+    `insert into saved_scans (uid, name, data, updated_at) values ($1, $2, $3::jsonb, now())
+     on conflict (uid, name) do update set data = excluded.data, updated_at = now()`,
+    [uid, name, JSON.stringify(data)],
+  );
+}
+export async function deleteScan(uid, name) {
+  const { rowCount } = await q('delete from saved_scans where uid = $1 and name = $2', [uid, name]);
+  return rowCount > 0;
+}
+
+// ---- Paper trading & journal (P2-15) -----------------------------------------
+function toPaperTrade(r) {
+  return r && {
+    id: r.id, uid: r.uid, symbol: r.symbol, exchange: r.exchange, side: r.side,
+    qty: +r.qty, entryPrice: +r.entry_price, exitPrice: r.exit_price != null ? +r.exit_price : null,
+    stop: r.stop != null ? +r.stop : null, target: r.target != null ? +r.target : null,
+    status: r.status, notes: r.notes, tags: r.tags,
+    openedAt: r.opened_at, closedAt: r.closed_at,
+  };
+}
+export async function createPaperTrade(rec) {
+  await q(
+    `insert into paper_trades (id, uid, symbol, exchange, side, qty, entry_price, stop, target, notes, tags)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [rec.id, rec.uid, rec.symbol, rec.exchange, rec.side, rec.qty, rec.entryPrice, rec.stop, rec.target, rec.notes || '', rec.tags || ''],
+  );
+}
+export async function listPaperTrades(uid) {
+  const { rows } = await q('select * from paper_trades where uid = $1 order by opened_at desc', [uid]);
+  return rows.map(toPaperTrade);
+}
+export async function closePaperTrade(uid, id, exitPrice) {
+  const { rows } = await q(
+    `update paper_trades set exit_price = $3, status = 'closed', closed_at = now()
+     where uid = $1 and id = $2 and status = 'open' returning *`,
+    [uid, id, exitPrice],
+  );
+  return toPaperTrade(rows[0]);
+}
+export async function updatePaperTradeNotes(uid, id, notes, tags) {
+  const { rowCount } = await q('update paper_trades set notes = $3, tags = $4 where uid = $1 and id = $2', [uid, id, notes || '', tags || '']);
+  return rowCount > 0;
+}
+export async function deletePaperTrade(uid, id) {
+  const { rowCount } = await q('delete from paper_trades where uid = $1 and id = $2', [uid, id]);
+  return rowCount > 0;
 }

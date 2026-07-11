@@ -100,7 +100,10 @@
       <div class="right-tab-content" data-tab="events">
         <div class="events-head">
           <span>Market Events</span>
-          <label class="events-filter"><input type="checkbox" id="evtHighOnly"> High impact only</label>
+          <div class="events-head-actions">
+            <label class="events-filter"><input type="checkbox" id="evtHighOnly"> High impact only</label>
+            <button id="evtRefreshBtn" class="evt-refresh-btn" title="Refresh events">⟳</button>
+          </div>
         </div>
         <div id="eventsList" class="events-list"><div class="muted">Loading events…</div></div>
       </div>
@@ -158,7 +161,7 @@
     <span class="footer-sep">·</span>
     <span>© 2026</span>
     <span class="footer-sep">·</span>
-    <span class="footer-version">v1.24.3</span>
+    <span class="footer-version">v1.25.0</span>
   </footer>
 
   <!-- Alerts slide-out -->

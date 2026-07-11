@@ -166,6 +166,19 @@ export async function init() {
     closed_at   timestamptz
   )`);
   await q(`create index if not exists paper_trades_uid_idx on paper_trades(uid, status)`);
+  // Market events calendar (roadmap 2026-07-11): was a static curated JSON file
+  // on disk; moved to Postgres so events persist across deploys and can be
+  // pruned once stale (see pruneOldEvents).
+  await q(`create table if not exists market_events (
+    id       text primary key,
+    date     timestamptz not null,
+    title    text not null,
+    category text not null default '',
+    country  text not null default '',
+    impact   text not null default 'medium',
+    detail   text not null default ''
+  )`);
+  await q(`create index if not exists market_events_date_idx on market_events(date)`);
   console.log('[db] connected; tables ready');
   return true;
 }
@@ -415,4 +428,35 @@ export async function updatePaperTradeNotes(uid, id, notes, tags) {
 export async function deletePaperTrade(uid, id) {
   const { rowCount } = await q('delete from paper_trades where uid = $1 and id = $2', [uid, id]);
   return rowCount > 0;
+}
+
+// ---- Market events calendar --------------------------------------------------
+function toEvent(r) {
+  return r && {
+    id: r.id, date: r.date.toISOString(), title: r.title,
+    category: r.category, country: r.country, impact: r.impact, detail: r.detail,
+  };
+}
+// One-time import of the curated calendar (data/events.json) into the table,
+// so switching from file storage to Postgres doesn't lose the existing list.
+// ON CONFLICT DO NOTHING keeps this safe to call on every boot.
+export async function seedEvents(events) {
+  if (!events?.length) return;
+  for (const e of events) {
+    await q(
+      `insert into market_events (id, date, title, category, country, impact, detail)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (id) do nothing`,
+      [e.id, e.date, e.title, e.category || '', e.country || '', e.impact || 'medium', e.detail || ''],
+    );
+  }
+}
+// Purges events whose date is more than a week in the past, so the table
+// doesn't accumulate stale entries forever.
+export async function pruneOldEvents() {
+  await q(`delete from market_events where date < now() - interval '7 days'`);
+}
+export async function listEvents() {
+  const { rows } = await q('select * from market_events order by date asc');
+  return rows.map(toEvent);
 }

@@ -83,8 +83,8 @@ export function esc(s) {
 }
 
 // Paint a minimal line sparkline of `values` into `canvas`, colored by
-// direction (green if the series rose overall, red if it fell). Shared by
-// the watchlist row sparklines (P2-16) and the derivatives OI sparkline.
+// direction (green if the series rose overall, red if it fell). Used by
+// the watchlist row sparklines (P2-16).
 export function paintSparkline(canvas, values, up) {
   if (!canvas || !values || values.length < 2) return;
   const ctx = canvas.getContext('2d');

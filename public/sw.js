@@ -3,7 +3,7 @@
 // installs and opens instantly, with an offline fallback. Deliberately never
 // caches /api/* or /ws/* — market data is only ever meaningful live.
 // ============================================================
-const CACHE = 'cpc-shell-v1';
+const CACHE = 'cpc-shell-v2';
 const SHELL = [
   '/', '/css/style.css', '/favicon.svg', '/manifest.json',
   '/js/main.js', '/js/charts.js', '/js/data.js', '/js/constants.js',
@@ -11,7 +11,7 @@ const SHELL = [
   '/js/drawings.js', '/js/ui.js', '/js/utils.js', '/js/state.js',
   '/js/watchlist.js', '/js/persistence.js', '/js/scanner.js', '/js/settings.js',
   '/js/events.js', '/js/orderbook.js', '/js/auth.js', '/js/alerts.js',
-  '/js/derivatives.js', '/js/replay.js', '/js/paper.js', '/js/snapshot.js', '/js/palette.js',
+  '/js/replay.js', '/js/paper.js', '/js/snapshot.js', '/js/palette.js',
 ];
 
 self.addEventListener('install', (e) => {

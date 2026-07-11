@@ -4,6 +4,32 @@
 
 ---
 
+## v1.25.0 — 2026-07-11 · Roadmap rescan: remove futures funding/OI toggle + events moved to Postgres
+
+### Roadmap item 1 — remove the futures funding & open interest toggle
+**Fix:** Removed the per-panel Ⓕ toggle (funding rate, open interest, and the liquidation-marker stream it also gated) end to end rather than just hiding the button, since nothing else in the app depended on it:
+- **`src/js/charts.js`** — removed the `.deriv-btn`/`.panel-deriv-info` markup from the panel template, the `derivEnabled`/`derivTimer`/`liqWS`/`_liqMarkers` panel state, the click wiring, the re-subscribe-on-symbol-change call, and the whole derivatives block (`refreshDerivInfo`, `refreshOIHistory`, `paintOISpark`, `onLiquidation`, `startDerivatives`, `stopDerivatives`, `restartDerivatives`, `toggleDerivatives`). `applyPanelMarkers` no longer merges `_liqMarkers` into the marker set, and `destroyPanel` no longer tears down `derivTimer`/`liqWS`.
+- **`src/js/derivatives.js`** and **`src/derivatives.js`** (frontend + backend modules, funding/OI fetch + liquidation WS) — deleted; nothing else imported them once the toggle was gone.
+- **`src/js/palette.js`** — removed the "Toggle derivatives overlay" command-palette entry and its now-unused `toggleDerivatives` import.
+- **`server.js`** — removed `/api/derivatives` and `/api/derivatives/oi-history` (and their in-memory caches), the `fetchFundingOI`/`fetchOIHistory` import, and `fapi.binance.com`/`wss://fstream.binance.com` from the CSP's `connect-src` (no longer called from the browser).
+- **`public/css/style.css`** — removed `.panel-deriv-info`, `.oi-spark`, `.deriv-btn.active`.
+- **`public/sw.js`** — dropped `/js/derivatives.js` from the PWA shell precache list and bumped the cache name (`cpc-shell-v1` → `v2`) so the old list (which would now 404 on `cache.addAll` and block the service worker install) doesn't linger in already-installed clients.
+**Verified:** `node --check` clean on every touched file; full `npm test` — 35/35 passing (unaffected, no test covered this UI-only feature). Started the local server and confirmed `/js/charts.js` no longer contains `deriv-btn`/`panel-deriv-info` markup, and that `/api/derivatives` and `/js/derivatives.js` fall through to the app's existing SPA catch-all (serves `index.html`, same as any other unmatched route) rather than serving stale derivatives code or data.
+
+### Roadmap item 2 — events list refresh button + 1-week pruning + Postgres persistence
+**Problem:** the market-events calendar (`data/events.json`) was a static file re-read on every `/api/events` call, so there was no way to manually refresh the pane, no persistence layer to prune from, and no admin-facing way to add events without a deploy.
+**Fix:**
+- **`src/db.js`** — new `market_events` table (`id` primary key, `date timestamptz`, `title`, `category`, `country`, `impact`, `detail`), created in `init()`. `seedEvents(events)` does an `ON CONFLICT (id) DO NOTHING` batch insert (idempotent — safe to call every boot) so the curated JSON's events import into the table exactly once instead of being lost when switching to DB-backed storage. `pruneOldEvents()` deletes rows with `date < now() - interval '7 days'` (the roadmap's "remove events older than 1 week"). `listEvents()` returns everything left, ascending by date.
+- **`server.js`** — `seedEventsFromDisk()` runs once at startup (alongside `startAlertEngine()`) after `db.init()` succeeds, reading `data/events.json` and calling `db.seedEvents()`. `/api/events` now calls `db.pruneOldEvents()` then `db.listEvents()` when the DB is configured; when it isn't (e.g. local dev without Postgres credentials), it falls back to reading the JSON file directly, matching the existing DB-optional pattern used elsewhere in this file (layouts, alerts, etc.).
+- **`public/index.html`** — added a ⟳ `#evtRefreshBtn` next to the existing "High impact only" filter in the events pane header (grouped in a new `.events-head-actions` wrapper so `justify-content: space-between` doesn't awkwardly center the filter checkbox once a third element was added).
+- **`src/js/events.js`** — `initEvents()` wires the refresh button to re-run `loadEvents()` (adds a `.spinning` class for the duration, via a CSS keyframe rotation, so the click has visible feedback).
+- **`public/css/style.css`** — `.events-head-actions`, `.evt-refresh-btn` (hover state) and the `.spinning`/`@keyframes evt-spin` rotation.
+**Verified:** `node --check` clean on `src/db.js`/`server.js`/`src/js/events.js`; `npm test` 35/35 passing. Started the local server (no Postgres configured in this environment, so this exercised the file-fallback path) and confirmed `curl /api/events` returns all 16 curated events unchanged, and that the served `index.html` now contains the `#evtRefreshBtn` markup. The DB-backed path (`seedEvents`/`pruneOldEvents`/`listEvents`) couldn't be exercised against a live Postgres instance from this environment, but was verified by direct code review against the same query/pool helper (`q()`) every other table in `db.js` already uses successfully, and by confirming the three new functions are properly exported (`Object.keys(db)` check).
+
+**Both roadmap items implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.25.0.
+
+---
+
 ## v1.24.3 — 2026-07-11 · Bug fix: derivatives really unavailable in the deployed app (server-IP block)
 
 ### Bug fix — "Derivatives data unavailable" — actually still broken, this time with proof

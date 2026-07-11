@@ -6,7 +6,7 @@ import { state } from './state.js';
 import { esc, baseAsset, quoteAsset } from './utils.js';
 import { showModal, closeModal } from './alerts.js';
 import { fetchAllPairs, defaultExchange } from './data.js';
-import { setLayout, selectWatchlistSymbol, toggleDerivatives, scheduleAutosave } from './charts.js';
+import { setLayout, selectWatchlistSymbol, scheduleAutosave } from './charts.js';
 import { exportPanelPNG, exportPanelCSV } from './snapshot.js';
 
 // Actions that just replay an existing topbar button's click handler reuse
@@ -33,7 +33,6 @@ function actions() {
     { label: 'Open settings…', hint: 'Settings', run: clickAction('settingsBtn') },
     { label: 'Sign in / account…', hint: 'Account', run: clickAction('accountBtn') },
     ...(panel ? [
-      { label: `Toggle derivatives overlay (${baseAsset(panel.symbol)})`, hint: 'Chart', run: () => toggleDerivatives(panel) },
       { label: `Toggle bar replay (${baseAsset(panel.symbol)})`, hint: 'Chart', run: () => document.dispatchEvent(new CustomEvent('toggle-replay', { detail: { panel } })) },
       { label: `Export chart as PNG (${baseAsset(panel.symbol)})`, hint: 'Export', run: () => exportPanelPNG(panel) },
       { label: `Export visible bars as CSV (${baseAsset(panel.symbol)})`, hint: 'Export', run: () => exportPanelCSV(panel) },

@@ -7,7 +7,6 @@ import { installAuthRoutes, currentUid } from './src/auth.js';
 import * as db from './src/db.js';
 import { fetchBars, tfSupported } from './src/klines.js';
 import { startAlertEngine } from './src/alert-engine.js';
-import { fetchFundingOI, fetchOIHistory } from './src/derivatives.js';
 import { attachRelay } from './src/ws-relay.js';
 import crypto from 'crypto';
 
@@ -42,7 +41,7 @@ app.set('trust proxy', 1);
 // browser (everything else is proxied through our own /api/* routes).
 const CONNECT_SRC = [
   "'self'",
-  'https://api.binance.com', 'https://fapi.binance.com', 'wss://stream.binance.com:9443', 'wss://fstream.binance.com',
+  'https://api.binance.com', 'wss://stream.binance.com:9443',
   'https://api.bybit.com', 'wss://stream.bybit.com',
   'https://www.okx.com', 'https://api.gateio.ws', 'https://api.kucoin.com',
   'https://api.hyperliquid.xyz', 'https://www.bitstamp.net',
@@ -202,15 +201,34 @@ app.get('/api/klines/history', async (req, res) => {
   }
 });
 
-// ---- Market events calendar (curated JSON on disk) -------------------------
+// ---- Market events calendar (Postgres-backed) -------------------------------
+// data/events.json seeds the market_events table once (see seedEventsFromDisk
+// at startup); every request past that reads/prunes the DB, not the file, so
+// the "refresh" button in the UI and the roadmap's 1-week retention both work.
 app.get('/api/events', async (_req, res) => {
   try {
-    const raw = await fs.readFile(join(__dirname, 'data', 'events.json'), 'utf8');
-    res.type('application/json').send(raw);
+    if (db.dbEnabled()) {
+      await db.pruneOldEvents();
+      res.json({ events: await db.listEvents() });
+    } else {
+      // No DB configured (local dev) — fall back to the curated file directly.
+      const raw = await fs.readFile(join(__dirname, 'data', 'events.json'), 'utf8');
+      res.type('application/json').send(raw);
+    }
   } catch (e) {
     res.status(500).json({ error: 'events unavailable', events: [] });
   }
 });
+
+async function seedEventsFromDisk() {
+  try {
+    const raw = await fs.readFile(join(__dirname, 'data', 'events.json'), 'utf8');
+    const events = JSON.parse(raw).events || [];
+    await db.seedEvents(events);
+  } catch (e) {
+    console.error('[events] seed from disk failed:', e.message);
+  }
+}
 
 // ---- Session & named layout persistence (Postgres, scoped per user) --------
 // Each request's data belongs to the signed-in account, or the GUEST uid when
@@ -446,49 +464,6 @@ app.get('/api/alerts/triggered', async (req, res) => {
   catch (e) { res.status(500).json({ error: String(e.message) }); }
 });
 
-// ---- Derivatives (P2-9): funding rate, open interest, liquidations --------
-// Binance USDT-M futures only (the deepest, most-watched perp market). Liquid-
-// ations are streamed client-side directly from Binance's public forceOrder
-// WS feed (src/js/derivatives.js) — no server relay needed for that part.
-const DERIV_CACHE = new Map(); // symbol -> { ts, data }
-const DERIV_TTL_MS = 15_000;
-
-app.get('/api/derivatives', async (req, res) => {
-  const symbol = String(req.query.symbol || '').toUpperCase();
-  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
-  const cached = DERIV_CACHE.get(symbol);
-  if (cached && Date.now() - cached.ts < DERIV_TTL_MS) return res.json(cached.data);
-  try {
-    const data = await fetchFundingOI(symbol);
-    DERIV_CACHE.set(symbol, { ts: Date.now(), data });
-    res.json(data);
-  } catch (e) {
-    res.status(502).json({ error: String(e.message || e) });
-  }
-});
-
-// OI history buckets only update once per `period` upstream, so a short cache
-// keeps a panel's periodic sparkline refresh from re-hitting Binance every call.
-const OI_HIST_CACHE = new Map(); // "symbol|period|limit" -> { ts, data }
-const OI_HIST_TTL_MS = 60_000;
-
-app.get('/api/derivatives/oi-history', async (req, res) => {
-  const symbol = String(req.query.symbol || '').toUpperCase();
-  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
-  const period = String(req.query.period || '1h');
-  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
-  const key = `${symbol}|${period}|${limit}`;
-  const cached = OI_HIST_CACHE.get(key);
-  if (cached && Date.now() - cached.ts < OI_HIST_TTL_MS) return res.json({ data: cached.data });
-  try {
-    const data = await fetchOIHistory(symbol, period, limit);
-    OI_HIST_CACHE.set(key, { ts: Date.now(), data });
-    res.json({ data });
-  } catch (e) {
-    res.status(502).json({ error: String(e.message || e) });
-  }
-});
-
 // Serve static assets
 app.use(express.static(join(__dirname, 'public')));
 app.use('/js', express.static(join(__dirname, 'src/js')));
@@ -502,7 +477,7 @@ app.get('*', (_req, res) => {
 // A DB failure is logged but not fatal — the kline proxy still works and the
 // frontend falls back to localStorage for persistence.
 db.init()
-  .then(ok => { if (ok) startAlertEngine(); })
+  .then(ok => { if (ok) { startAlertEngine(); seedEventsFromDisk(); } })
   .catch(e => console.error('[db] init failed:', e?.message || e))
   .finally(() => {
     const httpServer = app.listen(PORT, () => {

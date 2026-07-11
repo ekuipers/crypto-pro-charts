@@ -5,9 +5,8 @@ import { state, drawingState } from './state.js';
 import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES } from './constants.js';
 import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
-import { baseAsset, quoteAsset, fmtPrice, fmtVol, uid, log, warn, toast, paintSparkline } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
-import { fetchDerivatives, fetchOIHistory, derivativesAvailable, openLiquidationStream } from './derivatives.js';
 import { exportPanelPNG, exportPanelCSV } from './snapshot.js';
 import { computeInWorker } from './indicator-client.js';
 
@@ -437,7 +436,6 @@ export function addPanel(opts = {}) {
     <div class="panel-bar">
       <button class="sym-btn">${opts.symbol ? baseAsset(opts.symbol) : 'BTC'}<span class="sym-quote">${opts.symbol ? quoteAsset(opts.symbol) : 'USDT'}</span></button>
       <span class="panel-sym-price" title="Current price"></span>
-      <span class="panel-deriv-info" title="Funding rate · open interest (Binance USDT-M futures)" style="display:none"></span>
       <select class="ctype-sel" title="Chart type">
         ${[['candles','Candles'],['hollow','Hollow'],['bars','Bars'],['line','Line'],['area','Area'],['heikin','Heikin Ashi'],['renko','Renko']]
           .map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
@@ -454,7 +452,6 @@ export function addPanel(opts = {}) {
       <span class="candle-timer" title="Time until candle closes"></span>
       <div class="panel-actions">
         <button class="panel-act link-btn" title="Link symbol (click to join a colored link group)">⛓</button>
-        <button class="panel-act deriv-btn" title="Funding rate, open interest &amp; liquidations (Binance USDT-M futures)">Ⓕ</button>
         <button class="panel-act replay-btn" title="Bar replay — step through history candle by candle">⏮</button>
         <button class="panel-act compare-btn" title="Compare / overlay symbol">＋</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
@@ -495,10 +492,6 @@ export function addPanel(opts = {}) {
     overlays: [],            // {symbol, name, color, series, data, ws}
     drawings: opts.drawings || [],
     klineWS: null,
-    derivEnabled: false,      // P2-9: funding/OI readout + liquidation markers
-    derivTimer: null,
-    liqWS: null,
-    _liqMarkers: [],
     _replay: null,             // P2-10: bar replay session, see replay.js
   };
   state.panels.push(panel);
@@ -528,8 +521,6 @@ export function addPanel(opts = {}) {
   }));
   // P1-5: colored symbol-link group cycler
   el.querySelector('.link-btn').addEventListener('click', () => cycleLinkGroup(panel));
-  // P2-9: funding rate / open interest / liquidations toggle
-  el.querySelector('.deriv-btn').addEventListener('click', () => toggleDerivatives(panel));
   // P2-10: bar replay
   el.querySelector('.replay-btn').addEventListener('click', () => {
     setActivePanel(panel);
@@ -775,114 +766,10 @@ export async function changeSymbol(panel, symbol, name, exchange, _fromLink = fa
       .forEach(p => changeSymbol(p, symbol, name, exchange, true));
   }
   await loadPanelData(panel);
-  if (panel.derivEnabled) restartDerivatives(panel); // new symbol/exchange — re-subscribe
   if (panel === state.activePanel) {
     document.dispatchEvent(new CustomEvent('active-symbol-changed', { detail: { panel } }));
   }
   scheduleAutosave();
-}
-
-// ---------- Derivatives (P2-9): funding rate, open interest, liquidations ---
-function fmtFunding(rate) {
-  const pct = rate * 100;
-  return (pct >= 0 ? '+' : '') + pct.toFixed(4) + '%';
-}
-function fmtFundingCountdown(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return `${h}h${String(m).padStart(2, '0')}m`;
-}
-
-async function refreshDerivInfo(panel) {
-  const el = panel.el.querySelector('.panel-deriv-info');
-  if (!el || !panel.derivEnabled) return;
-  try {
-    const d = await fetchDerivatives(panel.symbol);
-    const up = d.fundingRate >= 0;
-    el.innerHTML = `<span class="${up ? 'up' : 'down'}">Fund ${fmtFunding(d.fundingRate)}</span>` +
-      ` <span class="muted">(${fmtFundingCountdown(d.nextFundingTime - Date.now())})</span>` +
-      (d.openInterest != null ? ` · OI ${fmtVol(d.openInterest)}` : '') +
-      ' <canvas class="oi-spark" width="46" height="14" title="Open interest, last 48h"></canvas>';
-    paintOISpark(panel);
-  } catch {
-    el.textContent = 'Derivatives data unavailable';
-  }
-}
-
-// Open interest history sparkline. `/api/derivatives/oi-history` shipped in
-// P2-9 but was never called from the UI — wiring it up here (P4) instead of
-// leaving a dead backend route. Refreshed on its own slower interval (OI
-// buckets only update hourly upstream) rather than every 20s funding poll,
-// and repainted after each funding-poll DOM rebuild via the cached history.
-async function refreshOIHistory(panel) {
-  if (!panel.derivEnabled) return;
-  try {
-    const hist = await fetchOIHistory(panel.symbol, '1h', 48);
-    panel._oiHistory = hist.map(h => h.oi).filter(v => Number.isFinite(v) && v > 0);
-  } catch {
-    panel._oiHistory = null;
-  }
-  paintOISpark(panel);
-}
-
-function paintOISpark(panel) {
-  const hist = panel._oiHistory;
-  if (!hist || hist.length < 2) return;
-  const canvas = panel.el.querySelector('.panel-deriv-info .oi-spark');
-  paintSparkline(canvas, hist, hist[hist.length - 1] >= hist[0]);
-}
-
-function onLiquidation(panel, liq) {
-  const bull = liq.side === 'BUY'; // a short was force-bought-back → bullish marker
-  panel._liqMarkers.push({
-    time: liq.time,
-    position: bull ? 'belowBar' : 'aboveBar',
-    color: bull ? '#26a69a' : '#ef5350',
-    shape: 'circle',
-    text: `Liq ${fmtVol(liq.value)}`,
-  });
-  // Cap the buffer so long-running sessions don't grow unbounded.
-  if (panel._liqMarkers.length > 200) panel._liqMarkers = panel._liqMarkers.slice(-200);
-  applyPanelMarkers(panel);
-}
-
-function startDerivatives(panel) {
-  const el = panel.el.querySelector('.panel-deriv-info');
-  if (!derivativesAvailable(panel.symbol)) {
-    if (el) { el.style.display = ''; el.textContent = 'Futures data unavailable for this symbol/exchange'; }
-    return;
-  }
-  if (el) el.style.display = '';
-  refreshDerivInfo(panel);
-  panel.derivTimer = setInterval(() => refreshDerivInfo(panel), 20000);
-  refreshOIHistory(panel);
-  panel.oiTimer = setInterval(() => refreshOIHistory(panel), 60000);
-  panel.liqWS = openLiquidationStream(panel.symbol, liq => onLiquidation(panel, liq));
-}
-
-function stopDerivatives(panel) {
-  if (panel.derivTimer) { clearInterval(panel.derivTimer); panel.derivTimer = null; }
-  if (panel.oiTimer) { clearInterval(panel.oiTimer); panel.oiTimer = null; }
-  panel._oiHistory = null;
-  try { panel.liqWS?.close(); } catch {}
-  panel.liqWS = null;
-  panel._liqMarkers = [];
-  applyPanelMarkers(panel);
-  const el = panel.el.querySelector('.panel-deriv-info');
-  if (el) { el.style.display = 'none'; el.textContent = ''; }
-}
-
-function restartDerivatives(panel) {
-  stopDerivatives(panel);
-  panel.derivEnabled = true;
-  startDerivatives(panel);
-}
-
-export function toggleDerivatives(panel) {
-  panel.derivEnabled = !panel.derivEnabled;
-  panel.el.querySelector('.deriv-btn').classList.toggle('active', panel.derivEnabled);
-  if (panel.derivEnabled) startDerivatives(panel);
-  else stopDerivatives(panel);
 }
 
 export function setActivePanel(panel) {
@@ -911,8 +798,6 @@ export function destroyPanel(panel) {
   try { panel._ro?.disconnect(); } catch {}
   if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
   try { panel.klineWS?.close(); } catch {}
-  if (panel.derivTimer) { clearInterval(panel.derivTimer); panel.derivTimer = null; }
-  try { panel.liqWS?.close(); } catch {}
   if (panel._replay?.timer) clearInterval(panel._replay.timer);
   panel.overlays?.forEach(o => { try { o.ws?.close(); } catch {} });
   panel.indicators.forEach(ind => { try { ind.subChart?.remove(); } catch {} });
@@ -1368,7 +1253,7 @@ export function rebuildCrossMarkers(panel) {
 // series and each setMarkers replaces the previous list.
 export function applyPanelMarkers(panel) {
   if (!panel || !panel.candleSeries) return;
-  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || []), ...(panel._luxAlgoMarkers || []), ...(panel._liqMarkers || [])];
+  const all = [...(panel._crossMarkers || []), ...(panel._eventMarkers || []), ...(panel._luxAlgoMarkers || [])];
   all.sort((a, b) => a.time - b.time);
   try { panel.candleSeries.setMarkers(all); } catch {}
 }

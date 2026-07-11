@@ -26,4 +26,4 @@ _No open roadmap items. Shipped items move to `memory.md` (see v1.25.0)._
 
 ## Bugs
 
-_No open bugs. Fixed bugs are logged in `memory.md`._
+_No open bugs. Fixed bugs are logged in `memory.md` (see v1.25.1)._

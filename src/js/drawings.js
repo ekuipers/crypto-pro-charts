@@ -91,7 +91,7 @@ export function initDrawingsForPanel(panel) {
   mainDiv.addEventListener('pointermove', e => { if (drawingState.tool === 'select') updateSelectHover(panel, e); });
   mainDiv.addEventListener('pointerdown', () => { if (drawingState.tool === 'select' && !dragInfo) deselect(); });
 
-  function fin() { document.dispatchEvent(new CustomEvent('drawings-changed')); }
+  function fin() { document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } })); }
   panel._cancelDraw = () => { tempPts = []; renderDrawings(panel); };
 
   initDrawingsHistory(panel);
@@ -140,11 +140,16 @@ export function redo(panel) {
 }
 
 // Every genuine drawing mutation (create/move/resize/delete/lock/style/…)
-// dispatches 'drawings-changed' on the active panel (drawing edits always
-// happen on the panel that owns the mousedown, which is also made active —
-// see addPanel's panel-level mousedown listener in charts.js).
-document.addEventListener('drawings-changed', () => {
-  if (state.activePanel) pushHistory(state.activePanel);
+// dispatches 'drawings-changed' with the owning panel in detail.panel — NOT
+// state.activePanel, which can still point at the previously-active panel:
+// the drawing layer's pointerdown fires (and, for single-click tools like
+// hline/vline/text/eraser, completes and dispatches this event) before the
+// panel wrapper's own mousedown listener runs setActivePanel (see addPanel
+// in charts.js), so a click straight into an inactive panel would otherwise
+// push the history entry onto the wrong panel's undo stack.
+document.addEventListener('drawings-changed', e => {
+  const panel = e.detail?.panel || state.activePanel;
+  if (panel) pushHistory(panel);
 });
 
 export function updateLayerInteractivity(panel) {
@@ -562,7 +567,7 @@ function handleSelectDown(panel, e) {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     dragInfo = null;
-    document.dispatchEvent(new CustomEvent('drawings-changed'));
+    document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
@@ -634,12 +639,12 @@ function showConfig(panel, d) {
   // Editing controls are read-only while the shape is locked.
   if (d.locked) el.querySelectorAll('.dc-body input, .dc-body select').forEach(inp => { inp.disabled = true; });
 
-  const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); };
+  const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } })); };
   el.querySelector('#dcClose').addEventListener('click', deselect);
   el.querySelector('#dcLogTrade')?.addEventListener('click', () => logDrawingAsTrade(panel, d));
   el.querySelector('#dcLock').addEventListener('click', () => {
     d.locked = !d.locked;
-    document.dispatchEvent(new CustomEvent('drawings-changed'));
+    document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
     showConfig(panel, d);   // rebuild popover to reflect the new locked state
     renderDrawings(panel);
   });
@@ -657,7 +662,7 @@ function showConfig(panel, d) {
     const idx = panel.drawings.indexOf(d);
     if (idx >= 0) panel.drawings.splice(idx, 1);
     deselect();
-    document.dispatchEvent(new CustomEvent('drawings-changed'));
+    document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
   });
 }
 
@@ -723,14 +728,14 @@ function eraseNearest(panel, pt) {
     if (panel.drawings[best] === drawingState.selected) deselect();
     panel.drawings.splice(best, 1);
   }
-  document.dispatchEvent(new CustomEvent('drawings-changed'));
+  document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
 }
 
 export function clearDrawings(panel) {
   if (drawingState.selectedPanel === panel) deselect();
   panel.drawings = [];
   renderDrawings(panel);
-  document.dispatchEvent(new CustomEvent('drawings-changed'));
+  document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
 }
 
 export function exportDrawings(panel) {
@@ -746,7 +751,7 @@ export function importDrawings(panel, file) {
   reader.onload = () => {
     try {
       const arr = JSON.parse(reader.result);
-      if (Array.isArray(arr)) { panel.drawings.push(...arr); renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); }
+      if (Array.isArray(arr)) { panel.drawings.push(...arr); renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } })); }
     } catch {}
   };
   reader.readAsText(file);

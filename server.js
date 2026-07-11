@@ -210,12 +210,21 @@ app.get('/api/events', async (_req, res) => {
     if (db.dbEnabled()) {
       await db.pruneOldEvents();
       res.json({ events: await db.listEvents() });
-    } else {
-      // No DB configured (local dev) — fall back to the curated file directly.
-      const raw = await fs.readFile(join(__dirname, 'data', 'events.json'), 'utf8');
-      res.type('application/json').send(raw);
+      return;
     }
   } catch (e) {
+    // A DB error here previously fell straight to an empty `events: []` with
+    // no server-side log line, so a broken/unseeded market_events table was
+    // silently indistinguishable from "genuinely no events" — logged now, and
+    // falls back to the curated file so the pane still shows something.
+    console.error('[events] DB read failed, falling back to file:', e.message);
+  }
+  // No DB configured, or the DB path just failed above — serve the curated file.
+  try {
+    const raw = await fs.readFile(join(__dirname, 'data', 'events.json'), 'utf8');
+    res.type('application/json').send(raw);
+  } catch (e) {
+    console.error('[events] file fallback also failed:', e.message);
     res.status(500).json({ error: 'events unavailable', events: [] });
   }
 });
@@ -477,7 +486,7 @@ app.get('*', (_req, res) => {
 // A DB failure is logged but not fatal — the kline proxy still works and the
 // frontend falls back to localStorage for persistence.
 db.init()
-  .then(ok => { if (ok) { startAlertEngine(); seedEventsFromDisk(); } })
+  .then(async ok => { if (ok) { startAlertEngine(); await seedEventsFromDisk(); } })
   .catch(e => console.error('[db] init failed:', e?.message || e))
   .finally(() => {
     const httpServer = app.listen(PORT, () => {

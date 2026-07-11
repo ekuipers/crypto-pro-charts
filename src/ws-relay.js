@@ -58,6 +58,11 @@ async function openUpstream(entry) {
       });
     } else if (exchange === 'kucoin') {
       const { token, server } = await fetchKucoinToken();
+      // The token fetch is a real network round-trip, unlike okx/gate's
+      // synchronous `new WebSocket(...)`. If every client unsubscribed while
+      // it was in flight, `entry` was already dropped from `upstreams` — bail
+      // out instead of opening a socket nothing can ever reach to close.
+      if (upstreams.get(keyOf(exchange, symbol, tf)) !== entry) return;
       const connectId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       ws = new WebSocket(`${server.endpoint}?token=${token}&connectId=${connectId}`);
       const topic = `/market/candles:${toExSymbol(symbol, 'kucoin')}_${interval}`;

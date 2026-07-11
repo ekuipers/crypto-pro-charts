@@ -5,7 +5,7 @@
 // loadPanelData() path, so nothing here needs to duplicate that logic.
 // ============================================================
 import { state } from './state.js';
-import { recomputeIndicators, loadPanelData } from './charts.js';
+import { recomputeIndicators, loadPanelData, updatePanelMenuBtn } from './charts.js';
 import { renderDrawings } from './drawings.js';
 import { toast } from './utils.js';
 
@@ -27,7 +27,7 @@ function startReplay(panel) {
   if (panel._klinePoll) { clearInterval(panel._klinePoll); panel._klinePoll = null; }
   const full = panel.data.slice();
   panel._replay = { full, idx: Math.max(MIN_START, full.length - 150), playing: false, speed: 1, timer: null };
-  panel.el.querySelector('.replay-btn').classList.add('active');
+  updatePanelMenuBtn(panel);
   applyIndex(panel);
   renderBar(panel);
 }
@@ -37,7 +37,7 @@ function stopReplay(panel) {
   if (!r) return;
   if (r.timer) clearInterval(r.timer);
   panel._replay = null;
-  panel.el.querySelector('.replay-btn').classList.remove('active');
+  updatePanelMenuBtn(panel);
   const bar = panel.el.querySelector('.replay-bar');
   bar.style.display = 'none';
   bar.innerHTML = '';

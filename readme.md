@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.25.2  
+**Version:** v1.26.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -13,10 +13,11 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **13 timeframes** — 1m 5m 15m 30m 1h 2h 4h 6h 12h 1d 3d 1w 1M; timeframes an exchange lacks natively are aggregated server-side from a lower timeframe
 - **7 chart types per panel** — Candles, Hollow candles, OHLC Bars, Line, Area, Heikin Ashi, Renko (ATR-sized bricks)
 - **Infinite history scroll-back** — pan left and older bars stream in automatically (Postgres-backed kline store + exchange paging)
-- **Log & percent price scales** — per-panel `log` / `%` toggles next to the timeframe buttons
+- **Log & percent price scales** — per-panel `log` / `%` toggles in the chart's ☰ options menu (top right of the panel bar)
 - **Symbol link groups & crosshair sync** — put panels in a colored link group (⛓) so a symbol change follows across them; the crosshair mirrors across all panels by time
 - **Live price readout** — Each chart's current price shows in a bigger, bold font right next to the symbol name in the panel's top bar, flashing green/red in the direction of the last tick
 - **Refresh all** — a ⟳ button in the top bar drops the kline cache and reloads every chart's data in one click
+- **Per-chart options menu** — log/percent scale, symbol link group, bar replay, compare/overlay, indicators, PNG/CSV export, fullscreen, and close are grouped behind a ☰ button in the top-right of each chart's panel bar, keeping the bar itself down to symbol, price, chart type, and timeframes
 - **Multiple exchanges** — Binance (WebSocket + REST), Bybit, OKX, Gate.io, KuCoin, Hyperliquid, Bitstamp, CryptoCompare, Alpaca, Bitvavo. **Watchlists can mix symbols from several exchanges at once** — each symbol carries its own exchange, and Settings chooses which exchanges to query (not a single active one)
 - **Multi-quote pairs** — USDT, USDC, and EUR pairs across all supported exchanges
 - **Rich indicators** — SMA, EMA, WMA, Bollinger Bands, VWAP, Ichimoku, RSI, MACD, Stochastic, ATR, ADX, SuperTrend, Keltner, Donchian, Volume Profile, Heikin Ashi, MA Ribbon, Pivot Points, HTF Levels, Anchored VWAP, Parabolic SAR, DEMA, TEMA, **Lux Trend Signals** (EMA + ATR bands + buy/sell arrows)

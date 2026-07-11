@@ -229,24 +229,15 @@ export function applyPanelViewOptions(panel) {
   if (sel) sel.value = panel.chartType || 'candles';
   if ((panel.chartType || 'candles') !== panel._builtType) rebuildMainSeries(panel);
   try { panel.chart.priceScale('right').applyOptions({ mode: panel.scaleMode || 0 }); } catch {}
-  updateScaleButtons(panel);
-  updateLinkButton(panel);
+  updatePanelMenuBtn(panel);
 }
 
 // ---------- Price-scale modes (P1-2): 0 normal / 1 log / 2 percent ----------
 export function setScaleMode(panel, mode) {
   panel.scaleMode = mode;
   try { panel.chart.priceScale('right').applyOptions({ mode }); } catch {}
-  updateScaleButtons(panel);
+  updatePanelMenuBtn(panel);
   scheduleAutosave();
-}
-
-function updateScaleButtons(panel) {
-  panel.el.querySelectorAll('.scale-btn').forEach(b => {
-    b.classList.toggle('active',
-      (b.dataset.scale === 'log' && panel.scaleMode === 1) ||
-      (b.dataset.scale === 'pct' && panel.scaleMode === 2));
-  });
 }
 
 // ---------- Symbol link groups (P1-5) ----------
@@ -255,18 +246,8 @@ const LINK_COLORS = { 1: '#2962ff', 2: '#f7a600', 3: '#9c27b0' };
 export function cycleLinkGroup(panel) {
   const order = [null, 1, 2, 3];
   panel.linkGroup = order[(order.indexOf(panel.linkGroup ?? null) + 1) % order.length];
-  updateLinkButton(panel);
+  updatePanelMenuBtn(panel);
   scheduleAutosave();
-}
-
-function updateLinkButton(panel) {
-  const b = panel.el.querySelector('.link-btn');
-  if (!b) return;
-  b.classList.toggle('active', !!panel.linkGroup);
-  b.style.color = panel.linkGroup ? LINK_COLORS[panel.linkGroup] : '';
-  b.title = panel.linkGroup
-    ? `Symbol link group ${panel.linkGroup} — linked charts follow symbol changes`
-    : 'Link symbol (click to join a colored link group)';
 }
 
 // ---------- Cross-panel crosshair sync (P1-5) ----------
@@ -443,23 +424,10 @@ export function addPanel(opts = {}) {
       <div class="tf-group">
         ${TIMEFRAMES.map(t => `<button class="tf-btn${(opts.tf||'1h')===t?' active':''}" data-tf="${t}">${t}</button>`).join('')}
       </div>
-      <div class="scale-group">
-        <button class="scale-btn" data-scale="log" title="Logarithmic price scale">log</button>
-        <button class="scale-btn" data-scale="pct" title="Percent price scale">%</button>
-      </div>
       <div class="compare-legend"></div>
       <div class="ohlc-info"></div>
       <span class="candle-timer" title="Time until candle closes"></span>
-      <div class="panel-actions">
-        <button class="panel-act link-btn" title="Link symbol (click to join a colored link group)">⛓</button>
-        <button class="panel-act replay-btn" title="Bar replay — step through history candle by candle">⏮</button>
-        <button class="panel-act compare-btn" title="Compare / overlay symbol">＋</button>
-        <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
-        <button class="panel-act snapshot-btn" title="Save chart as PNG">📷</button>
-        <button class="panel-act csv-btn" title="Export visible bars as CSV">⤓</button>
-        <button class="panel-act fs-btn" title="Fullscreen">⛶</button>
-        <button class="panel-act close-btn" title="Close">✕</button>
-      </div>
+      <button class="panel-act panel-menu-btn" title="Chart options">☰</button>
     </div>
     <div class="panel-body">
       <div class="main-chart-div"></div>
@@ -506,43 +474,19 @@ export function addPanel(opts = {}) {
     b.classList.add('active');
     changeTimeframe(panel, b.dataset.tf);
   }));
-  el.querySelector('.add-ind-btn').addEventListener('click', () => {
-    setActivePanel(panel);
-    document.dispatchEvent(new CustomEvent('open-indicators'));
-  });
   // P1-3: chart type selector
   const ctypeSel = el.querySelector('.ctype-sel');
   ctypeSel.value = panel.chartType;
   ctypeSel.addEventListener('change', () => setChartType(panel, ctypeSel.value));
-  // P1-2: log / percent price-scale toggles
-  el.querySelectorAll('.scale-btn').forEach(b => b.addEventListener('click', () => {
-    const want = b.dataset.scale === 'log' ? 1 : 2;
-    setScaleMode(panel, panel.scaleMode === want ? 0 : want);
-  }));
-  // P1-5: colored symbol-link group cycler
-  el.querySelector('.link-btn').addEventListener('click', () => cycleLinkGroup(panel));
-  // P2-10: bar replay
-  el.querySelector('.replay-btn').addEventListener('click', () => {
-    setActivePanel(panel);
-    document.dispatchEvent(new CustomEvent('toggle-replay', { detail: { panel } }));
-  });
-  el.querySelector('.compare-btn').addEventListener('click', () => {
-    setActivePanel(panel);
-    document.dispatchEvent(new CustomEvent('open-compare-search', { detail: { panel } }));
-  });
-  // P3-23: chart snapshot & CSV export
-  el.querySelector('.snapshot-btn').addEventListener('click', () => exportPanelPNG(panel));
-  el.querySelector('.csv-btn').addEventListener('click', () => exportPanelCSV(panel));
   el.querySelectorAll('.ts-btn').forEach(b => b.addEventListener('click', () => {
     el.querySelectorAll('.ts-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     applyTimeRange(panel, b.dataset.range);
   }));
-  el.querySelector('.fs-btn').addEventListener('click', () => { el.classList.toggle('panel-fullscreen'); resizeAllCharts(); });
-  el.querySelector('.close-btn').addEventListener('click', () => {
-    if (state.panels.length <= 1) { toast('At least one chart is required', 'warn'); return; }
-    destroyPanel(panel);
-    resizeAllCharts();
+  // Roadmap: all per-chart toggles/actions live behind the hamburger menu now.
+  el.querySelector('.panel-menu-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    togglePanelMenu(panel, e.currentTarget);
   });
   el.addEventListener('mousedown', () => setActivePanel(panel));
   wirePanelResizers(panel);
@@ -552,6 +496,88 @@ export function addPanel(opts = {}) {
   if (!state.activePanel) setActivePanel(panel);
   return panel;
 }
+
+// ---------- Per-chart hamburger menu (Roadmap: consolidate chart toggles) ----------
+// A single shared dropdown (#panelMenuDropdown, in index.html) is repositioned
+// and repopulated for whichever panel's hamburger button was clicked, mirroring
+// the ind-dropdown / layout-drop-menu pattern used by the top bar (see ui.js).
+function closePanelMenu() {
+  const menu = document.getElementById('panelMenuDropdown');
+  if (menu) { menu.style.display = 'none'; menu.dataset.panelId = ''; }
+}
+
+function togglePanelMenu(panel, btn) {
+  const menu = document.getElementById('panelMenuDropdown');
+  if (!menu) return;
+  if (menu.style.display !== 'none' && menu.dataset.panelId === panel.id) { closePanelMenu(); return; }
+
+  const fullscreen = panel.el.classList.contains('panel-fullscreen');
+  const linkColor = panel.linkGroup ? LINK_COLORS[panel.linkGroup] : '';
+  menu.innerHTML = `
+    <button class="pm-item${panel.scaleMode === 1 ? ' active' : ''}" data-act="scale-log">📊 Log scale</button>
+    <button class="pm-item${panel.scaleMode === 2 ? ' active' : ''}" data-act="scale-pct">% Percent scale</button>
+    <div class="pm-sep"></div>
+    <button class="pm-item${panel.linkGroup ? ' active' : ''}" data-act="link" style="${linkColor ? `color:${linkColor}` : ''}">⛓ Link symbol${panel.linkGroup ? ` (group ${panel.linkGroup})` : ''}</button>
+    <button class="pm-item${panel._replay ? ' active' : ''}" data-act="replay">⏮ Bar replay</button>
+    <button class="pm-item" data-act="compare">＋ Compare / overlay</button>
+    <button class="pm-item" data-act="indicators">ƒ Indicators</button>
+    <div class="pm-sep"></div>
+    <button class="pm-item" data-act="snapshot">📷 Save as PNG</button>
+    <button class="pm-item" data-act="csv">⤓ Export CSV</button>
+    <button class="pm-item${fullscreen ? ' active' : ''}" data-act="fullscreen">⛶ Fullscreen</button>
+    <div class="pm-sep"></div>
+    <button class="pm-item danger" data-act="close">✕ Close chart</button>`;
+  menu.dataset.panelId = panel.id;
+
+  const wire = (act, fn) => menu.querySelector(`[data-act="${act}"]`)?.addEventListener('click', () => { fn(); closePanelMenu(); });
+  wire('scale-log', () => setScaleMode(panel, panel.scaleMode === 1 ? 0 : 1));
+  wire('scale-pct', () => setScaleMode(panel, panel.scaleMode === 2 ? 0 : 2));
+  wire('link', () => cycleLinkGroup(panel));
+  wire('replay', () => {
+    setActivePanel(panel);
+    document.dispatchEvent(new CustomEvent('toggle-replay', { detail: { panel } }));
+  });
+  wire('compare', () => {
+    setActivePanel(panel);
+    document.dispatchEvent(new CustomEvent('open-compare-search', { detail: { panel } }));
+  });
+  wire('indicators', () => {
+    setActivePanel(panel);
+    document.dispatchEvent(new CustomEvent('open-indicators'));
+  });
+  wire('snapshot', () => exportPanelPNG(panel));
+  wire('csv', () => exportPanelCSV(panel));
+  wire('fullscreen', () => { panel.el.classList.toggle('panel-fullscreen'); updatePanelMenuBtn(panel); resizeAllCharts(); });
+  wire('close', () => {
+    if (state.panels.length <= 1) { toast('At least one chart is required', 'warn'); return; }
+    destroyPanel(panel);
+    resizeAllCharts();
+  });
+
+  menu.style.display = 'block';
+  const r = btn.getBoundingClientRect();
+  const mw = menu.offsetWidth;
+  let left = r.right - mw;
+  if (left < 4) left = 4;
+  menu.style.left = left + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+}
+
+// Small on/off dot on the hamburger button itself so an active toggle (log
+// scale, link group, replay, fullscreen) stays glanceable without the menu open.
+export function updatePanelMenuBtn(panel) {
+  const btn = panel.el?.querySelector('.panel-menu-btn');
+  if (!btn) return;
+  const active = !!panel.scaleMode || !!panel.linkGroup || !!panel._replay || panel.el.classList.contains('panel-fullscreen');
+  btn.classList.toggle('has-active', active);
+}
+
+document.addEventListener('click', e => {
+  const menu = document.getElementById('panelMenuDropdown');
+  if (!menu || menu.style.display === 'none') return;
+  if (menu.contains(e.target) || e.target.closest?.('.panel-menu-btn')) return;
+  closePanelMenu();
+}, true);
 
 function initChart(panel) {
   if (!LWC()) { showPanelError(panel, 'Charting library failed to load.'); return; }
@@ -566,8 +592,7 @@ function initChart(panel) {
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     // P1-2: restore the persisted price-scale mode (0 normal / 1 log / 2 percent)
     if (panel.scaleMode) { try { chart.priceScale('right').applyOptions({ mode: panel.scaleMode }); } catch {} }
-    updateScaleButtons(panel);
-    updateLinkButton(panel);
+    updatePanelMenuBtn(panel);
 
     // crosshair OHLC display + cross-panel crosshair sync (P1-5)
     chart.subscribeCrosshairMove(param => {
@@ -729,7 +754,7 @@ function exitReplayIfActive(panel) {
   if (!panel._replay) return;
   if (panel._replay.timer) clearInterval(panel._replay.timer);
   panel._replay = null;
-  panel.el.querySelector('.replay-btn')?.classList.remove('active');
+  updatePanelMenuBtn(panel);
   const bar = panel.el.querySelector('.replay-bar');
   if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
 }

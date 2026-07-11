@@ -4,6 +4,17 @@
 
 ---
 
+## v1.26.0 — 2026-07-11 · Roadmap rescan: per-chart toggles consolidated into a hamburger menu
+
+### Roadmap item — move chart toggles into a dropdown behind a hamburger button
+**Problem:** each chart panel's top bar (`.panel-bar`) packed in ten separate icon buttons — log/percent scale toggles, symbol link group, bar replay, compare/overlay, indicators, PNG snapshot, CSV export, fullscreen, and close — alongside the symbol button, chart-type selector, timeframe pills, OHLC readout, and candle countdown. On narrower panels (4/6/8-chart grid layouts) this row was crowded and left little breathing room for the elements users reach for most (symbol, timeframe, OHLC info).
+**Fix:** **`src/js/charts.js`** — replaced the `.scale-group` and `.panel-actions` button rows in the panel-bar template with a single `.panel-menu-btn` (☰) anchored to the right via `margin-left:auto`. Added `togglePanelMenu(panel, btn)` / `closePanelMenu()`, which populate and position a single shared dropdown (`#panelMenuDropdown`, new in `public/index.html`) — mirroring the existing `openIndDropdown`/`openLayoutDropdown` pattern in `ui.js` (fixed positioning via `getBoundingClientRect`, closed on outside click). The menu lists Log scale, Percent scale, Link symbol, Bar replay, Compare/overlay, Indicators, Save as PNG, Export CSV, Fullscreen, and Close chart, each showing an `active` state read live off `panel.scaleMode`/`panel.linkGroup`/`panel._replay`/`panel-fullscreen` at open time. Added `updatePanelMenuBtn(panel)` (exported) which toggles a small `.has-active` dot on the hamburger itself so an enabled toggle stays glanceable without opening the menu — wired into `setScaleMode`, `cycleLinkGroup`, the menu's fullscreen action, `initChart`, `applyPanelViewOptions`, and (via import) `replay.js`'s `startReplay`/`stopReplay` and `exitReplayIfActive`, replacing their old direct `.replay-btn` classList manipulation now that button no longer persists in the DOM. Removed the now-dead `updateScaleButtons`/`updateLinkButton` helpers. **`public/css/style.css`** — dropped the dead `.panel-actions`, `.scale-group`/`.scale-btn`, and `.link-btn.active` rules; added `.panel-menu-btn` (incl. the `.has-active` dot) and `.panel-menu-dropdown`/`.pm-item`/`.pm-sep` styled like the existing `.layout-drop-menu`/`.ld-item`.
+**Verified:** `node --check` clean on `charts.js` and `replay.js`; `npm test` 35/35. Started the local server and drove it with a scripted Playwright session: confirmed all ten old per-panel buttons are gone from the DOM, the hamburger opens a menu with all ten expected items, clicking "Log scale" closes the menu and lights the hamburger's active dot, reopening shows the item itself marked active, clicking outside the menu closes it, and the Fullscreen menu action actually toggles `.panel-fullscreen` on the panel end-to-end. Screenshotted both the collapsed panel bar and the open menu to confirm the visual layout.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer/readme → v1.26.0.
+
+---
+
 ## v1.25.2 — 2026-07-11 · Roadmap rescan: 1-week event pruning now applies on the file-fallback path too
 
 ### Roadmap item — remove events older than a week from the events list

@@ -152,9 +152,9 @@ const EXCHANGES = {
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','2h':'2h','4h':'4h','6h':'6h','12h':'12h','1d':'1d','3d':'3d','1w':'1w','1M':'1M' } },
   bybit:   { id:'bybit',   name:'Bybit',   rest:'https://api.bybit.com/v5/market', status:'Full: REST + WebSocket',
     intervals:{ '1m':'1','5m':'5','15m':'15','30m':'30','1h':'60','2h':'120','4h':'240','6h':'360','12h':'720','1d':'D','1w':'W','1M':'M' } },
-  okx:     { id:'okx',     name:'OKX',     rest:'https://www.okx.com/api/v5/market', status:'REST only',
+  okx:     { id:'okx',     name:'OKX',     rest:'https://www.okx.com/api/v5/market', status:'REST + WebSocket (server relay)',
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','2h':'2H','4h':'4H','6h':'6H','12h':'12H','1d':'1D','3d':'3D','1w':'1W','1M':'1M' } },
-  gate:    { id:'gate',    name:'Gate.io', rest:'https://api.gateio.ws/api/v4/spot', status:'REST only',
+  gate:    { id:'gate',    name:'Gate.io', rest:'https://api.gateio.ws/api/v4/spot', status:'REST + WebSocket (server relay)',
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','8h':'8h','1d':'1d','1w':'7d','1M':'30d' } },
   hyperliquid: { id:'hyperliquid', name:'Hyperliquid', rest:'https://api.hyperliquid.xyz/info', status:'Perps only',
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','2h':'2h','4h':'4h','12h':'12h','1d':'1d','3d':'3d','1w':'1w','1M':'1M' } },
@@ -212,7 +212,8 @@ const INDICATOR_DESC = {
   ao: 'Awesome Oscillator — 5 vs 34-period SMA of the bar midpoint; histogram colored by momentum direction.',
 };
 
-const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4 };
+// P3-26: 6- and 8-chart grids for multi-market monitoring on big screens.
+const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4, l6: 6, l8: 8 };
 
 // Stablecoin base-asset tickers. Used by the symbol picker's "Hide stablecoins"
 // filter to drop stable/stable pairs (e.g. USDCUSDT, DAIUSDT) that clutter the

@@ -8,7 +8,7 @@ import {
   setLayout, addIndicator, removeIndicator, recomputeIndicators, setIndicatorActive,
   applyThemeToCharts, resizeAllCharts, scheduleAutosave, refreshAllPanels,
 } from './charts.js';
-import { setTool, clearDrawings, exportDrawings, importDrawings } from './drawings.js';
+import { setTool, clearDrawings, exportDrawings, importDrawings, undo, redo } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
 import {
   showSaveLayoutModal, showLayoutsModal, getNamedLayouts, applyLayoutData,
@@ -190,8 +190,8 @@ export function showIndicatorModal(defId, existingInd = null, panel = state.acti
 }
 
 // ---------- Layout selector dropdown ----------
-const LAYOUT_NAMES = { l1: 'Single', l2h: '2 Columns', l2v: '2 Rows', l4: '4 Grid' };
-const LAYOUT_ICONS = { l1: '▢', l2h: '▢▢', l2v: '⊟', l4: '⊞' };
+const LAYOUT_NAMES = { l1: 'Single', l2h: '2 Columns', l2v: '2 Rows', l4: '4 Grid', l6: '6 Grid', l8: '8 Grid' };
+const LAYOUT_ICONS = { l1: '▢', l2h: '▢▢', l2v: '⊟', l4: '⊞', l6: '⊞⊞', l8: '⊞⊞⊞' };
 
 export function updateLayoutDropBtn() {
   const btn = document.getElementById('layoutDropBtn');
@@ -454,6 +454,13 @@ export function updateWSStatus(s) {
 function onKey(e) {
   if (e.target.matches('input, textarea, select')) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); showSaveLayoutModal(); return; }
+  // P3-24: Ctrl/Cmd+Z undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redo (on the active chart's drawings).
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redo(state.activePanel); else undo(state.activePanel);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(state.activePanel); return; }
   const map = { t: 'trend', h: 'hline', v: 'vline', r: 'rect', f: 'fibret', m: 'measure' };
   if (map[e.key.toLowerCase()]) selectTool(map[e.key.toLowerCase()]);
   if (e.key === 'Backspace' || e.key === 'Delete') selectTool('eraser');

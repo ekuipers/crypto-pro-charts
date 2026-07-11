@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.23.0  
+**Version:** v1.24.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -9,7 +9,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 
 ## Features
 
-- **Multi-panel layouts** — 1, 2, 3, 4-chart grid layouts; panels resizable via drag splitter
+- **Multi-panel layouts** — 1, 2, 4, 6, or 8-chart grid layouts; panels resizable via drag splitter
 - **13 timeframes** — 1m 5m 15m 30m 1h 2h 4h 6h 12h 1d 3d 1w 1M; timeframes an exchange lacks natively are aggregated server-side from a lower timeframe
 - **7 chart types per panel** — Candles, Hollow candles, OHLC Bars, Line, Area, Heikin Ashi, Renko (ATR-sized bricks)
 - **Infinite history scroll-back** — pan left and older bars stream in automatically (Postgres-backed kline store + exchange paging)
@@ -41,15 +41,23 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Server-side alerts** — Price cross, % move, RSI level, and volume-spike alerts evaluated on the server every 30 s, so they fire even with the browser closed; optional Telegram / webhook notifications (`.env`), with toast + browser notifications in-app. Falls back to in-browser price alerts when no database is configured
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
 - **Responsive footer** — Creator attribution and version number
+- **Command palette (Ctrl/Cmd+K)** — instant symbol search/switch and an action launcher (layouts, theme, save, export, indicator toggles, …), TradingView-style
+- **Undo/redo for drawings** — Ctrl/Cmd+Z / Ctrl/Cmd+Y (or Ctrl/Cmd+Shift+Z), per chart
+- **Chart snapshot & export** — one-click PNG (📷, watermarked, includes your drawings) and CSV export of the currently visible bars (⤓)
+- **Web Worker indicator computation** — indicator math runs off the main thread so multi-chart layouts stay smooth, with an automatic main-thread fallback if Workers are unavailable
+- **Native WebSocket relay** — OKX and Gate.io kline streams run through a server-side connection manager (one upstream socket per symbol, fanned out to every connected client) instead of REST polling
+- **Mobile/tablet responsive layout + PWA** — installable, offline-capable app shell; below ~820px any layout becomes a swipeable single-chart view with pointer/touch-driven drawing
+- **Security hardening** — CSP + standard security headers, Origin-based CSRF protection, per-IP rate limiting on auth routes, self-service password change, and optional TOTP 2FA
+- **Test suite + CI** — unit tests for indicator math and exchange kline normalization (`npm test`), run on every push/PR via GitHub Actions
 
 ## Exchanges & Data Sources
 
 | Exchange | Pairs | Klines | Live Prices |
 |---|---|---|---|
 | Binance | USDT, USDC, EUR | REST + server cache | WebSocket (all pairs) |
-| Bybit | USDT, USDC, EUR | REST + server cache | REST polling fallback |
-| OKX | USDT, USDC, EUR | REST + server cache | REST polling fallback |
-| Gate.io | USDT, USDC, EUR | REST + server cache | REST polling fallback |
+| Bybit | USDT, USDC, EUR | REST + server cache | WebSocket (direct) |
+| OKX | USDT, USDC, EUR | REST + server cache | WebSocket (server relay) |
+| Gate.io | USDT, USDC, EUR | REST + server cache | WebSocket (server relay) |
 | KuCoin | USDT, USDC, EUR | REST + server cache | REST polling fallback |
 | Hyperliquid | Perps | Binance fallback | — |
 | Bitstamp | USDT, USDC, EUR, USD | REST + server cache | REST polling fallback |
@@ -73,6 +81,7 @@ The watchlist symbol search also queries **CoinGecko** (debounced) to discover c
 ```bash
 npm install
 npm start        # starts on http://localhost:3000
+npm test         # runs the unit test suite (indicator math, exchange normalizers, TOTP)
 ```
 
 ### Accounts & database
@@ -103,6 +112,8 @@ The server creates these tables on startup if they don't exist:
 | `saved_scans` | per-user saved screener scans (`jsonb`), keyed by `(uid, name)` |
 | `paper_trades` | simulated positions — side/qty/entry/exit/stop/target/status/notes, per user |
 
+`accounts` additionally carries `totp_secret` / `totp_enabled` / `password_changed_at` (added via `alter table ... add column if not exists`, so existing deployments pick them up automatically) for optional 2FA and password-change tracking.
+
 Without a connection string the database is disabled and the frontend falls back
 to browser `localStorage`. Set `NODE_ENV=production` to mark session cookies
 `Secure` over HTTPS. The server loads `.env` automatically at startup.
@@ -111,19 +122,27 @@ to browser `localStorage`. Set `NODE_ENV=production` to mark session cookies
 
 ```
 crypto-pro-charts/
+├── .github/workflows/test.yml  # CI: npm test + syntax-check on every push/PR
+├── test/                # node:test unit tests (indicators, klines, totp)
 ├── public/
 │   ├── index.html
+│   ├── manifest.json    # PWA manifest
+│   ├── sw.js             # app-shell service worker (installable, offline fallback)
 │   └── css/style.css
 ├── src/js/
 │   ├── main.js          # app entry point
-│   ├── auth.js          # account button + username/password sign-in modal (client)
+│   ├── auth.js          # account button + sign-in/2FA/change-password modals (client)
 │   ├── charts.js        # panel creation, indicators, volume profile, derivatives readout
 │   ├── data.js          # exchange REST/WS, kline fetching, pair lists, trade stream, volumes
 │   ├── derivatives.js   # funding rate / OI fetch + liquidation WS (frontend)
 │   ├── replay.js        # bar-by-bar replay playback
 │   ├── paper.js         # paper trading + journal
+│   ├── palette.js       # command palette (Ctrl/Cmd+K)
+│   ├── snapshot.js      # chart PNG snapshot + CSV export
+│   ├── indicator-client.js  # Web Worker request/response bridge
+│   ├── indicator-worker.js  # indicator math, run off the main thread
 │   ├── constants.js     # EXCHANGES, INDICATORS_DEF, THEMES
-│   ├── drawings.js       # drawing engine — lines, fibs, pitchfork, position tool
+│   ├── drawings.js       # drawing engine — lines, fibs, pitchfork, position tool, undo/redo
 │   ├── events.js        # market event markers
 │   ├── orderbook.js     # order book + trades tape + depth chart + tech info pane
 │   ├── persistence.js   # session/layout/template save & restore
@@ -133,7 +152,9 @@ crypto-pro-charts/
 │   ├── ui.js            # toolbar, drawing tools, dropdowns, templates modal
 │   ├── utils.js         # helpers (baseAsset, quoteAsset, fmtPrice…)
 │   └── watchlist.js     # watchlist UI + symbol picker + heatmap + sparklines
-├── auth.js              # server-side auth: username/password (scrypt) + DB sessions
+├── auth.js              # server-side auth: username/password (scrypt), 2FA, rate limiting + DB sessions
+├── totp.js              # RFC 6238 TOTP (2FA) — no external dependency
+├── ws-relay.js          # server-side WS connection manager (OKX/Gate.io kline relay)
 ├── derivatives.js       # funding rate / open interest fetch (backend, Binance futures)
 ├── db.js                # Supabase/Postgres: accounts, sessions, layouts, klines, alerts, templates, saved_scans, paper_trades tables
 ├── klines.js            # shared exchange kline fetch, history paging, TF aggregation

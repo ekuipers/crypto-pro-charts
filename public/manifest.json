@@ -1,0 +1,13 @@
+{
+  "name": "CryptoPro Charts",
+  "short_name": "CryptoPro",
+  "description": "Professional multi-chart cryptocurrency trading & analytics platform",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#131722",
+  "theme_color": "#131722",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

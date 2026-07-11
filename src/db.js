@@ -76,6 +76,11 @@ export async function init() {
     created_at    timestamptz not null default now(),
     last_login    timestamptz not null default now()
   )`);
+  // P3-19 auth hardening: TOTP 2FA + password-change tracking, added via
+  // ALTER so existing deployments' accounts tables pick them up too.
+  await q(`alter table accounts add column if not exists totp_secret text`);
+  await q(`alter table accounts add column if not exists totp_enabled boolean not null default false`);
+  await q(`alter table accounts add column if not exists password_changed_at timestamptz`);
   await q(`create table if not exists sessions (
     sid        text primary key,
     uid        text not null references accounts(id) on delete cascade,
@@ -264,6 +269,7 @@ function toAccount(r) {
     id: r.id, username: r.username, displayName: r.display_name,
     salt: r.salt, passwordHash: r.password_hash,
     createdAt: r.created_at, lastLogin: r.last_login,
+    totpSecret: r.totp_secret, totpEnabled: !!r.totp_enabled,
   };
 }
 export async function getAccount(uid) {
@@ -279,6 +285,21 @@ export async function createAccount(rec) {
 }
 export async function updateLastLogin(uid) {
   await q('update accounts set last_login = now() where id = $1', [uid]);
+}
+// P3-19: self-service password change (current-password verified by the caller).
+export async function updatePassword(uid, salt, passwordHash) {
+  await q('update accounts set salt = $2, password_hash = $3, password_changed_at = now() where id = $1', [uid, salt, passwordHash]);
+}
+// P3-19: TOTP 2FA — secret is stored once `enableTotp` confirms a valid code;
+// `setPendingTotpSecret` only stages it during setup (not yet enforced at login).
+export async function setPendingTotpSecret(uid, secret) {
+  await q('update accounts set totp_secret = $2, totp_enabled = false where id = $1', [uid, secret]);
+}
+export async function enableTotp(uid) {
+  await q('update accounts set totp_enabled = true where id = $1', [uid]);
+}
+export async function disableTotp(uid) {
+  await q('update accounts set totp_enabled = false, totp_secret = null where id = $1', [uid]);
 }
 
 // ---- Sessions --------------------------------------------------------------

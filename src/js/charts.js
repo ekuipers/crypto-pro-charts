@@ -8,6 +8,8 @@ import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicator
 import { baseAsset, quoteAsset, fmtPrice, fmtVol, uid, log, warn, toast } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
 import { fetchDerivatives, derivativesAvailable, openLiquidationStream } from './derivatives.js';
+import { exportPanelPNG, exportPanelCSV } from './snapshot.js';
+import { computeInWorker } from './indicator-client.js';
 
 const LWC = () => window.LightweightCharts;
 
@@ -456,6 +458,8 @@ export function addPanel(opts = {}) {
         <button class="panel-act replay-btn" title="Bar replay — step through history candle by candle">⏮</button>
         <button class="panel-act compare-btn" title="Compare / overlay symbol">＋</button>
         <button class="panel-act add-ind-btn" title="Indicators">ƒ</button>
+        <button class="panel-act snapshot-btn" title="Save chart as PNG">📷</button>
+        <button class="panel-act csv-btn" title="Export visible bars as CSV">⤓</button>
         <button class="panel-act fs-btn" title="Fullscreen">⛶</button>
         <button class="panel-act close-btn" title="Close">✕</button>
       </div>
@@ -535,6 +539,9 @@ export function addPanel(opts = {}) {
     setActivePanel(panel);
     document.dispatchEvent(new CustomEvent('open-compare-search', { detail: { panel } }));
   });
+  // P3-23: chart snapshot & CSV export
+  el.querySelector('.snapshot-btn').addEventListener('click', () => exportPanelPNG(panel));
+  el.querySelector('.csv-btn').addEventListener('click', () => exportPanelCSV(panel));
   el.querySelectorAll('.ts-btn').forEach(b => b.addEventListener('click', () => {
     el.querySelectorAll('.ts-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
@@ -842,7 +849,7 @@ function restartDerivatives(panel) {
   startDerivatives(panel);
 }
 
-function toggleDerivatives(panel) {
+export function toggleDerivatives(panel) {
   panel.derivEnabled = !panel.derivEnabled;
   panel.el.querySelector('.deriv-btn').classList.toggle('active', panel.derivEnabled);
   if (panel.derivEnabled) startDerivatives(panel);
@@ -928,6 +935,7 @@ export function addIndicator(panel, defId, params, color, active = true) {
 // overlay layers, markers) without touching panel.indicators. Shared by
 // removeIndicator (delete) and setIndicatorActive (deactivate).
 function teardownIndicator(panel, ind) {
+  ind._gen = (ind._gen || 0) + 1; // discard any in-flight worker computation for this indicator
   ind.series.forEach(s => { try { panel.chart.removeSeries(s); } catch {} });
   if (ind.hist) { try { panel.chart.removeSeries(ind.hist); } catch {} }
   if (panel.heikinSeries && ind.defId === 'heikinashi') { try { panel.chart.removeSeries(panel.heikinSeries); } catch {} panel.heikinSeries = null; }
@@ -976,16 +984,26 @@ export function recomputeIndicators(panel) {
   rebuildCrossMarkers(panel);
 }
 
-function buildIndicator(panel, ind) {
+// P3-20: indicator math runs in a Web Worker so a full recompute (symbol/TF
+// change, replay step) doesn't block the main thread — most visible on
+// 4+ chart layouts on lower-end machines. `ind._gen` guards against a stale
+// result landing after the indicator was toggled off/removed/rebuilt again
+// while its computation was still in flight; falls back to the synchronous
+// calc functions if Workers are unavailable or the worker errors.
+async function buildIndicator(panel, ind) {
   if (ind.active === false) return;
   const def = indDef(ind.defId);
   if (!def || !panel.data.length) return;
   const p = { ...ind.params, _color: ind.color };
+  const gen = (ind._gen = (ind._gen || 0) + 1);
 
   if (ind.defId === 'volprofile') { renderVolProfile(panel); return; }
 
   if (def.type === 'overlay') {
-    const res = calcOverlay(ind.defId, panel.data, p);
+    let res;
+    try { res = await computeInWorker('overlay', ind.defId, panel.data, p); }
+    catch { res = calcOverlay(ind.defId, panel.data, p); }
+    if (ind._gen !== gen || !panel.chart) return; // superseded while computing
     res.forEach(r => {
       if (r.candles) {
         panel.heikinSeries = panel.chart.addCandlestickSeries({
@@ -1019,11 +1037,15 @@ function buildIndicator(panel, ind) {
       ind.series.push(s);
     });
   } else {
-    buildOscillator(panel, ind, p);
+    let res;
+    try { res = await computeInWorker('oscillator', ind.defId, panel.data, p); }
+    catch { res = calcOscillator(ind.defId, panel.data, p); }
+    if (ind._gen !== gen || !panel.chart) return; // superseded while computing
+    buildOscillator(panel, ind, p, res);
   }
 }
 
-function buildOscillator(panel, ind, p) {
+function buildOscillator(panel, ind, p, res) {
   const def = indDef(ind.defId);
   const oscWrap = panel.el.querySelector('.osc-wrap');
   const div = document.createElement('div');
@@ -1055,8 +1077,6 @@ function buildOscillator(panel, ind, p) {
   });
   sub.priceScale('spc').applyOptions({ visible: false });
   ind._spacer.setData(panel.data.map(c => ({ time: c.time })));
-
-  const res = calcOscillator(ind.defId, panel.data, p);
 
   if (res.hist) {
     ind.hist = sub.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false });

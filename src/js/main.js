@@ -15,6 +15,7 @@ import { autosave, loadAutosave } from './persistence.js';
 import { initAuth } from './auth.js';
 import { initReplay } from './replay.js';
 import { initPaper } from './paper.js';
+import { initCommandPalette } from './palette.js';
 import { debounce, log, toast } from './utils.js';
 
 // A symbol charted on a non-Binance exchange has its price owned by that chart
@@ -74,7 +75,10 @@ function ensurePriceStream() {
 
 async function init() {
   if (!window.LightweightCharts) {
-    document.getElementById('chartsArea').innerHTML = '<div class="panel-error" style="display:flex"><div><p>Charting library failed to load. Check your connection and reload.</p><button onclick="location.reload()" class="retry-btn">Reload</button></div></div>';
+    const area = document.getElementById('chartsArea');
+    area.innerHTML = '<div class="panel-error" style="display:flex"><div><p>Charting library failed to load. Check your connection and reload.</p><button class="retry-btn">Reload</button></div></div>';
+    // No inline onclick= — a strict CSP (script-src without 'unsafe-inline') blocks inline event handlers.
+    area.querySelector('.retry-btn').addEventListener('click', () => location.reload());
     return;
   }
   setAutosaveFn(autosave);
@@ -88,6 +92,12 @@ async function init() {
   document.documentElement.dataset.theme = state.theme;
   if (!restored) setLayout('l1');
 
+  // P3-25: on a phone/narrow-tablet viewport the right panel becomes a
+  // full-screen overlay (see the mobile media query in style.css) — default
+  // it to hidden so the chart is what a mobile user actually sees first,
+  // same hamburger (☰) button reveals it either way.
+  if (window.innerWidth <= 820) document.getElementById('rightPanel')?.classList.add('collapsed');
+
   initUI();
   initWatchlist();
   initAlerts();
@@ -97,6 +107,7 @@ async function init() {
   initReplay();
   initOrderBookSubtabs();
   initPaper();
+  initCommandPalette();
 
   startPriceStream();
   document.addEventListener('restart-price-stream', startPriceStream);
@@ -138,3 +149,10 @@ function initSplitter() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
+
+// P3-25: PWA — register the app-shell service worker (installable, opens
+// instantly, offline fallback). Registered after load so it never competes
+// with first-paint for bandwidth/CPU.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}

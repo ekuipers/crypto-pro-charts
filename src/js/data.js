@@ -526,7 +526,11 @@ export function openKlineStream(symbol, tf, onCandle, exId = defaultExchange()) 
     }
     if (e.id === 'bybit') return openBybitKlineStream(symbol, interval, onCandle);
     if (e.id === 'bitvavo') return openBitvavoKlineStream(toExchangeSymbol(symbol, 'bitvavo'), interval, onCandle);
-    return null; // okx / gate / hyperliquid: no public kline WS wired here yet
+    // P3-17: OKX and Gate.io stream via our own server-side relay (one shared
+    // upstream socket per symbol+tf regardless of client count) instead of a
+    // REST poll. KuCoin/Hyperliquid/etc. still fall back to REST polling.
+    if (e.id === 'okx' || e.id === 'gate') return openRelayKlineStream(e.id, symbol, tf, onCandle);
+    return null;
   } catch (e2) {
     warn('openKlineStream failed', e2.message);
     return null;
@@ -581,6 +585,31 @@ function openBitvavoKlineStream(market, interval, onCandle) {
     });
   });
   return ws;
+}
+
+// P3-17: relay kline stream — connects to our own server (which holds the
+// single upstream socket per symbol+tf) instead of the exchange directly.
+// Mirrors the exact onCandle({time,open,high,low,close,volume,closed})
+// shape every other openXxxKlineStream produces.
+function openRelayKlineStream(exchange, symbol, tf, onCandle) {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/ws/relay`);
+    ws.addEventListener('open', () => {
+      try { ws.send(JSON.stringify({ action: 'subscribe', exchange, symbol, tf })); } catch {}
+    });
+    ws.addEventListener('message', ev => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type !== 'kline' || !m.candle) return;
+      onCandle(m.candle);
+    });
+    ws.addEventListener('error', () => warn('relay kline stream error'));
+    return ws;
+  } catch (e) {
+    warn('openRelayKlineStream failed', e.message);
+    return null;
+  }
 }
 
 // ---- WebSocket: order book stream -------------------------

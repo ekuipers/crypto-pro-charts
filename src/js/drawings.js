@@ -7,6 +7,7 @@
 import { state, drawingState } from './state.js';
 import { fmtPrice } from './utils.js';
 import { logDrawingAsTrade } from './paper.js';
+import { scheduleAutosave } from './charts.js';
 
 const FIB_RET = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_EXT = [0, 0.618, 1, 1.618, 2.618];
@@ -39,7 +40,9 @@ export function initDrawingsForPanel(panel) {
 
   let tempPts = [];
 
-  layer.addEventListener('mousedown', e => {
+  // P3-25: Pointer Events (not mouse-only) so touch/pen drawing works on
+  // tablets — a PointerEvent carries the same clientX/clientY MouseEvent does.
+  layer.addEventListener('pointerdown', e => {
     const tool = drawingState.tool;
     if (tool === 'select') { handleSelectDown(panel, e); return; }
     e.preventDefault();
@@ -67,7 +70,7 @@ export function initDrawingsForPanel(panel) {
     }
   });
 
-  layer.addEventListener('mousemove', e => {
+  layer.addEventListener('pointermove', e => {
     if (drawingState.tool === 'select') { updateSelectHover(panel, e); return; }
     if (!tempPts.length) return;
     const pt = ptFromEvent(panel, e);
@@ -85,14 +88,64 @@ export function initDrawingsForPanel(panel) {
   // In select mode the layer is click-through (pointer-events:none) over empty
   // space so the chart still pans/zooms — hover detection on the chart div
   // turns the layer interactive only when the cursor is over a shape.
-  mainDiv.addEventListener('mousemove', e => { if (drawingState.tool === 'select') updateSelectHover(panel, e); });
-  mainDiv.addEventListener('mousedown', () => { if (drawingState.tool === 'select' && !dragInfo) deselect(); });
+  mainDiv.addEventListener('pointermove', e => { if (drawingState.tool === 'select') updateSelectHover(panel, e); });
+  mainDiv.addEventListener('pointerdown', () => { if (drawingState.tool === 'select' && !dragInfo) deselect(); });
 
   function fin() { document.dispatchEvent(new CustomEvent('drawings-changed')); }
   panel._cancelDraw = () => { tempPts = []; renderDrawings(panel); };
 
+  initDrawingsHistory(panel);
   updateLayerInteractivity(panel);
 }
+
+// ---------- Undo / redo (P3-24) ----------
+// A per-panel list of full-drawings snapshots with a cursor, rather than a
+// diff/command stack — drawing sets are small (typically well under 50
+// shapes) so cloning the whole array on each change is cheap and far simpler
+// than modeling every mutation (move/resize/color/lock/…) as an invertible op.
+const HISTORY_LIMIT = 50;
+const cloneDrawings = (drawings) => drawings.map(d => structuredClone(d));
+
+export function initDrawingsHistory(panel) {
+  panel._history = [cloneDrawings(panel.drawings)];
+  panel._historyIdx = 0;
+}
+
+function pushHistory(panel) {
+  if (!panel._history) { initDrawingsHistory(panel); return; }
+  // A change after undoing drops the redo branch before recording the new state.
+  panel._history = panel._history.slice(0, panel._historyIdx + 1);
+  panel._history.push(cloneDrawings(panel.drawings));
+  if (panel._history.length > HISTORY_LIMIT) panel._history.shift();
+  panel._historyIdx = panel._history.length - 1;
+}
+
+function applyHistoryState(panel) {
+  if (drawingState.selectedPanel === panel) deselect();
+  panel.drawings = cloneDrawings(panel._history[panel._historyIdx]);
+  renderDrawings(panel);
+  scheduleAutosave();
+}
+
+export function undo(panel) {
+  if (!panel?._history || panel._historyIdx <= 0) return;
+  panel._historyIdx--;
+  applyHistoryState(panel);
+}
+
+export function redo(panel) {
+  if (!panel?._history || panel._historyIdx >= panel._history.length - 1) return;
+  panel._historyIdx++;
+  applyHistoryState(panel);
+}
+
+// Every genuine drawing mutation (create/move/resize/delete/lock/style/…)
+// dispatches 'drawings-changed' on the active panel (drawing edits always
+// happen on the panel that owns the mousedown, which is also made active —
+// see addPanel's panel-level mousedown listener in charts.js).
+document.addEventListener('drawings-changed', () => {
+  if (state.activePanel) pushHistory(state.activePanel);
+});
 
 export function updateLayerInteractivity(panel) {
   const layer = panel.el.querySelector('.drawing-layer');
@@ -506,13 +559,13 @@ function handleSelectDown(panel, e) {
     renderDrawings(panel);
   };
   const up = () => {
-    window.removeEventListener('mousemove', move);
-    window.removeEventListener('mouseup', up);
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
     dragInfo = null;
     document.dispatchEvent(new CustomEvent('drawings-changed'));
   };
-  window.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', up);
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
 }
 
 function select(panel, d) {

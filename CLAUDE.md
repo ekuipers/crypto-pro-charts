@@ -22,20 +22,11 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_Populated 2026-07-11 from a full project analysis. Ordered by priority: P3 = polish/platform. Completed items move to `memory.md` (P1 core charting gaps shipped in v1.22.0; P2 pro-trader differentiators shipped in v1.23.0)._
+_Populated 2026-07-11 from a full project analysis. P1 core charting gaps shipped in v1.22.0; P2 pro-trader differentiators shipped in v1.23.0; P3 platform/performance/hardening shipped in v1.24.0 (9 of 10 items — see below for the one deferred item). Completed items move to `memory.md`._
 
-### P3 — Platform, performance & hardening
+### Deferred (from P3)
 
-17. **Native WebSockets for Bybit/OKX/KuCoin/Gate** — replace REST polling fallbacks with real WS streams via a server-side connection manager (one upstream socket fan-out to all clients).
-18. **Test suite + CI** — zero tests today. Priority: unit tests for indicator math (`indicators.js`) and exchange normalizers (`server.js` `normalize()`) — data correctness is the product for pros. Add GitHub Actions running `node --test`.
-19. **Auth hardening** — rate-limit login/register endpoints, CSRF token on state-changing routes, security headers (helmet or manual), password reset flow, optional TOTP 2FA.
-20. **Web Worker indicator computation** — move heavy indicator math off the main thread to keep 4-chart layouts smooth on lower-end machines.
-21. **Upgrade LightweightCharts 4.1.3 → v5** — native panes (simplifies the custom oscillator sub-pane code), better performance, active support.
-22. **Command palette (Ctrl+K)** — instant symbol search/switch and action launcher, TradingView-style.
-23. **Chart snapshot & export** — one-click PNG screenshot with watermark, plus CSV export of visible bars.
-24. **Undo/redo for drawings** — Ctrl+Z/Ctrl+Y stack in `drawings.js`.
-25. **Mobile/tablet layout + PWA** — responsive single-chart mode with touch drawing, installable with offline shell.
-26. **Larger grid layouts** — 6- and 8-chart grids (2×3, 2×4) for multi-market monitoring on big screens.
+21. **Upgrade LightweightCharts 4.1.3 → v5** — deliberately deferred after research (not attempted): touches the core rendering engine (13 series-creation call sites, the shared markers pipeline, the watermark, and possibly the cross-panel price/time-scale sync logic) with real unknowns remaining even after reading the official migration guide (priceScale/timeScale API deltas, new-primitive disposal lifecycle, native-pane mechanics vs. the current one-LightweightCharts-instance-per-oscillator architecture). Full findings and a concrete call-site inventory are in `memory.md` under v1.24.0 (P3-21) so a future attempt doesn't have to re-derive them. Revisit as a dedicated, focused effort — not bundled with other work.
 
 ## Bugs
 

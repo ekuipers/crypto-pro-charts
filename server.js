@@ -8,6 +8,7 @@ import * as db from './src/db.js';
 import { fetchBars, tfSupported } from './src/klines.js';
 import { startAlertEngine } from './src/alert-engine.js';
 import { fetchFundingOI, fetchOIHistory } from './src/derivatives.js';
+import { attachRelay } from './src/ws-relay.js';
 import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +31,70 @@ loadEnv(join(__dirname, '.env'));
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// Correct client IP behind a reverse proxy (Vercel/etc.) — used for rate
+// limiting in src/auth.js. A no-op for a bare `node server.js` run.
+app.set('trust proxy', 1);
+
+// ---- Security headers (P3-19) ------------------------------------------
+// Manual rather than a `helmet` dependency — a handful of headers plus a CSP
+// enumerating the exact upstream hosts this app talks to directly from the
+// browser (everything else is proxied through our own /api/* routes).
+const CONNECT_SRC = [
+  "'self'",
+  'https://api.binance.com', 'wss://stream.binance.com:9443', 'wss://fstream.binance.com',
+  'https://api.bybit.com', 'wss://stream.bybit.com',
+  'https://www.okx.com', 'https://api.gateio.ws', 'https://api.kucoin.com',
+  'https://api.hyperliquid.xyz', 'https://www.bitstamp.net',
+  'https://min-api.cryptocompare.com', 'https://data.alpaca.markets',
+  'https://api.bitvavo.com', 'wss://ws.bitvavo.com',
+  'https://api.coingecko.com',
+].join(' ');
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://unpkg.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "font-src 'self'",
+  `connect-src ${CONNECT_SRC}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-src 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// ---- CSRF mitigation (P3-19) --------------------------------------------
+// Session cookies are already SameSite=Lax (src/auth.js), which blocks the
+// cross-site POST/PUT/DELETE forms that would otherwise ride a signed-in
+// user's cookie. This adds a second, independent layer: reject state-
+// changing requests whose Origin (or Referer, if Origin is absent — some
+// older/privacy-mode clients omit Origin on same-site requests) doesn't
+// match this server's own origin. Chosen over a double-submit CSRF token
+// because it requires no changes to the ~15 existing fetch() call sites
+// across the frontend, so there's no risk of missing one and silently
+// breaking a mutation route.
+const MUTATING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+app.use((req, res, next) => {
+  if (!MUTATING.has(req.method) || !req.path.startsWith('/api/')) return next();
+  const origin = req.headers.origin || req.headers.referer;
+  if (!origin) return next(); // non-browser clients (curl, server-to-server) carry neither
+  try {
+    if (new URL(origin).host === req.headers.host) return next();
+  } catch { /* fall through to reject */ }
+  res.status(403).json({ error: 'Cross-origin request rejected' });
+});
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -430,7 +495,8 @@ db.init()
   .then(ok => { if (ok) startAlertEngine(); })
   .catch(e => console.error('[db] init failed:', e?.message || e))
   .finally(() => {
-    app.listen(PORT, () => {
+    const httpServer = app.listen(PORT, () => {
       console.log(`CryptoPro Charts running at http://localhost:${PORT}`);
     });
+    attachRelay(httpServer); // P3-17: WS kline relay for OKX/Gate.io on the same server/port
   });

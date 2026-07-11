@@ -9,9 +9,32 @@
 // ============================================================
 import crypto from 'crypto';
 import * as db from './db.js';
+import { generateSecret, verifyTotp, otpauthUri } from './totp.js';
 
 const SESSION_COOKIE = 'cpc_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// ---- Rate limiting (P3-19) --------------------------------------------------
+// In-memory sliding window per IP. Good enough for a single-instance deploy;
+// deliberately dependency-free rather than pulling in express-rate-limit for
+// two routes. Swept periodically so long-running processes don't leak memory.
+const rateBuckets = new Map(); // key -> timestamps[]
+function rateLimited(key, limit, windowMs) {
+  const now = Date.now();
+  const hits = (rateBuckets.get(key) || []).filter(t => now - t < windowMs);
+  hits.push(now);
+  rateBuckets.set(key, hits);
+  return hits.length > limit;
+}
+setInterval(() => {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const [key, hits] of rateBuckets) {
+    const kept = hits.filter(t => t > cutoff);
+    if (kept.length) rateBuckets.set(key, kept); else rateBuckets.delete(key);
+  }
+}, 15 * 60 * 1000).unref();
+
+function clientIp(req) { return req.ip || req.socket?.remoteAddress || 'unknown'; }
 
 // ---- Passwords (salted scrypt + constant-time compare) ---------------------
 function hashPassword(password, salt) {
@@ -49,7 +72,7 @@ const token = (bytes = 24) => crypto.randomBytes(bytes).toString('hex');
 
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
 const normUser = (u) => String(u || '').trim().toLowerCase();
-const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.displayName || u.username });
+const publicUser = (u) => ({ id: u.id, username: u.username, displayName: u.displayName || u.username, totpEnabled: !!u.totpEnabled });
 
 // ---- Public: who is this request? ------------------------------------------
 export async function currentUser(req) {
@@ -79,6 +102,10 @@ export function installAuthRoutes(app) {
   });
 
   app.post('/api/auth/register', async (req, res) => {
+    // P3-19: 8 attempts / hour / IP — generous for real users, blunts automated account creation.
+    if (rateLimited(`register:${clientIp(req)}`, 8, 60 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Too many attempts — please try again later.' });
+    }
     try {
       const username = String(req.body?.username || '').trim();
       const password = String(req.body?.password || '');
@@ -106,6 +133,11 @@ export function installAuthRoutes(app) {
   });
 
   app.post('/api/auth/login', async (req, res) => {
+    // P3-19: 10 attempts / 15 min / IP — blunts password-guessing without
+    // punishing a real user who mistypes a couple of times.
+    if (rateLimited(`login:${clientIp(req)}`, 10, 15 * 60 * 1000)) {
+      return res.status(429).json({ error: 'Too many attempts — please try again later.' });
+    }
     try {
       const uid = normUser(req.body?.username);
       const password = String(req.body?.password || '');
@@ -113,6 +145,13 @@ export function installAuthRoutes(app) {
       // Same response whether the user is missing or the password is wrong.
       if (!user || !verifyPassword(password, user.salt, user.passwordHash)) {
         return res.status(401).json({ error: 'Invalid username or password' });
+      }
+      // P3-19: TOTP challenge. Password verified but 2FA is on and no/invalid
+      // code was supplied — ask the client for one instead of creating a session.
+      if (user.totpEnabled) {
+        const code = req.body?.totpCode;
+        if (!code) return res.status(401).json({ error: 'Enter your 2FA code', requiresTotp: true });
+        if (!verifyTotp(user.totpSecret, code)) return res.status(401).json({ error: 'Invalid 2FA code', requiresTotp: true });
       }
       try { await db.updateLastLogin(uid); } catch { /* non-critical */ }
 
@@ -123,6 +162,83 @@ export function installAuthRoutes(app) {
     } catch (e) {
       console.error('[auth] login failed:', e?.stack || e);
       res.status(500).json({ error: 'Sign-in failed — database error, please retry.' });
+    }
+  });
+
+  // ---- Password change (authenticated) — P3-19 --------------------------
+  // Full "forgot password" email flow is deferred: it needs an SMTP/email
+  // provider that isn't configured anywhere in this project (same gap noted
+  // for the alert engine's optional Telegram/webhook notifiers). This covers
+  // the self-service case, which is the one every signed-in user can act on.
+  app.post('/api/auth/change-password', async (req, res) => {
+    try {
+      const uid = await currentUid(req);
+      if (uid === db.GUEST) return res.status(401).json({ error: 'Sign in first' });
+      const user = await db.getAccount(uid);
+      if (!user) return res.status(401).json({ error: 'Sign in first' });
+      const current = String(req.body?.currentPassword || '');
+      const next = String(req.body?.newPassword || '');
+      if (!verifyPassword(current, user.salt, user.passwordHash)) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+      if (next.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+      const salt = token(16);
+      await db.updatePassword(uid, salt, hashPassword(next, salt));
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[auth] change-password failed:', e?.stack || e);
+      res.status(500).json({ error: 'Could not change password — database error, please retry.' });
+    }
+  });
+
+  // ---- TOTP 2FA — P3-19 (optional) ---------------------------------------
+  // Setup stages a secret without enabling it; enable requires proving the
+  // user's authenticator app actually has it (a valid code) before it's
+  // enforced at login — otherwise a typo during setup could lock them out.
+  app.post('/api/auth/2fa/setup', async (req, res) => {
+    try {
+      const uid = await currentUid(req);
+      if (uid === db.GUEST) return res.status(401).json({ error: 'Sign in first' });
+      const user = await db.getAccount(uid);
+      if (!user) return res.status(401).json({ error: 'Sign in first' });
+      const secret = generateSecret();
+      await db.setPendingTotpSecret(uid, secret);
+      res.json({ secret, otpauthUri: otpauthUri(user.username, secret) });
+    } catch (e) {
+      console.error('[auth] 2fa setup failed:', e?.stack || e);
+      res.status(500).json({ error: 'Could not start 2FA setup — database error, please retry.' });
+    }
+  });
+
+  app.post('/api/auth/2fa/enable', async (req, res) => {
+    try {
+      const uid = await currentUid(req);
+      if (uid === db.GUEST) return res.status(401).json({ error: 'Sign in first' });
+      const user = await db.getAccount(uid);
+      if (!user?.totpSecret) return res.status(400).json({ error: 'Start setup first' });
+      if (!verifyTotp(user.totpSecret, req.body?.code)) return res.status(401).json({ error: 'Invalid code' });
+      await db.enableTotp(uid);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[auth] 2fa enable failed:', e?.stack || e);
+      res.status(500).json({ error: 'Could not enable 2FA — database error, please retry.' });
+    }
+  });
+
+  app.post('/api/auth/2fa/disable', async (req, res) => {
+    try {
+      const uid = await currentUid(req);
+      if (uid === db.GUEST) return res.status(401).json({ error: 'Sign in first' });
+      const user = await db.getAccount(uid);
+      if (!user) return res.status(401).json({ error: 'Sign in first' });
+      if (!verifyPassword(String(req.body?.password || ''), user.salt, user.passwordHash)) {
+        return res.status(401).json({ error: 'Password is incorrect' });
+      }
+      await db.disableTotp(uid);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[auth] 2fa disable failed:', e?.stack || e);
+      res.status(500).json({ error: 'Could not disable 2FA — database error, please retry.' });
     }
   });
 

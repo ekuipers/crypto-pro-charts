@@ -5,6 +5,7 @@ import { state } from './state.js';
 import { LEGACY_THEME, THEMES, DEFAULT_THEME } from './constants.js';
 import { debounce, toast, esc, baseAsset, quoteAsset } from './utils.js';
 import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData, applyPanelViewOptions } from './charts.js';
+import { initDrawingsHistory } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
 
 const AUTOSAVE_KEY  = 'cryptopro_autosave';
@@ -131,6 +132,7 @@ export function applyLayoutData(data) {
     panel.linkGroup = pd.linkGroup || null;
     applyPanelViewOptions(panel);
     panel.drawings = pd.drawings || [];
+    initDrawingsHistory(panel); // P3-24: seed undo/redo from the restored (not empty) state
     panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange || panel.exchange, color: o.color, series: null, data: [], ws: null }));
     panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(pd.symbol)}<span class="sym-quote">${quoteAsset(pd.symbol)}</span>`;
     panel.el.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === pd.tf));

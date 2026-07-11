@@ -5,9 +5,9 @@ import { state, drawingState } from './state.js';
 import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES } from './constants.js';
 import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
-import { baseAsset, quoteAsset, fmtPrice, fmtVol, uid, log, warn, toast } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtVol, uid, log, warn, toast, paintSparkline } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
-import { fetchDerivatives, derivativesAvailable, openLiquidationStream } from './derivatives.js';
+import { fetchDerivatives, fetchOIHistory, derivativesAvailable, openLiquidationStream } from './derivatives.js';
 import { exportPanelPNG, exportPanelCSV } from './snapshot.js';
 import { computeInWorker } from './indicator-client.js';
 
@@ -801,10 +801,35 @@ async function refreshDerivInfo(panel) {
     const up = d.fundingRate >= 0;
     el.innerHTML = `<span class="${up ? 'up' : 'down'}">Fund ${fmtFunding(d.fundingRate)}</span>` +
       ` <span class="muted">(${fmtFundingCountdown(d.nextFundingTime - Date.now())})</span>` +
-      (d.openInterest != null ? ` · OI ${fmtVol(d.openInterest)}` : '');
+      (d.openInterest != null ? ` · OI ${fmtVol(d.openInterest)}` : '') +
+      ' <canvas class="oi-spark" width="46" height="14" title="Open interest, last 48h"></canvas>';
+    paintOISpark(panel);
   } catch {
     el.textContent = 'Derivatives data unavailable';
   }
+}
+
+// Open interest history sparkline. `/api/derivatives/oi-history` shipped in
+// P2-9 but was never called from the UI — wiring it up here (P4) instead of
+// leaving a dead backend route. Refreshed on its own slower interval (OI
+// buckets only update hourly upstream) rather than every 20s funding poll,
+// and repainted after each funding-poll DOM rebuild via the cached history.
+async function refreshOIHistory(panel) {
+  if (!panel.derivEnabled) return;
+  try {
+    const hist = await fetchOIHistory(panel.symbol, '1h', 48);
+    panel._oiHistory = hist.map(h => h.oi).filter(v => Number.isFinite(v) && v > 0);
+  } catch {
+    panel._oiHistory = null;
+  }
+  paintOISpark(panel);
+}
+
+function paintOISpark(panel) {
+  const hist = panel._oiHistory;
+  if (!hist || hist.length < 2) return;
+  const canvas = panel.el.querySelector('.panel-deriv-info .oi-spark');
+  paintSparkline(canvas, hist, hist[hist.length - 1] >= hist[0]);
 }
 
 function onLiquidation(panel, liq) {
@@ -830,11 +855,15 @@ function startDerivatives(panel) {
   if (el) el.style.display = '';
   refreshDerivInfo(panel);
   panel.derivTimer = setInterval(() => refreshDerivInfo(panel), 20000);
+  refreshOIHistory(panel);
+  panel.oiTimer = setInterval(() => refreshOIHistory(panel), 60000);
   panel.liqWS = openLiquidationStream(panel.symbol, liq => onLiquidation(panel, liq));
 }
 
 function stopDerivatives(panel) {
   if (panel.derivTimer) { clearInterval(panel.derivTimer); panel.derivTimer = null; }
+  if (panel.oiTimer) { clearInterval(panel.oiTimer); panel.oiTimer = null; }
+  panel._oiHistory = null;
   try { panel.liqWS?.close(); } catch {}
   panel.liqWS = null;
   panel._liqMarkers = [];

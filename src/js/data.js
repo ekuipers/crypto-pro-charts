@@ -526,10 +526,10 @@ export function openKlineStream(symbol, tf, onCandle, exId = defaultExchange()) 
     }
     if (e.id === 'bybit') return openBybitKlineStream(symbol, interval, onCandle);
     if (e.id === 'bitvavo') return openBitvavoKlineStream(toExchangeSymbol(symbol, 'bitvavo'), interval, onCandle);
-    // P3-17: OKX and Gate.io stream via our own server-side relay (one shared
-    // upstream socket per symbol+tf regardless of client count) instead of a
-    // REST poll. KuCoin/Hyperliquid/etc. still fall back to REST polling.
-    if (e.id === 'okx' || e.id === 'gate') return openRelayKlineStream(e.id, symbol, tf, onCandle);
+    // P3-17/P4: OKX, Gate.io and KuCoin stream via our own server-side relay
+    // (one shared upstream socket per symbol+tf regardless of client count)
+    // instead of a REST poll. Hyperliquid/etc. still fall back to REST polling.
+    if (e.id === 'okx' || e.id === 'gate' || e.id === 'kucoin') return openRelayKlineStream(e.id, symbol, tf, onCandle);
     return null;
   } catch (e2) {
     warn('openKlineStream failed', e2.message);

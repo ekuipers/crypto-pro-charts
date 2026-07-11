@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.24.0  
+**Version:** v1.24.2  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -45,7 +45,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Undo/redo for drawings** — Ctrl/Cmd+Z / Ctrl/Cmd+Y (or Ctrl/Cmd+Shift+Z), per chart
 - **Chart snapshot & export** — one-click PNG (📷, watermarked, includes your drawings) and CSV export of the currently visible bars (⤓)
 - **Web Worker indicator computation** — indicator math runs off the main thread so multi-chart layouts stay smooth, with an automatic main-thread fallback if Workers are unavailable
-- **Native WebSocket relay** — OKX and Gate.io kline streams run through a server-side connection manager (one upstream socket per symbol, fanned out to every connected client) instead of REST polling
+- **Native WebSocket relay** — OKX, Gate.io and KuCoin kline streams run through a server-side connection manager (one upstream socket per symbol, fanned out to every connected client) instead of REST polling
 - **Mobile/tablet responsive layout + PWA** — installable, offline-capable app shell; below ~820px any layout becomes a swipeable single-chart view with pointer/touch-driven drawing
 - **Security hardening** — CSP + standard security headers, Origin-based CSRF protection, per-IP rate limiting on auth routes, self-service password change, and optional TOTP 2FA
 - **Test suite + CI** — unit tests for indicator math and exchange kline normalization (`npm test`), run on every push/PR via GitHub Actions
@@ -58,7 +58,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 | Bybit | USDT, USDC, EUR | REST + server cache | WebSocket (direct) |
 | OKX | USDT, USDC, EUR | REST + server cache | WebSocket (server relay) |
 | Gate.io | USDT, USDC, EUR | REST + server cache | WebSocket (server relay) |
-| KuCoin | USDT, USDC, EUR | REST + server cache | REST polling fallback |
+| KuCoin | USDT, USDC, EUR | REST + server cache | WebSocket (server relay) |
 | Hyperliquid | Perps | Binance fallback | — |
 | Bitstamp | USDT, USDC, EUR, USD | REST + server cache | REST polling fallback |
 | CryptoCompare | All major pairs (aggregated) | REST + server cache | REST polling fallback |
@@ -154,7 +154,7 @@ crypto-pro-charts/
 │   └── watchlist.js     # watchlist UI + symbol picker + heatmap + sparklines
 ├── auth.js              # server-side auth: username/password (scrypt), 2FA, rate limiting + DB sessions
 ├── totp.js              # RFC 6238 TOTP (2FA) — no external dependency
-├── ws-relay.js          # server-side WS connection manager (OKX/Gate.io kline relay)
+├── ws-relay.js          # server-side WS connection manager (OKX/Gate.io/KuCoin kline relay)
 ├── derivatives.js       # funding rate / open interest fetch (backend, Binance futures)
 ├── db.js                # Supabase/Postgres: accounts, sessions, layouts, klines, alerts, templates, saved_scans, paper_trades tables
 ├── klines.js            # shared exchange kline fetch, history paging, TF aggregation

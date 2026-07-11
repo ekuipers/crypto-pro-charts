@@ -467,13 +467,23 @@ app.get('/api/derivatives', async (req, res) => {
   }
 });
 
+// OI history buckets only update once per `period` upstream, so a short cache
+// keeps a panel's periodic sparkline refresh from re-hitting Binance every call.
+const OI_HIST_CACHE = new Map(); // "symbol|period|limit" -> { ts, data }
+const OI_HIST_TTL_MS = 60_000;
+
 app.get('/api/derivatives/oi-history', async (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
   if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return res.status(400).json({ error: 'invalid symbol' });
   const period = String(req.query.period || '1h');
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
+  const key = `${symbol}|${period}|${limit}`;
+  const cached = OI_HIST_CACHE.get(key);
+  if (cached && Date.now() - cached.ts < OI_HIST_TTL_MS) return res.json({ data: cached.data });
   try {
-    res.json({ data: await fetchOIHistory(symbol, period, limit) });
+    const data = await fetchOIHistory(symbol, period, limit);
+    OI_HIST_CACHE.set(key, { ts: Date.now(), data });
+    res.json({ data });
   } catch (e) {
     res.status(502).json({ error: String(e.message || e) });
   }

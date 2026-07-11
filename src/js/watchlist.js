@@ -2,7 +2,7 @@
 // WATCHLIST — right panel symbol selector + search
 // ============================================================
 import { state } from './state.js';
-import { baseAsset, quoteAsset, fmtPrice, fmtPct, fmtVol, esc, toast, debounce } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtPct, fmtVol, esc, toast, debounce, paintSparkline } from './utils.js';
 import { fetchAllPairs, validateSymbol, searchCoinGecko, enabledExchanges, defaultExchange, getCachedKlines } from './data.js';
 import { selectWatchlistSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
@@ -52,24 +52,6 @@ function drawRowSparkline(canvas, symbol, exchange, up) {
       .finally(() => sparkInFlight.delete(key));
   }
   if (cached) paintSparkline(canvas, cached.closes, up); // stale-while-revalidate
-}
-
-function paintSparkline(canvas, closes, up) {
-  if (!closes || closes.length < 2) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  const lo = Math.min(...closes), hi = Math.max(...closes);
-  const range = (hi - lo) || 1;
-  ctx.beginPath();
-  closes.forEach((v, i) => {
-    const x = (i / (closes.length - 1)) * (w - 2) + 1;
-    const y = h - 1 - ((v - lo) / range) * (h - 2);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.strokeStyle = up ? '#26a69a' : '#ef5350';
-  ctx.lineWidth = 1.3;
-  ctx.stroke();
 }
 
 // ---- Heatmap view (P2-16) ----

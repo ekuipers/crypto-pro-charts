@@ -22,7 +22,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Shipped items move to `memory.md` (see v1.24.1)._
+_No open roadmap items. Shipped items move to `memory.md` (see v1.24.2)._
 
 ## Bugs
 

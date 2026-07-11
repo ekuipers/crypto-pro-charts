@@ -82,6 +82,27 @@ export function esc(s) {
   ));
 }
 
+// Paint a minimal line sparkline of `values` into `canvas`, colored by
+// direction (green if the series rose overall, red if it fell). Shared by
+// the watchlist row sparklines (P2-16) and the derivatives OI sparkline.
+export function paintSparkline(canvas, values, up) {
+  if (!canvas || !values || values.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const range = (hi - lo) || 1;
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * (w - 2) + 1;
+    const y = h - 1 - ((v - lo) / range) * (h - 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = up ? '#26a69a' : '#ef5350';
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+}
+
 // Toast notifications
 let toastContainer = null;
 export function toast(msg, type = 'info', ms = 3500) {

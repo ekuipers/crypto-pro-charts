@@ -4,6 +4,25 @@
 
 ---
 
+## v1.24.2 — 2026-07-11 · Roadmap rescan: bug re-verified fixed + KuCoin WS relay + OI history sparkline
+
+### Bug re-check — "Derivatives data unavailable" on BTC/USDT
+**Investigated:** `CLAUDE.md`'s Bugs section still listed this after the v1.24.1 fix, so it was re-verified from scratch rather than assumed stale. Started the local server and curled `/api/derivatives?symbol=BTCUSDT` (and `ETHUSDT`/`DOGEUSDT`) directly — all returned `200` with correct funding rate/OI, and `derivativesAvailable()` (`src/js/derivatives.js`) correctly gates only on the `/USDT$/` suffix, not exchange. **Conclusion:** the v1.24.1 fix was already correct and complete; the bug entry was stale (left over from before that fix landed, never cleared from `CLAUDE.md`). Closed out — no code change needed.
+
+### P4 — KuCoin native WS relay (closes the P3-17 gap)
+**Problem:** P3-17 shipped a server-side WS relay for OKX/Gate.io but explicitly skipped KuCoin because its public WS needs a `POST /bullet-public` token handshake + periodic ping, leaving KuCoin on REST-poll for live candles.
+**Fix:** **`src/ws-relay.js`** — `kucoin` added to `RELAY_EXCHANGES`; `openUpstream` is now `async` and, for KuCoin, calls `fetchKucoinToken()` (hits `bullet-public`, extracts `token`/`instanceServers[0]`) before connecting to `${endpoint}?token=…&connectId=…`, waits for the `{type:'welcome'}` frame before subscribing to `/market/candles:{BASE-QUOTE}_{interval}`, and pings on a timer derived from the server's own `pingInterval` (capped 5–30s, minus a 5s safety margin) so KuCoin never drops the socket as idle. Candle tuples (`[time,open,close,high,low,volume,turnover]`) map to the same `{time,open,high,low,close,volume,closed}` shape every other relay path produces — `closed` is always `false`, same convention as Gate's relay and Bitvavo's client-side stream, since KuCoin's push has no per-tick closed flag either. **`src/js/data.js`** `openKlineStream` routes `kucoin` through `openRelayKlineStream` alongside OKX/Gate instead of returning `null` (REST-poll fallback). **`src/js/constants.js`** — KuCoin's `status` updated from `'REST only'` to `'REST + WebSocket (server relay)'`.
+**Verified live** (not assumed from docs): a standalone script confirmed the real `bullet-public` response shape and a real KuCoin candle push (`{data:{candles:[...]}}`) before writing the relay code. After implementing, a second standalone WS client connected to this app's own `/ws/relay` endpoint, subscribed `{exchange:'kucoin', symbol:'BTCUSDT', tf:'1m'}`, and received a correctly-shaped live candle back through the relay. Server log showed no `[ws-relay] failed…` errors during the run. `node --check` clean; full `npm test` — 35/35 passing (unaffected).
+
+### P4 — Open interest history sparkline (wires up a dead P2-9 endpoint)
+**Problem:** P2-9 shipped `GET /api/derivatives/oi-history` and a matching frontend `fetchOIHistory()`, but nothing in the UI ever called it — found via a repo-wide grep while rescanning for unfinished work. The funding/OI readout only ever showed the latest single OI number, with no sense of whether it's rising or falling.
+**Fix:** **`src/js/charts.js`** — `refreshOIHistory(panel)` fetches 48 hourly OI points and caches them on `panel._oiHistory`, on its own interval (`panel.oiTimer`, 60s) separate from the 20s funding-text poll (OI buckets only update hourly upstream, so polling it every 20s would've been wasted requests). `refreshDerivInfo` now appends a small `<canvas class="oi-spark">` after the funding text and repaints it from the cached history (`paintOISpark`) on every rebuild, so the sparkline survives the 20s funding-text DOM replace without being refetched. `startDerivatives`/`stopDerivatives` start/clear `oiTimer` and reset `_oiHistory` alongside the existing funding timer and liquidation stream. **`src/js/utils.js`** — the sparkline painter from `watchlist.js` (P2-16) was extracted into an exported `paintSparkline(canvas, values, up)` so this reuses it instead of duplicating the drawing code (`watchlist.js` updated to import it and its local copy removed). **`server.js`** — `/api/derivatives/oi-history` had no caching (unlike `/api/derivatives`'s 15s TTL), so a panel's periodic sparkline refresh would have hit Binance directly every time; added a 60s `OI_HIST_CACHE` keyed by `symbol|period|limit`, matching the endpoint's real update cadence. **`public/css/style.css`** — `.oi-spark` vertical-align/margin so it sits inline with the funding text.
+**Verified:** confirmed the endpoint returns real hourly OI buckets via curl, and that a second call within 60s is served from cache (near-zero response time). `node --check` clean on all touched files; `npm test` — 35/35 passing.
+
+**Bugs list cleared, roadmap re-scanned and both found items implemented directly per workflow rule 7.** Footer → v1.24.2.
+
+---
+
 ## v1.24.1 — 2026-07-11 · Roadmap rescan: event markers default + funding-rate availability fix
 
 ### Roadmap item — event markers off by default

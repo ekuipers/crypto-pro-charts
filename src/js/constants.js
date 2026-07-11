@@ -158,7 +158,7 @@ const EXCHANGES = {
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','8h':'8h','1d':'1d','1w':'7d','1M':'30d' } },
   hyperliquid: { id:'hyperliquid', name:'Hyperliquid', rest:'https://api.hyperliquid.xyz/info', status:'Perps only',
     intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','2h':'2h','4h':'4h','12h':'12h','1d':'1d','3d':'3d','1w':'1w','1M':'1M' } },
-  kucoin: { id:'kucoin', name:'KuCoin', rest:'https://api.kucoin.com/api/v1', status:'REST only',
+  kucoin: { id:'kucoin', name:'KuCoin', rest:'https://api.kucoin.com/api/v1', status:'REST + WebSocket (server relay)',
     intervals:{ '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','2h':'2hour','4h':'4hour','6h':'6hour','12h':'12hour','1d':'1day','1w':'1week','1M':'1month' } },
   bitstamp: { id:'bitstamp', name:'Bitstamp', rest:'https://www.bitstamp.net/api/v2', status:'REST only',
     intervals:{ '1m':'60','5m':'300','15m':'900','30m':'1800','1h':'3600','2h':'7200','4h':'14400','6h':'21600','12h':'43200','1d':'86400','3d':'259200','1w':'604800' } },

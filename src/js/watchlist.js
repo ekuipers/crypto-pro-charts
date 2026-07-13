@@ -2,8 +2,8 @@
 // WATCHLIST — right panel symbol selector + search
 // ============================================================
 import { state } from './state.js';
-import { baseAsset, quoteAsset, fmtPrice, fmtPct, esc, toast } from './utils.js';
-import { fetchAllPairs, validateSymbol, searchCoinGecko, enabledExchanges, defaultExchange } from './data.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtPct, fmtVol, esc, toast, debounce, paintSparkline, priceKey } from './utils.js';
+import { fetchAllPairs, validateSymbol, searchCoinGecko, enabledExchanges, defaultExchange, getCachedKlines } from './data.js';
 import { selectWatchlistSymbol, scheduleAutosave, addOverlaySymbol } from './charts.js';
 import { showModal, closeModal } from './alerts.js';
 import { STABLECOINS, EXCHANGES } from './constants.js';
@@ -31,6 +31,63 @@ const QUOTE_FILTER_ORDER = ['USDT', 'USDC', 'USD', 'EUR'];
 // Module-level so the choice persists across dialog opens within a session.
 let _exFilter = new Set();
 
+// ---- Sparklines (P2-16) ----
+// Cached per exchange:symbol so the frequent (1.5s) price-tick re-render only
+// redraws the canvas from memory instead of re-fetching klines every tick.
+const SPARK_TTL_MS = 5 * 60 * 1000;
+const sparkCache = new Map();   // 'ex:sym' -> { closes, ts }
+const sparkInFlight = new Set();
+const requestSparkRerender = debounce(() => renderSymbolList(), 400);
+
+function drawRowSparkline(canvas, symbol, exchange, up) {
+  if (!canvas) return;
+  const key = `${exchange}:${symbol}`;
+  const cached = sparkCache.get(key);
+  if (cached && Date.now() - cached.ts < SPARK_TTL_MS) { paintSparkline(canvas, cached.closes, up); return; }
+  if (!sparkInFlight.has(key)) {
+    sparkInFlight.add(key);
+    getCachedKlines(symbol, '1h', 24, exchange)
+      .then(bars => { sparkCache.set(key, { closes: bars.map(b => b.close), ts: Date.now() }); requestSparkRerender(); })
+      .catch(() => {})
+      .finally(() => sparkInFlight.delete(key));
+  }
+  if (cached) paintSparkline(canvas, cached.closes, up); // stale-while-revalidate
+}
+
+// ---- Heatmap view (P2-16) ----
+function renderHeatmap() {
+  const el = document.getElementById('symHeatmap');
+  if (!el) return;
+  const wl = state.watchlists[state.currentWatchlist] || [];
+  if (!wl.length) { el.innerHTML = '<div class="muted">Watchlist is empty.</div>'; return; }
+  el.innerHTML = wl.map(s => {
+    const ex = itemExchange(s);
+    const p = state.prices[priceKey(s.symbol, ex)] || {};
+    const chg = p.change ?? 0;
+    // Intensity scales with |%change|, capped at 8% so a single outlier doesn't wash out the rest.
+    const intensity = Math.min(1, Math.abs(chg) / 8);
+    const bg = chg >= 0
+      ? `rgba(38,166,154,${(0.15 + intensity * 0.55).toFixed(2)})`
+      : `rgba(239,83,80,${(0.15 + intensity * 0.55).toFixed(2)})`;
+    return `<div class="heat-tile" style="background:${bg}" data-sym="${esc(s.symbol)}" data-ex="${esc(ex)}">
+      <span class="heat-sym">${esc(baseAsset(s.symbol))}</span>
+      <span class="heat-chg">${fmtPct(chg)}</span>
+      <span class="heat-vol">${p.volume != null ? fmtVol(p.volume) : ''}</span>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.heat-tile').forEach(t => t.addEventListener('click', () =>
+    selectWatchlistSymbol(t.dataset.sym, baseAsset(t.dataset.sym), t.dataset.ex)));
+}
+
+function setHeatmapView(on) {
+  state.wlHeatmap = on;
+  document.getElementById('symList').style.display = on ? 'none' : '';
+  document.getElementById('symListHead').style.display = on ? 'none' : '';
+  document.getElementById('symHeatmap').style.display = on ? 'grid' : 'none';
+  document.getElementById('heatmapToggleBtn').classList.toggle('active', on);
+  if (on) renderHeatmap();
+}
+
 export function initWatchlist() {
   renderTabs();
   renderSymbolList();
@@ -40,6 +97,7 @@ export function initWatchlist() {
 
   document.getElementById('newWatchlistBtn').addEventListener('click', addWatchlist);
   document.getElementById('addSymbolBtn').addEventListener('click', addSymbolPrompt);
+  document.getElementById('heatmapToggleBtn').addEventListener('click', () => setHeatmapView(!state.wlHeatmap));
 
   // overlay/comparison picker (triggered from a chart pane)
   document.addEventListener('open-compare-search', e => {
@@ -174,7 +232,11 @@ function computeSorted(wl) {
   return wl.slice().sort((a, b) => {
     let av, bv;
     if (col === 'name') { av = a.symbol; bv = b.symbol; }
-    else { av = state.prices[a.symbol]?.[col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change'] ?? 0; bv = state.prices[b.symbol]?.[col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change'] ?? 0; }
+    else {
+      const field = col === 'price' ? 'price' : col === 'chg' ? 'chgVal' : 'change';
+      av = state.prices[priceKey(a.symbol, itemExchange(a))]?.[field] ?? 0;
+      bv = state.prices[priceKey(b.symbol, itemExchange(b))]?.[field] ?? 0;
+    }
     if (av < bv) return dir === 'asc' ? -1 : 1;
     if (av > bv) return dir === 'asc' ? 1 : -1;
     return 0;
@@ -220,7 +282,7 @@ export function renderSymbolList() {
   items.forEach(s => {
     const ex = itemExchange(s);
     const key = itemKey(s);
-    const p = state.prices[s.symbol] || {};
+    const p = state.prices[priceKey(s.symbol, ex)] || {};
     const up = (p.change ?? 0) >= 0;
     const row = document.createElement('div');
     row.className = 'sym-row' + (s.symbol === activeSym && ex === activeEx ? ' active' : '');
@@ -229,14 +291,16 @@ export function renderSymbolList() {
     row.dataset.ex = ex;
     const dotColor = state.symColors[s.symbol] || 'transparent';
     const exTag = multiEx ? `<span class="sym-ex-tag" title="${esc(exLabel(ex))}">${esc(exLabel(ex))}</span>` : '';
+    const volTitle = p.volume != null ? `24h Vol ${fmtVol(p.volume)}` : 'Current price';
     row.innerHTML = `
       <span class="sym-drag" title="Drag to reorder">⠿</span>
       <span class="sym-dot" style="background:${dotColor}"></span>
       <span class="sym-name">${esc(baseAsset(s.symbol))}<span class="sym-quote-tag">${esc(quoteAsset(s.symbol))}</span>${exTag}</span>
-      <span class="sym-price">${fmtPrice(p.price)}</span>
-      <span class="sym-chgv ${up ? 'up' : 'down'}">${p.chgVal != null ? (up ? '+' : '') + fmtPrice(p.chgVal) : '--'}</span>
+      <span class="sym-spark"><canvas class="spark-canvas" width="44" height="20"></canvas></span>
+      <span class="sym-price" title="${esc(volTitle)}">${fmtPrice(p.price)}</span>
       <span class="sym-chg ${up ? 'up' : 'down'}">${fmtPct(p.change)}</span>
       <button class="sym-del" title="Remove">×</button>`;
+    drawRowSparkline(row.querySelector('.spark-canvas'), s.symbol, ex, up);
     row.addEventListener('click', e => {
       if (e.target.classList.contains('sym-del')) { removeSymbol(s.symbol, ex); return; }
       selectWatchlistSymbol(s.symbol, s.name, ex);
@@ -293,6 +357,7 @@ export function renderSymbolList() {
     c.classList.toggle('sorted', c.dataset.col === col);
     c.dataset.dir = c.dataset.col === col ? dir : '';
   });
+  if (state.wlHeatmap) renderHeatmap();
 }
 
 export function updatePriceRows() { renderSymbolList(); }

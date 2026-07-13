@@ -6,9 +6,14 @@
 // ============================================================
 import { state, drawingState } from './state.js';
 import { fmtPrice } from './utils.js';
+import { logDrawingAsTrade } from './paper.js';
+import { scheduleAutosave } from './charts.js';
 
 const FIB_RET = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_EXT = [0, 0.618, 1, 1.618, 2.618];
+// Fibonacci sequence used for fib time zones (bar offsets from the anchor,
+// in units of the anchor-to-second-point distance).
+const FIB_TIME_SEQ = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
 const HANDLE_HIT = 9;   // px radius to grab a handle
 const BODY_HIT = 6;     // px distance to select a shape body
@@ -16,10 +21,12 @@ const BODY_HIT = 6;     // px distance to select a shape body
 const TYPE_LABELS = {
   hline: 'Horizontal line', vline: 'Vertical line', trend: 'Trend line',
   ray: 'Ray', extended: 'Extended line', rect: 'Rectangle', channel: 'Parallel channel',
-  fibret: 'Fib retracement', fibext: 'Fib extension', measure: 'Measure', text: 'Text',
+  fibret: 'Fib retracement', fibext: 'Fib extension', fibtime: 'Fib time zones',
+  measure: 'Measure', text: 'Text', pitchfork: 'Pitchfork',
+  long: 'Long position', short: 'Short position',
 };
 // Which shapes expose a solid/dashed style control
-const STYLEABLE = new Set(['hline', 'vline', 'trend', 'ray', 'extended', 'rect', 'channel', 'measure']);
+const STYLEABLE = new Set(['hline', 'vline', 'trend', 'ray', 'extended', 'rect', 'channel', 'measure', 'pitchfork', 'fibtime']);
 
 let dragInfo = null;   // active handle/body drag
 
@@ -33,7 +40,9 @@ export function initDrawingsForPanel(panel) {
 
   let tempPts = [];
 
-  layer.addEventListener('mousedown', e => {
+  // P3-25: Pointer Events (not mouse-only) so touch/pen drawing works on
+  // tablets — a PointerEvent carries the same clientX/clientY MouseEvent does.
+  layer.addEventListener('pointerdown', e => {
     const tool = drawingState.tool;
     if (tool === 'select') { handleSelectDown(panel, e); return; }
     e.preventDefault();
@@ -49,10 +58,10 @@ export function initDrawingsForPanel(panel) {
     if (tool === 'hline') { panel.drawings.push({ type: 'hline', p1: pt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); fin(); return; }
     if (tool === 'vline') { panel.drawings.push({ type: 'vline', p1: pt, color: drawingState.color, width: drawingState.width }); renderDrawings(panel); fin(); return; }
 
-    const need = (tool === 'channel') ? 3 : 2;
+    const need = (tool === 'channel' || tool === 'pitchfork') ? 3 : 2;
     tempPts.push(pt);
     if (tempPts.length >= need) {
-      panel.drawings.push({ type: tool, p1: tempPts[0], p2: tempPts[1], p3: tempPts[2] || null, color: drawingState.color, width: drawingState.width });
+      panel.drawings.push(buildShape(tool, tempPts));
       tempPts = [];
       renderDrawings(panel);
       fin();
@@ -61,24 +70,87 @@ export function initDrawingsForPanel(panel) {
     }
   });
 
-  layer.addEventListener('mousemove', e => {
+  layer.addEventListener('pointermove', e => {
     if (drawingState.tool === 'select') { updateSelectHover(panel, e); return; }
     if (!tempPts.length) return;
     const pt = ptFromEvent(panel, e);
-    renderDrawings(panel, { type: drawingState.tool, p1: tempPts[0], p2: tempPts[1] || pt, p3: tempPts[2] || (tempPts.length === 2 ? pt : null), color: drawingState.color, width: drawingState.width });
+    const tool = drawingState.tool;
+    const p2 = tempPts[1] || pt;
+    let p3 = tempPts[2] || (tempPts.length === 2 ? pt : null);
+    // Position tool: synthesize a live stop preview (1:2 R:R) while dragging the target.
+    if ((tool === 'long' || tool === 'short') && tempPts.length === 1 && !p3) {
+      const risk = Math.abs(p2.price - tempPts[0].price) / 2;
+      p3 = { logical: p2.logical, price: tool === 'long' ? tempPts[0].price - risk : tempPts[0].price + risk };
+    }
+    renderDrawings(panel, { type: tool, p1: tempPts[0], p2, p3, color: drawingState.color, width: drawingState.width });
   });
 
   // In select mode the layer is click-through (pointer-events:none) over empty
   // space so the chart still pans/zooms — hover detection on the chart div
   // turns the layer interactive only when the cursor is over a shape.
-  mainDiv.addEventListener('mousemove', e => { if (drawingState.tool === 'select') updateSelectHover(panel, e); });
-  mainDiv.addEventListener('mousedown', () => { if (drawingState.tool === 'select' && !dragInfo) deselect(); });
+  mainDiv.addEventListener('pointermove', e => { if (drawingState.tool === 'select') updateSelectHover(panel, e); });
+  mainDiv.addEventListener('pointerdown', () => { if (drawingState.tool === 'select' && !dragInfo) deselect(); });
 
-  function fin() { document.dispatchEvent(new CustomEvent('drawings-changed')); }
+  function fin() { document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } })); }
   panel._cancelDraw = () => { tempPts = []; renderDrawings(panel); };
 
+  initDrawingsHistory(panel);
   updateLayerInteractivity(panel);
 }
+
+// ---------- Undo / redo (P3-24) ----------
+// A per-panel list of full-drawings snapshots with a cursor, rather than a
+// diff/command stack — drawing sets are small (typically well under 50
+// shapes) so cloning the whole array on each change is cheap and far simpler
+// than modeling every mutation (move/resize/color/lock/…) as an invertible op.
+const HISTORY_LIMIT = 50;
+const cloneDrawings = (drawings) => drawings.map(d => structuredClone(d));
+
+export function initDrawingsHistory(panel) {
+  panel._history = [cloneDrawings(panel.drawings)];
+  panel._historyIdx = 0;
+}
+
+function pushHistory(panel) {
+  if (!panel._history) { initDrawingsHistory(panel); return; }
+  // A change after undoing drops the redo branch before recording the new state.
+  panel._history = panel._history.slice(0, panel._historyIdx + 1);
+  panel._history.push(cloneDrawings(panel.drawings));
+  if (panel._history.length > HISTORY_LIMIT) panel._history.shift();
+  panel._historyIdx = panel._history.length - 1;
+}
+
+function applyHistoryState(panel) {
+  if (drawingState.selectedPanel === panel) deselect();
+  panel.drawings = cloneDrawings(panel._history[panel._historyIdx]);
+  renderDrawings(panel);
+  scheduleAutosave();
+}
+
+export function undo(panel) {
+  if (!panel?._history || panel._historyIdx <= 0) return;
+  panel._historyIdx--;
+  applyHistoryState(panel);
+}
+
+export function redo(panel) {
+  if (!panel?._history || panel._historyIdx >= panel._history.length - 1) return;
+  panel._historyIdx++;
+  applyHistoryState(panel);
+}
+
+// Every genuine drawing mutation (create/move/resize/delete/lock/style/…)
+// dispatches 'drawings-changed' with the owning panel in detail.panel — NOT
+// state.activePanel, which can still point at the previously-active panel:
+// the drawing layer's pointerdown fires (and, for single-click tools like
+// hline/vline/text/eraser, completes and dispatches this event) before the
+// panel wrapper's own mousedown listener runs setActivePanel (see addPanel
+// in charts.js), so a click straight into an inactive panel would otherwise
+// push the history entry onto the wrong panel's undo stack.
+document.addEventListener('drawings-changed', e => {
+  const panel = e.detail?.panel || state.activePanel;
+  if (panel) pushHistory(panel);
+});
 
 export function updateLayerInteractivity(panel) {
   const layer = panel.el.querySelector('.drawing-layer');
@@ -102,14 +174,39 @@ function canvasXY(panel, e) {
   const rect = panel._drawCanvas.getBoundingClientRect();
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
+// Snap to the nearest bar's OHLC price when the magnet tool is on (P2-11).
+function magnetSnap(panel, logical, price) {
+  if (!panel.data?.length || logical == null || price == null) return { logical, price };
+  const idx = Math.max(0, Math.min(panel.data.length - 1, Math.round(logical)));
+  const bar = panel.data[idx];
+  if (!bar) return { logical, price };
+  const candidates = [bar.open, bar.high, bar.low, bar.close];
+  const snapped = candidates.reduce((best, v) => Math.abs(v - price) < Math.abs(best - price) ? v : best, candidates[0]);
+  return { logical: idx, price: snapped };
+}
+
 function ptFromEvent(panel, e) {
   const { x, y } = canvasXY(panel, e);
-  const logical = panel.chart.timeScale().coordinateToLogical(x);
-  const price = panel.candleSeries.coordinateToPrice(y);
+  let logical = panel.chart.timeScale().coordinateToLogical(x);
+  let price = panel.candleSeries.coordinateToPrice(y);
+  if (drawingState.magnet) ({ logical, price } = magnetSnap(panel, logical, price));
   return { logical, price, x, y };
 }
 function X(panel, pt) { return panel.chart.timeScale().logicalToCoordinate(pt.logical); }
 function Y(panel, pt) { return panel.candleSeries.priceToCoordinate(pt.price); }
+
+// Position tool (P2-11): entry (p1) + target (p2) drag; the stop (p3) is
+// auto-placed at a default 1:2 risk:reward and can be dragged independently.
+function buildShape(tool, pts) {
+  const shape = { type: tool, p1: pts[0], p2: pts[1] || null, p3: pts[2] || null, color: drawingState.color, width: drawingState.width };
+  if (tool === 'long' || tool === 'short') {
+    const entry = pts[0], target = pts[1];
+    const risk = Math.abs(target.price - entry.price) / 2;
+    const stopPrice = tool === 'long' ? entry.price - risk : entry.price + risk;
+    shape.p3 = { logical: target.logical, price: stopPrice };
+  }
+  return shape;
+}
 
 // ---------- rendering ----------
 export function renderDrawings(panel, preview) {
@@ -125,10 +222,34 @@ export function renderDrawings(panel, preview) {
   const all = preview ? [...panel.drawings, preview] : panel.drawings;
   for (const d of all) drawOne(panel, ctx, d, w, h);
 
+  // Lock badges sit on top of every locked shape so locked state is visible at a glance.
+  for (const d of panel.drawings) if (d.locked) drawLockBadge(panel, ctx, d);
+
   const sel = drawingState.selected;
-  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) drawHandles(panel, ctx, sel);
+  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel) && !sel.locked) drawHandles(panel, ctx, sel);
 
   refreshConfigCoords();
+}
+
+// A small padlock glyph drawn at the shape's primary anchor to mark it as locked.
+function drawLockBadge(panel, ctx, d) {
+  const anchor = d.p1 || d.p2;
+  if (!anchor) return;
+  let x = X(panel, anchor), y = Y(panel, anchor);
+  if (x == null || y == null) return;
+  if (d.type === 'hline') x = panel._drawCanvas.width - 60;
+  if (d.type === 'vline') y = 16;
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.translate(x + 8, y - 8);
+  ctx.fillStyle = 'rgba(20,22,28,.85)';
+  ctx.strokeStyle = '#f0b90b';
+  ctx.lineWidth = 1.2;
+  // body
+  ctx.beginPath(); ctx.rect(-4, -1, 8, 7); ctx.fill(); ctx.stroke();
+  // shackle
+  ctx.beginPath(); ctx.arc(0, -1, 3, Math.PI, 0); ctx.stroke();
+  ctx.restore();
 }
 
 function dashFor(d) { return d.lineStyle ? (d.lineStyle === 'dashed') : (d.type === 'hline' || d.type === 'vline'); }
@@ -170,6 +291,9 @@ function drawOne(panel, ctx, d, w, h) {
     }
     case 'fibret': fib(panel, ctx, d, FIB_RET, w); break;
     case 'fibext': fib(panel, ctx, d, FIB_EXT, w); break;
+    case 'fibtime': fibTime(panel, ctx, d, h); break;
+    case 'pitchfork': pitchfork(panel, ctx, d, x1, y1, x2, y2, p3, w); break;
+    case 'long': case 'short': position(panel, ctx, d); break;
     case 'measure': {
       line(ctx, x1, y1, x2, y2);
       const dp = p2.price - p1.price, pct = (dp / p1.price) * 100;
@@ -208,6 +332,77 @@ function fib(panel, ctx, d, levels, w) {
   ctx.globalAlpha = 1;
 }
 
+// Fib time zones (P2-11): vertical lines at Fibonacci bar-offsets from the
+// anchor, spaced by the anchor-to-second-point distance.
+function fibTime(panel, ctx, d, h) {
+  if (!d.p2) return;
+  const unit = d.p2.logical - d.p1.logical;
+  if (!unit) return;
+  ctx.setLineDash([]);
+  ctx.font = '10px sans-serif';
+  FIB_TIME_SEQ.forEach(f => {
+    const x = panel.chart.timeScale().logicalToCoordinate(d.p1.logical + unit * f);
+    if (x == null) return;
+    ctx.strokeStyle = d.color; ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.fillStyle = d.color;
+    ctx.fillText(String(f), x + 2, 12);
+  });
+}
+
+// Andrews' Pitchfork (P2-11): a median line from the handle (p1) through the
+// midpoint of p2/p3, with two parallel teeth through p2 and p3, all extended
+// rightward.
+function pitchfork(panel, ctx, d, x1, y1, x2, y2, p3, w) {
+  if (!d.p2) return;
+  if (!p3) { line(ctx, x1, y1, x2, y2); dot(ctx, x1, y1); dot(ctx, x2, y2); return; }
+  const x3 = X(panel, p3), y3 = Y(panel, p3);
+  const midx = (x2 + x3) / 2, midy = (y2 + y3) / 2;
+  const dx = midx - x1, dy = midy - y1;
+  const [medEx, medEy] = extend(x1, y1, midx, midy, w, 1);
+  line(ctx, x1, y1, medEx, medEy);
+  const [e2x, e2y] = extend(x2, y2, x2 + dx, y2 + dy, w, 1);
+  line(ctx, x2, y2, e2x, e2y);
+  const [e3x, e3y] = extend(x3, y3, x3 + dx, y3 + dy, w, 1);
+  line(ctx, x3, y3, e3x, e3y);
+  dot(ctx, x1, y1); dot(ctx, x2, y2); dot(ctx, x3, y3);
+}
+
+// Long/short position tool (P2-11): a profit zone from entry (p1) to target
+// (p2) and a loss zone from entry to stop (p3), with an auto-computed R:R.
+function position(panel, ctx, d) {
+  if (!d.p2 || !d.p3) return;
+  const isLong = d.type === 'long';
+  const entryPrice = d.p1.price, targetPrice = d.p2.price, stopPrice = d.p3.price;
+  const xL = X(panel, d.p1);
+  const xR = Math.max(X(panel, d.p2), X(panel, d.p3));
+  const yEntry = Y(panel, d.p1);
+  const yTarget = panel.candleSeries.priceToCoordinate(targetPrice);
+  const yStop = panel.candleSeries.priceToCoordinate(stopPrice);
+  if ([xL, xR, yEntry, yTarget, yStop].some(v => v == null)) return;
+  const profitCol = isLong ? '#26a69a' : '#ef5350';
+  const lossCol = isLong ? '#ef5350' : '#26a69a';
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = profitCol;
+  ctx.fillRect(Math.min(xL, xR), Math.min(yEntry, yTarget), Math.abs(xR - xL), Math.abs(yTarget - yEntry));
+  ctx.fillStyle = lossCol;
+  ctx.fillRect(Math.min(xL, xR), Math.min(yEntry, yStop), Math.abs(xR - xL), Math.abs(yStop - yEntry));
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+  [yEntry, yTarget, yStop].forEach(y => {
+    ctx.beginPath(); ctx.moveTo(Math.min(xL, xR), y); ctx.lineTo(Math.max(xL, xR), y); ctx.stroke();
+  });
+  const rr = Math.abs(targetPrice - entryPrice) / (Math.abs(entryPrice - stopPrice) || 1);
+  const pctT = ((targetPrice - entryPrice) / entryPrice) * 100;
+  const pctS = ((stopPrice - entryPrice) / entryPrice) * 100;
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#fff';
+  const lx = Math.min(xL, xR) + 4;
+  ctx.fillText(`Entry ${fmtPrice(entryPrice)}`, lx, yEntry - 3);
+  ctx.fillText(`Target ${fmtPrice(targetPrice)} (${pctT >= 0 ? '+' : ''}${pctT.toFixed(2)}%)`, lx, yTarget - 3);
+  ctx.fillText(`Stop ${fmtPrice(stopPrice)} (${pctS >= 0 ? '+' : ''}${pctS.toFixed(2)}%)  R:R 1:${rr.toFixed(2)}`, lx, yStop + 11);
+}
+
 function drawHandles(panel, ctx, d) {
   ctx.save();
   ctx.setLineDash([]);
@@ -234,6 +429,16 @@ function getHandles(panel, d) {
       { pt: d.p2, axis: 'both', label: 'Point 2' },
       ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Width' }] : []),
     ];
+    case 'pitchfork': return [
+      { pt: d.p1, axis: 'both', label: 'Handle' },
+      { pt: d.p2, axis: 'both', label: 'Point 2' },
+      ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Point 3' }] : []),
+    ];
+    case 'long': case 'short': return [
+      { pt: d.p1, axis: 'both', label: 'Entry' },
+      { pt: d.p2, axis: 'both', label: 'Target' },
+      ...(d.p3 ? [{ pt: d.p3, axis: 'both', label: 'Stop' }] : []),
+    ];
     default: return [
       { pt: d.p1, axis: 'both', label: 'Point 1' },
       ...(d.p2 ? [{ pt: d.p2, axis: 'both', label: 'Point 2' }] : []),
@@ -249,7 +454,7 @@ function updateSelectHover(panel, e) {
   const hit = hitTest(panel, x, y);
   if (hit) {
     layer.style.pointerEvents = 'auto';
-    layer.style.cursor = hit.handleIdx >= 0 ? 'crosshair' : 'move';
+    layer.style.cursor = hit.drawing.locked ? 'not-allowed' : (hit.handleIdx >= 0 ? 'crosshair' : 'move');
   } else if (!dragInfo) {
     layer.style.pointerEvents = 'none';
     layer.style.cursor = 'default';
@@ -260,7 +465,7 @@ function hitTest(panel, x, y) {
   const w = panel.el.querySelector('.main-chart-div').clientWidth;
   // Prefer handles of the currently selected shape so they stay grabbable.
   const sel = drawingState.selected;
-  if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) {
+  if (sel && !sel.locked && drawingState.selectedPanel === panel && panel.drawings.includes(sel)) {
     const hs = getHandles(panel, sel);
     for (let i = 0; i < hs.length; i++) {
       let hx = X(panel, hs[i].pt), hy = Y(panel, hs[i].pt);
@@ -302,6 +507,30 @@ function bodyHit(panel, d, x, y, w) {
         return yy != null && Math.abs(y - yy) <= BODY_HIT;
       });
     }
+    case 'fibtime': {
+      if (!p2) return false;
+      const unit = p2.logical - p1.logical;
+      if (!unit) return false;
+      return FIB_TIME_SEQ.some(f => {
+        const xx = X(panel, { logical: p1.logical + unit * f });
+        return xx != null && Math.abs(x - xx) <= BODY_HIT;
+      });
+    }
+    case 'pitchfork': {
+      if (!p3) return distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT;
+      const x3 = X(panel, p3), y3 = Y(panel, p3);
+      const midx = (x2 + x3) / 2, midy = (y2 + y3) / 2;
+      return distToSeg(x, y, x1, y1, midx, midy) <= BODY_HIT
+        || distToSeg(x, y, x1, y1, x2, y2) <= BODY_HIT
+        || distToSeg(x, y, x1, y1, x3, y3) <= BODY_HIT;
+    }
+    case 'long': case 'short': {
+      if (!p3) return false;
+      const x3 = X(panel, p3), y3 = Y(panel, p3);
+      const lo = Math.min(x1, x2, x3), hi = Math.max(x1, x2, x3);
+      const top = Math.min(y1, y2, y3), bot = Math.max(y1, y2, y3);
+      return x >= lo - BODY_HIT && x <= hi + BODY_HIT && y >= top - BODY_HIT && y <= bot + BODY_HIT;
+    }
   }
   return false;
 }
@@ -313,6 +542,7 @@ function handleSelectDown(panel, e) {
   if (!hit) { deselect(); return; }
   select(panel, hit.drawing);
   const d = hit.drawing;
+  if (d.locked) return;   // locked shapes can be selected (to unlock) but not moved or resized
   const startPt = ptFromEvent(panel, e);
   const orig = { p1: clonePt(d.p1), p2: clonePt(d.p2), p3: clonePt(d.p3) };
   dragInfo = { panel, d, handleIdx: hit.handleIdx, startPt, orig };
@@ -334,13 +564,13 @@ function handleSelectDown(panel, e) {
     renderDrawings(panel);
   };
   const up = () => {
-    window.removeEventListener('mousemove', move);
-    window.removeEventListener('mouseup', up);
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
     dragInfo = null;
-    document.dispatchEvent(new CustomEvent('drawings-changed'));
+    document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
   };
-  window.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', up);
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
 }
 
 function select(panel, d) {
@@ -398,12 +628,26 @@ function showConfig(panel, d) {
       ${textRow}
       <div class="dc-coords">${coordRows}</div>
     </div>
-    <div class="dc-actions"><button id="dcDelete" class="dc-del">Delete</button></div>`;
+    <div class="dc-actions">
+      ${(d.type === 'long' || d.type === 'short') ? '<button id="dcLogTrade" class="dc-log">📝 Log Trade</button>' : ''}
+      <button id="dcLock" class="dc-lock${d.locked ? ' active' : ''}">${d.locked ? '🔓 Unlock' : '🔒 Lock'}</button>
+      <button id="dcDelete" class="dc-del"${d.locked ? ' disabled' : ''}>Delete</button>
+    </div>`;
   document.body.appendChild(el);
   positionConfig(panel, el);
 
-  const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); };
+  // Editing controls are read-only while the shape is locked.
+  if (d.locked) el.querySelectorAll('.dc-body input, .dc-body select').forEach(inp => { inp.disabled = true; });
+
+  const changed = () => { renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } })); };
   el.querySelector('#dcClose').addEventListener('click', deselect);
+  el.querySelector('#dcLogTrade')?.addEventListener('click', () => logDrawingAsTrade(panel, d));
+  el.querySelector('#dcLock').addEventListener('click', () => {
+    d.locked = !d.locked;
+    document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
+    showConfig(panel, d);   // rebuild popover to reflect the new locked state
+    renderDrawings(panel);
+  });
   el.querySelector('#dcColor').addEventListener('input', e => { d.color = e.target.value; changed(); });
   el.querySelector('#dcWidth').addEventListener('input', e => { d.width = Math.max(1, +e.target.value || 1); changed(); });
   el.querySelector('#dcStyle')?.addEventListener('change', e => { d.lineStyle = e.target.value; changed(); });
@@ -418,7 +662,7 @@ function showConfig(panel, d) {
     const idx = panel.drawings.indexOf(d);
     if (idx >= 0) panel.drawings.splice(idx, 1);
     deselect();
-    document.dispatchEvent(new CustomEvent('drawings-changed'));
+    document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
   });
 }
 
@@ -474,6 +718,7 @@ function eraseNearest(panel, pt) {
   const px = X(panel, pt), py = Y(panel, pt);
   let best = -1, bestD = 25;
   panel.drawings.forEach((d, i) => {
+    if (d.locked) return;   // locked shapes are protected from the eraser
     const x1 = X(panel, d.p1), y1 = Y(panel, d.p1);
     let dist = Math.hypot(px - x1, py - y1);
     if (d.p2) { const x2 = X(panel, d.p2), y2 = Y(panel, d.p2); dist = Math.min(dist, Math.hypot(px - x2, py - y2)); }
@@ -483,14 +728,14 @@ function eraseNearest(panel, pt) {
     if (panel.drawings[best] === drawingState.selected) deselect();
     panel.drawings.splice(best, 1);
   }
-  document.dispatchEvent(new CustomEvent('drawings-changed'));
+  document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
 }
 
 export function clearDrawings(panel) {
   if (drawingState.selectedPanel === panel) deselect();
   panel.drawings = [];
   renderDrawings(panel);
-  document.dispatchEvent(new CustomEvent('drawings-changed'));
+  document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } }));
 }
 
 export function exportDrawings(panel) {
@@ -506,7 +751,7 @@ export function importDrawings(panel, file) {
   reader.onload = () => {
     try {
       const arr = JSON.parse(reader.result);
-      if (Array.isArray(arr)) { panel.drawings.push(...arr); renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed')); }
+      if (Array.isArray(arr)) { panel.drawings.push(...arr); renderDrawings(panel); document.dispatchEvent(new CustomEvent('drawings-changed', { detail: { panel } })); }
     } catch {}
   };
   reader.readAsText(file);

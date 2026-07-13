@@ -6,19 +6,442 @@
 
 ## v1.29.0 — 2026-07-13 · Market status panel: Fear & Greed + Altcoin Season (Roadmap)
 
-### Feature — market-wide sentiment snapshot above the watchlist
-**Problem:** The roadmap asked for a section in the watchlist area showing overall market status — Fear & Greed Index, Altcoin Season, and whatever else is useful — similar to CoinMarketCap's dashboard widgets.
+### Roadmap item — market-wide sentiment snapshot above the watchlist
+**Problem:** The roadmap asked for a section in the watchlist area showing overall market status — Fear & Greed Index, Altcoin Season, and whatever else is useful — similar to CoinMarketCap's dashboard widgets. This local checkout had fallen 15 commits behind the remote (last synced at v1.17.0) by the time this was picked up, so the work below was rebuilt against — and merged with — the intervening v1.18.0–v1.28.0 history rather than the stale local baseline; the version number was chosen as the next free slot after the merge, not v1.18.0 as originally drafted.
 
 **Fix:**
-- New backend route `GET /api/market-status` (`server.js`) proxies and caches (10-min TTL, single JSON file at `cache/market-status.json`, stale-cache fallback on upstream failure — same pattern as the existing `/api/klines` proxy):
+- New backend route `GET /api/market-status` (`server.js`) proxies and caches (10-min TTL, single JSON file at `cache/market-status.json`, stale-cache fallback on upstream failure — same resilience pattern as the kline proxy in `src/klines.js`):
   - **Fear & Greed Index** from `alternative.me` (value, classification, day-over-day delta).
   - **Altcoin Season Index**, computed server-side from CoinGecko's free `/coins/markets` endpoint (no API key): % of the top 50 coins by market cap (excluding BTC and stablecoins) that outperformed BTC over the trailing 30 days. ≥75 = "Altcoin Season", ≤25 = "Bitcoin Season", else "Neutral". (CoinGecko's free tier doesn't expose a 90-day change field, so 30d is used and labelled as such — the classic methodology's threshold logic is unchanged.)
   - **Global market snapshot** from CoinGecko `/global`: total market cap, 24h volume, BTC/ETH dominance, market-cap 24h change.
 - New frontend module `src/js/marketstatus.js` (`initMarketStatus`, wired into `main.js`) fetches `/api/market-status` on load and every 10 minutes, rendering two labelled meter bars (Fear & Greed, Altcoin Season, color-coded by band) plus a 3-up stat row (BTC dominance, market cap ± 24h change, 24h volume).
 - New `#marketStatus` container in `index.html` at the top of the Watchlist tab, above the symbol search box; styled in `style.css` (`.market-status`, `.ms-*`) using the app's existing theme variables so it matches all 6 themes automatically.
-- Footer version bumped to v1.18.0.
+- Footer version bumped to v1.29.0.
 
-**Verification:** `node --check` passed on `server.js`, `marketstatus.js`, `main.js`. Started the local server, confirmed `GET /api/market-status` returns live Fear & Greed / Altcoin Season / global data on first call (`cached:false`) and a cached response (`cached:true`) on the next call within the TTL window; confirmed `index.html` and `/js/marketstatus.js` serve with HTTP 200.
+**Verified:** `node --check` passed on `server.js`, `marketstatus.js`, `main.js`. Started the local server, confirmed `GET /api/market-status` returns live Fear & Greed / Altcoin Season / global data on first call (`cached:false`) and a cached response (`cached:true`) on the next call within the TTL window; confirmed `index.html` and `/js/marketstatus.js` serve with HTTP 200. Re-verified after merging in the v1.18.0–v1.28.0 remote history: `node --check` still clean on the merged `server.js`/`main.js`, and the merged `index.html`/`style.css` retain both the new market-status block and the remote's watchlist-heatmap/sparkline/mobile-PWA additions side by side.
+
+---
+
+## v1.28.0 — 2026-07-12 · Roadmap: per-chart timeframe dropdown + favorite timeframes
+
+### Roadmap item — timeframe selectors in a dropdown + pinnable favorites shown permanently in the chart top bar
+**Problem:** every panel's top bar rendered all 13 `TIMEFRAMES` (1m…1M) as a row of buttons unconditionally — on narrower panels (4/6/8-chart grid layouts) this crowded row required horizontal scrolling to reach less-common intervals, and there was no way to declutter it to just the timeframes a given trader actually uses.
+**Fix:**
+- **`src/js/constants.js`** — added `DEFAULT_FAVORITE_TIMEFRAMES` (`1m, 5m, 15m, 1h, 4h, 1d`).
+- **`src/js/state.js`** — `state.settings.favoriteTimeframes` (defaults to the above), which rides along on the existing session-autosave `settings` blob (`persistence.js`) with no new plumbing needed — it survives reload/sign-in the same way `exchanges`/`upColor` already do, and old saved sessions without the field simply keep the default already seeded in `state.js` (the merge only overwrites keys the saved data actually has).
+- **`src/js/charts.js`** — the panel-bar template's `.tf-group` (previously the full static button row) is now populated dynamically by a new `renderTfGroup(panel)`: it shows every favorited timeframe **plus** the panel's current timeframe if that isn't already a favorite (so a one-off, non-pinned selection is never hidden — matches how the existing symbol-link/scale-mode indicators stay visible). A new `▾` button (`.tf-drop-btn`) opens a single shared dropdown (`#tfDropdown`, new in `index.html`) — mirroring the existing `togglePanelMenu`/`openIndDropdown` pattern (fixed positioning via `getBoundingClientRect`, closed on outside click via a capturing document click listener). The dropdown lists all 13 timeframes, each with a ☆/★ star toggle (`toggleFavoriteTimeframe`) that adds/removes it from `state.settings.favoriteTimeframes` and re-renders **every** open panel's pill row live (favorites are a global preference, not per-panel) without closing the dropdown, plus a label that selects the timeframe (`changeTimeframe`, which now also calls `renderTfGroup` so the pill row updates immediately) and closes the dropdown. `changeTimeframe`'s pre-existing exit-replay-first and autosave-scheduling behavior is unchanged — only the rendering path changed.
+- **`src/js/persistence.js`** — `applyLayoutData`'s per-panel restore loop used to directly toggle `.active` on the (previously always-fully-rendered) `.tf-btn` elements; since the row is now populated dynamically, that line couldn't find a button for a restored timeframe that isn't a favorite. Replaced with a call to the newly-exported `renderTfGroup(panel)`, which correctly rebuilds the row (favorites ∪ restored TF) instead of assuming every timeframe already has a button to toggle.
+- **`public/index.html`** — added the shared `#tfDropdown` container next to the existing `#panelMenuDropdown`.
+- **`public/css/style.css`** — `.tf-drop-btn` (small ▾, styled like the existing `.tf-btn` family) and `.tf-dropdown`/`.tfd-item`/`.tfd-star`/`.tfd-label`, styled consistently with `.panel-menu-dropdown`/`.pm-item`.
+**Verified:** `node --check` clean on every touched file; `npm test` — 35/35 passing (unaffected — no existing test covers panel-bar rendering). Started the local server and confirmed via `curl` that the served `index.html` includes `#tfDropdown`, the served `charts.js` includes the new `renderTfGroup`/`toggleTfDropdown`/`toggleFavoriteTimeframe` functions, and the served `style.css` includes the new `.tf-drop-btn`/`.tf-dropdown`/`.tfd-item`/`.tfd-star` rules — all served without error and the server stayed healthy throughout. **Could not exercise the actual click-through interaction (opening the dropdown, toggling a star, selecting a timeframe) in a real browser** — no Playwright/browser-automation tool was available in this session (checked for a project-specific `run` skill first, then the `chromium-cli` fallback; neither was present), so this was verified by static code tracing (mirroring the already-shipped, browser-tested `togglePanelMenu` dropdown pattern function-for-function) and asset-serving smoke tests rather than live interaction. Flagging this explicitly rather than claiming full verification.
+
+**Roadmap item implemented per workflow rule 7; roadmap cleared.** Also cleared the "Account sign-in results in a database error" bug entry the user added mid-session on v1.27.0 — investigated (traced `src/auth.js`/`src/db.js`'s login/session code end-to-end, found nothing structurally wrong; this sandbox has no Postgres to reproduce a DB-side failure against) and the user confirmed it's already resolved. Footer/readme → v1.28.0.
+
+---
+
+## v1.27.0 — 2026-07-12 · Bug rescan: 14 fixes (crash-DoS, 5 leaks/races, 3 data-correctness, 3 UX, 2 gaps)
+
+A user-requested bug rescan. Delegated four parallel read-only investigation passes (backend, core charting, data/state, UI/auth) covering every `src/` module, then verified each candidate against the actual source — and, where reachable without live infra, against a running local server — before fixing. 17 candidates came back; 14 were real and fixed below, 3 were false positives or out of reach from this sandbox (noted at the end).
+
+### Bug 1 — CRITICAL: unauthenticated single-request crash of the whole server
+**Problem:** `server.js`'s `validKlineParams` (and two more call sites — `/api/paper`, `/api/alerts`) validated `exchange` with `EXCHANGES[req.query.exchange] ? ... : 'binance'`. Plain-object bracket lookups treat `'__proto__'` (and `'constructor'`, `'hasOwnProperty'`, etc.) as truthy — `EXCHANGES['__proto__']` resolves to `Object.prototype`, an object, not `undefined`. So `exchange` was set to the literal string `"__proto__"`, which then made `src/klines.js`'s `tfSupported`/`fetchBars`/`klineUrl` (`EXCHANGES[exId] || EXCHANGES.binance`) resolve `e = Object.prototype`, and `e.intervals[tf]` threw `TypeError: Cannot read properties of undefined (reading '1h')` — a synchronous throw inside an unwrapped `async` Express 4 handler, which Node 24 turns into an unhandled promise rejection that **kills the process**.
+**Verified live, not just reasoned about:** started the local server and sent `GET /api/klines?symbol=BTCUSDT&exchange=__proto__` — the process crashed and exited, confirmed by the stack trace in the server log and the port going dead.
+**Fix:** `src/klines.js` — added `resolveExchange()` (uses `Object.hasOwn`, not a truthy bracket lookup) and routed `klineUrl`/`fetchBars`/`tfSupported` through it. `server.js` — all three `EXCHANGES[x] ? ... : 'binance'` sites now use `Object.hasOwn(EXCHANGES, x)`.
+**Re-verified live after the fix:** the same exploit request now safely falls back to Binance data and returns `200`; a follow-up normal request confirmed the process was still alive.
+
+### Bug 2 — volume alerts silently ignored a "below" condition
+**Problem:** `src/alert-engine.js`'s volume-alert branch never read `a.condition` — it only ever checked "above". The `/api/alerts` POST route accepts `condition: 'below'` for any alert type with no type-specific restriction, so a "volume below Nx average" alert could be created but would never evaluate correctly.
+**Fix:** the evaluator now branches on `a.condition` (`<=` for below, `>=` for above) and reports the direction in the trigger message.
+
+### Bug 3 — password change didn't invalidate other sessions
+**Problem:** `/api/auth/change-password` updated the password hash but never touched the `sessions` table — a stolen/leaked session cookie stayed valid for up to 30 days after the password was changed, defeating the usual security assumption behind changing a password.
+**Fix:** `src/db.js` — new `deleteOtherSessions(uid, keepSid)`. `src/auth.js` — change-password now calls it after a successful update, invalidating every other session for the account while keeping the request's own session alive.
+
+### Bug 4 — bar replay rendered wrong/broken data on non-candlestick chart types
+**Problem:** `src/js/replay.js`'s `applyIndex` called `panel.candleSeries.setData(slice)` with raw OHLC objects unconditionally. Every other data path (`setMainData` in `charts.js`) adapts to `panel.chartType` — line/area need `{time,value}`, Heikin Ashi and Renko need transformed data. Starting replay on a Line/Area/Heikin/Renko chart fed the wrong shape into the series for the whole replay session.
+**Fix:** exported `setMainData` from `charts.js`; `replay.js`'s `applyIndex` now calls it instead of hitting the series directly.
+
+### Bug 5 — destroying a panel didn't cancel its in-flight worker indicator builds
+**Problem:** `destroyPanel` removed the chart but never set `panel.chart = null` or bumped indicators' `_gen` counters, so `buildIndicator`'s staleness guard (`ind._gen !== gen || !panel.chart`) couldn't detect a panel torn down while a Web Worker indicator computation was still in flight (a real window — session restore and TF/symbol changes can fire a burst of these). The resolved computation would then call methods on a disposed chart (overlay branch) or build a brand-new orphaned chart on a detached DOM node (oscillator branch) — an unhandled rejection plus a leaked chart/canvas/rAF loop per occurrence.
+**Fix:** `destroyPanel` now bumps every indicator's `_gen` and sets `panel.chart = null` before removal, so both branches' existing staleness guard correctly discards the stale result.
+
+### Bug 6 — rapid symbol/TF changes with an active compare-overlay leaked a series + WebSocket
+**Problem:** `rebuildOverlays` (fired on every symbol/TF change) replaces `panel.overlays` with fresh objects and fires new un-awaited `buildOverlay()` calls. If a second change landed before a prior `buildOverlay`'s fetch resolved, the orphaned `ov` object would still attach a live line series and open a WebSocket on resolution — permanently unreachable from `panel.overlays`, so `removeOverlay` could never find or close them.
+**Fix:** `buildOverlay` now checks `panel.overlays.includes(ov)` right after its fetch resolves and bails out if the overlay was already replaced or removed while the fetch was in flight (also covers the same race via manual `removeOverlay` during a build).
+
+### Bug 7 — a dropped kline WebSocket never reconnected, freezing the chart
+**Problem:** unlike the price-ticker stream (`main.js`'s `onPriceStreamClosed`, fixed previously with capped-backoff reconnect), none of the four kline-stream constructors (Binance, Bybit, Bitvavo, the OKX/Gate/KuCoin relay) had a reconnect path. A backgrounded tab or network blip silently dropped the socket and the chart froze on its last tick — indefinitely, until the user manually changed symbol/TF or reloaded.
+**Fix:** `charts.js`'s `startKlineStream` now attaches a `close` listener (mirroring the price stream's pattern) that reconnects with capped exponential backoff, unless the close was intentional (marked via `ws._intentional` at every deliberate `.close()` call site — reopening on symbol/TF change, panel destroy, entering replay) or the panel no longer exists / is in replay.
+
+### Bug 8 — `state.prices` was keyed by symbol only, colliding across exchanges
+**Problem:** the same symbol charted on two different exchanges (e.g. `BTCUSDT` on Binance in one panel, `BTCUSDT` on Bybit in another, or two watchlist rows with different `exchange` fields) shared one cache slot in `state.prices`. Whichever writer ran last won — a Binance-tagged watchlist row could silently show a different exchange's price, and `main.js`'s `isChartPinned` workaround (added to guard exactly this collision) only blocked the Binance ticker from updating the shared slot at all once any non-Binance chart existed for that symbol, so the "wrong" price could persist even after the pinning chart closed.
+**Fix:** `utils.js` — new `priceKey(symbol, exchange)` (plain `symbol` for Binance, `symbol@exchange` for everything else, so existing Binance-keyed data needs no migration). Threaded through every read/write site: `charts.js` (live candle price), `data.js` (`refreshMissingPrices` — also fixed a related bug where its `found` dedup set was keyed by symbol only, so a found Binance entry could wrongly suppress the individual fetch for a same-symbol row on a different exchange), `watchlist.js` (heatmap, sort, row render), `scanner.js`, `paper.js` (P&L, close-price default, new-trade default). `main.js`'s `isChartPinned` workaround removed — no longer needed once the keys can't collide.
+
+### Bug 9 — paper-trade "Close" pre-filled a price that silently truncated at the thousands separator
+**Problem:** `paper.js`'s close-trade prompt pre-fills the current price via `fmtPrice()`, which inserts thousands separators for prices ≥ 1000 (e.g. `"50,123.45"`). Bare `parseFloat("50,123.45")` stops at the comma and returns `50` — finite and positive, so it passed validation silently. Accepting the pre-filled default (the entire point of pre-filling it) on any BTC-magnitude trade recorded a wildly wrong exit price/P&L with no error shown.
+**Fix:** strip commas before `parseFloat` in `closeTrade`.
+
+### Bug 10 — stale order-book/tech-info responses could overwrite fresher ones
+**Problem:** `orderbook.js`'s `refreshOrderBook`/`refreshTechInfo` fire REST requests keyed to the panel's symbol/exchange at call time but never re-checked that the panel hadn't moved on by the time the response arrived. Rapidly switching panels/symbols could let an older, slower response land after a newer one and overwrite `state.obData` / the tech-info pane with the wrong symbol's data.
+**Fix:** both now capture the requested symbol/exchange and discard the response if the panel's current symbol/exchange (or active-panel/right-tab, for tech info) no longer matches by the time it resolves.
+
+### Bug 11 — global keyboard shortcuts fired behind open modals
+**Problem:** `ui.js`'s single global `keydown` handler only excludes `input, textarea, select` targets. None of the app's modals (`showModal` and friends) trap focus or stop propagation, and several never focus anything on open — so e.g. opening the Settings modal and pressing "t" silently switched the active drawing tool behind it, and Ctrl+S/Z/Y fired their global actions while a modal was open and visibly focused.
+**Fix:** `onKey` now checks for an open `#modalOverlay` (after handling Escape, which must still close it) and returns early for every other shortcut while one is open.
+
+### Bug 12 — drawing-tool letter shortcuts fired alongside browser/OS modifier combos
+**Problem:** the `t/h/v/r/f/m` tool-shortcut branch never checked `ctrlKey`/`metaKey`/`altKey`, so e.g. Ctrl+V (paste), Ctrl+F (browser find), Ctrl+T/R (new tab/refresh) or Alt+Backspace (back navigation) anywhere on the page also silently switched the active drawing tool.
+**Fix:** `onKey` now returns early for any of those modifiers before reaching the tool-shortcut map.
+
+### Bug 13 — command palette search results could be overwritten by a slower, stale response
+**Problem:** `palette.js`'s `render()` awaits `fetchAllPairs()` (a network call on cache-miss) with no request token. Typing two characters quickly before the first request resolved let whichever response arrived last win, regardless of which matched the current input — most reproducible on the first keystroke of a cold session.
+**Fix:** added a generation counter; a response is discarded if a newer `render()` call has started since it was issued.
+
+### Bug 14 — alert deletion removed the alert locally even when the server delete failed
+**Problem:** `alerts.js`'s `deleteServerAlert` swallowed the fetch in an empty `catch {}` and never checked `r.ok`, then unconditionally filtered the alert out of the local list. A failed delete (auth expired, 500, etc.) silently reappeared on the next 30s poll with no explanation.
+**Fix:** now checks `r.ok`, throws on failure, and shows a toast instead of removing the alert optimistically — matching the existing pattern in `createServerAlert`.
+
+### Bug 15 — Bitvavo's `1w` timeframe had no native interval *or* aggregation fallback
+**Problem:** `constants.js`'s comment claimed Bitvavo's missing weekly/monthly candles "fall back to server aggregation," and `1M`/`3d` really do — but `TF_AGGREGATE` had no `1w` entry at all, so clicking the (unconditionally rendered) 1w button on a Bitvavo chart hit a 400 "invalid timeframe" from the server.
+**Fix:** added `'1w': { base: '1d', factor: 7 }` to `TF_AGGREGATE`. Verified live: `GET /api/klines?exchange=bitvavo&tf=1w` now returns aggregated weekly bars instead of a 400.
+
+### Investigated, not fixed (false positives / out of reach here)
+- A reported XSS surface across alert notes/template names/drawing text was checked — all pass through `esc()` before `innerHTML`; no issue found.
+- The service worker's cache-name versioning and `/api/*`/`/ws/*` exclusions were checked — correct, no change needed.
+- `indicators.js`'s math functions and the indicator Worker request/response bridge were checked — no bugs found.
+
+**Verification (whole batch):** `node --check` clean on every touched file. `npm test` — 35/35 passing, unaffected. Two fixes reproduced live against a running local server (Bug 1's crash-and-recovery, Bug 15's 400→200). The rest were verified by tracing the exact code path against the actual source (not just the investigation agents' reports) — DB-dependent fixes (Bugs 2, 3) and most pure frontend logic (Bugs 4, 6–14) couldn't be exercised end-to-end without a live Postgres instance or a browser automation tool, neither available in this sandbox; no Playwright tool was available this session, unlike prior rescans.
+
+**A new bug report and a new roadmap item arrived in `CLAUDE.md` mid-session** ("Account sign-in results in a database error"; a per-chart timeframe-favorites roadmap item) — not addressed in this pass; see the next entry once evidence is available (this sandbox has no live Postgres to reproduce a DB-side sign-in failure against).
+
+Footer/readme → v1.27.0.
+
+---
+
+## v1.26.0 — 2026-07-11 · Roadmap rescan: per-chart toggles consolidated into a hamburger menu
+
+### Roadmap item — move chart toggles into a dropdown behind a hamburger button
+**Problem:** each chart panel's top bar (`.panel-bar`) packed in ten separate icon buttons — log/percent scale toggles, symbol link group, bar replay, compare/overlay, indicators, PNG snapshot, CSV export, fullscreen, and close — alongside the symbol button, chart-type selector, timeframe pills, OHLC readout, and candle countdown. On narrower panels (4/6/8-chart grid layouts) this row was crowded and left little breathing room for the elements users reach for most (symbol, timeframe, OHLC info).
+**Fix:** **`src/js/charts.js`** — replaced the `.scale-group` and `.panel-actions` button rows in the panel-bar template with a single `.panel-menu-btn` (☰) anchored to the right via `margin-left:auto`. Added `togglePanelMenu(panel, btn)` / `closePanelMenu()`, which populate and position a single shared dropdown (`#panelMenuDropdown`, new in `public/index.html`) — mirroring the existing `openIndDropdown`/`openLayoutDropdown` pattern in `ui.js` (fixed positioning via `getBoundingClientRect`, closed on outside click). The menu lists Log scale, Percent scale, Link symbol, Bar replay, Compare/overlay, Indicators, Save as PNG, Export CSV, Fullscreen, and Close chart, each showing an `active` state read live off `panel.scaleMode`/`panel.linkGroup`/`panel._replay`/`panel-fullscreen` at open time. Added `updatePanelMenuBtn(panel)` (exported) which toggles a small `.has-active` dot on the hamburger itself so an enabled toggle stays glanceable without opening the menu — wired into `setScaleMode`, `cycleLinkGroup`, the menu's fullscreen action, `initChart`, `applyPanelViewOptions`, and (via import) `replay.js`'s `startReplay`/`stopReplay` and `exitReplayIfActive`, replacing their old direct `.replay-btn` classList manipulation now that button no longer persists in the DOM. Removed the now-dead `updateScaleButtons`/`updateLinkButton` helpers. **`public/css/style.css`** — dropped the dead `.panel-actions`, `.scale-group`/`.scale-btn`, and `.link-btn.active` rules; added `.panel-menu-btn` (incl. the `.has-active` dot) and `.panel-menu-dropdown`/`.pm-item`/`.pm-sep` styled like the existing `.layout-drop-menu`/`.ld-item`.
+**Verified:** `node --check` clean on `charts.js` and `replay.js`; `npm test` 35/35. Started the local server and drove it with a scripted Playwright session: confirmed all ten old per-panel buttons are gone from the DOM, the hamburger opens a menu with all ten expected items, clicking "Log scale" closes the menu and lights the hamburger's active dot, reopening shows the item itself marked active, clicking outside the menu closes it, and the Fullscreen menu action actually toggles `.panel-fullscreen` on the panel end-to-end. Screenshotted both the collapsed panel bar and the open menu to confirm the visual layout.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer/readme → v1.26.0.
+
+---
+
+## v1.25.2 — 2026-07-11 · Roadmap rescan: 1-week event pruning now applies on the file-fallback path too
+
+### Roadmap item — remove events older than a week from the events list
+**Problem:** `db.pruneOldEvents()` (v1.25.0) correctly deletes `market_events` rows older than 7 days on the DB-enabled path, but `/api/events`'s file-fallback branch — used whenever no DB is configured (every local dev run) and, since v1.25.1's fix for the empty-events bug, also whenever the DB path itself fails — served the raw `data/events.json` completely unfiltered. So "remove events older than a week" only actually held on the DB-enabled happy path; the fallback (which is the *only* path exercised in this sandbox, since there's no `.env`/DB credentials here) always showed the full 16-event curated list regardless of age.
+**Fix:** **`server.js`** — the file-fallback branch of `/api/events` now filters `parsed.events` to `Date.parse(e.date) >= (Date.now() - 7 days)` before responding, matching `db.pruneOldEvents()`'s exact retention window, and serves it via `res.json(parsed)` instead of piping the raw file through unmodified.
+**Verified:** `node --check` clean; `npm test` 35/35. Started the local server (DB disabled here, so this exercises the fallback path directly) and confirmed `/api/events` now returns 3 events (2026-07-14, 2026-07-29, 2026-08-12) instead of all 16 — matching the manual cutoff calculation against the current date (2026-07-11).
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer/readme → v1.25.2.
+
+---
+
+## v1.25.1 — 2026-07-11 · Bug rescan: 3 fixes (drawing undo race, KuCoin relay leak, events-seed race)
+
+A user-requested bug rescan (`CLAUDE.md`'s Bugs section said "No open bugs," but nothing had re-checked since the v1.25.0 derivatives removal + events/Postgres migration). Delegated a read-only investigation pass first, then verified each candidate against the actual source before fixing. The derivatives-removal grep found zero leftover references (clean); the events/Postgres SQL, CSRF/rate-limiter logic, and panel-teardown timer cleanup all traced through correctly — three real, reproducible bugs found elsewhere:
+
+### Bug 1 — drawing on an inactive panel corrupts the wrong panel's undo/redo history
+**Problem:** `src/js/drawings.js`'s `drawings-changed` listener read `state.activePanel` to decide which panel's history to push a snapshot onto. Per the DOM spec, `pointerdown` fires (and, for single-click tools — hline/vline/text/eraser — completes and dispatches `drawings-changed`) *before* the panel wrapper's own `mousedown` listener runs `setActivePanel` (`src/js/charts.js`). `updateLayerInteractivity` makes every panel's drawing layer interactive whenever a draw tool is selected, not just the active panel's, so clicking a draw tool directly into an inactive panel (without first clicking to focus it) is a normal, reachable action. Result: the shape is correctly added to the panel actually clicked, but the history snapshot is pushed onto the *previously* active panel — so Ctrl+Z on the panel just drawn on does nothing, and Ctrl+Z on the other panel undoes something unrelated.
+**Fix:** every `drawings-changed` dispatch site in `src/js/drawings.js` now includes the owning panel in `detail: { panel }` (the panel is always in scope at each dispatch site); the listener uses `e.detail.panel` (falling back to `state.activePanel` only if absent) instead of relying on `state.activePanel` having already been updated by a separate, unordered event listener.
+**Verified:** `node --check` clean; `npm test` 35/35 passing (no existing test covered this interaction). Traced the exact DOM event ordering (`pointerdown` → dispatch → `mousedown`) against the `addPanel` wiring in `charts.js` to confirm the race is real, not hypothetical.
+
+### Bug 2 — KuCoin WS relay connection + ping timer leaks if unsubscribed mid-handshake
+**Problem:** `src/ws-relay.js`'s `openUpstream` awaits a real `bullet-public` REST round-trip (`fetchKucoinToken()`) before opening the actual KuCoin WebSocket — unlike OKX/Gate, whose `new WebSocket(...)` call is synchronous with no await in between. `subscribe()` calls `openUpstream(entry)` without awaiting it. If every client unsubscribes (symbol/timeframe switch, panel close, tab close — all of which `startKlineStream` triggers by closing and reopening the kline WS) while that token fetch is still in flight, `unsubscribe()` removes `entry` from the `upstreams` map once `entry.clients.size` hits 0. When the token fetch later resolves, `openUpstream` has no way to know it was abandoned — it opens the upstream socket, sets `entry.ws`, and starts a recurring ping `setInterval`, all on an `entry` object nothing can reach anymore to close. One leaked KuCoin connection + ping timer per occurrence, unbounded over the app's uptime under enough symbol/timeframe churn on the KuCoin relay path.
+**Fix:** after `fetchKucoinToken()` resolves, `openUpstream` now checks `upstreams.get(keyOf(exchange, symbol, tf)) !== entry` and bails out before opening the socket if the entry was already dropped from the map — mirroring the pattern `unsubscribe()` already uses to key entries.
+**Verified:** `node --check` clean; `npm test` 35/35 passing. Reasoned through the exact interleaving (subscribe → await in flight → unsubscribe drops entry from map → await resolves → orphaned entry) against `subscribe`/`unsubscribe`'s actual ref-counting code before and after the fix.
+
+### Bug 3 — market-events table not guaranteed seeded before the server accepts `/api/events` requests
+**Problem:** `server.js`'s startup sequence called `seedEventsFromDisk()` (async, does an awaited insert loop into Postgres) without awaiting it inside the `db.init().then(...)` callback, so `.finally()` — and thus `app.listen()` — ran immediately after, not after seeding finished. On a fresh deploy with Postgres configured and `market_events` empty, any `/api/events` request landing in that window got `db.listEvents()` back empty (or partially seeded) instead of the full curated calendar, until a later request (refresh button, page reload) caught the now-fully-seeded table.
+**Fix:** `server.js` — the `db.init().then(...)` callback is now `async` and `await`s `seedEventsFromDisk()`, so `app.listen()` (chained via `.finally()`) can't fire until seeding has actually completed.
+**Verified:** `node --check` clean; `npm test` 35/35 passing. Started the local server (no Postgres configured in this environment, so this exercised the JSON-fallback path only — the DB-seeding race itself can't be reproduced without a live Postgres instance from here) and confirmed `/api/events` and static asset routes still serve correctly with the awaited sequencing in place.
+
+### Bug 4 — user-reported: market events pane empty (found live, mid-rescan)
+**Problem:** while the 3 bugs above were being fixed, the user added a live report to `CLAUDE.md`: "The market events list is empty." This sandbox has no Postgres credentials (`.env` doesn't exist here — confirmed), so the DB-backed path this points at can't be reproduced directly; deployed production does have Supabase configured (`memory.md` v1.12.0). Investigated everything checkable without live DB access: the curated `data/events.json` (16 events, all valid ISO dates, none malformed), the `market_events` table DDL and `seedEvents`/`pruneOldEvents`/`listEvents` SQL (all correct), and the pruning math for "now" = 2026-07-11 (3 of the 16 curated events are still within the 1-week retention window, so a healthy table shouldn't read as fully empty). Bug 3 above (the unawaited seed) is a plausible contributor for a cold-start window, but wouldn't explain a *persistently* empty pane well after boot. The real, confirmed problem: **`server.js`'s `/api/events` route swallowed any DB-path error into `{events: []}` with no server-side `console.error`** — so whatever the actual production failure is (unseeded table, transient connection drop, anything) was both invisible in the pane *and* invisible in the logs, making the report undiagnosable from here.
+**Fix:** `server.js` — `/api/events` now logs the DB error (`console.error('[events] DB read failed, falling back to file:', ...)`) and, instead of returning an empty array, falls back to serving the curated `data/events.json` file directly — the same fallback this route already uses when no DB is configured at all, now also applied when the DB path exists but fails. This makes the pane resilient to *any* DB-side failure (never shows empty as long as the file is readable) and makes the next occurrence diagnosable via server logs instead of guesswork.
+**Verified:** `node --check` clean; `npm test` 35/35. Started the local server (DB disabled here, so this exercised the "already no DB" branch of the same code path) and confirmed `/api/events` still returns all 16 events. The DB-path branch and its new error-log line couldn't be exercised against a live Postgres instance from this sandbox — if the pane is still empty after this deploys, the server log will now say why.
+
+**All 4 bugs fixed directly per workflow rule; bug rescan complete.** Footer/readme → v1.25.1.
+
+---
+
+## v1.25.0 — 2026-07-11 · Roadmap rescan: remove futures funding/OI toggle + events moved to Postgres
+
+### Roadmap item 1 — remove the futures funding & open interest toggle
+**Fix:** Removed the per-panel Ⓕ toggle (funding rate, open interest, and the liquidation-marker stream it also gated) end to end rather than just hiding the button, since nothing else in the app depended on it:
+- **`src/js/charts.js`** — removed the `.deriv-btn`/`.panel-deriv-info` markup from the panel template, the `derivEnabled`/`derivTimer`/`liqWS`/`_liqMarkers` panel state, the click wiring, the re-subscribe-on-symbol-change call, and the whole derivatives block (`refreshDerivInfo`, `refreshOIHistory`, `paintOISpark`, `onLiquidation`, `startDerivatives`, `stopDerivatives`, `restartDerivatives`, `toggleDerivatives`). `applyPanelMarkers` no longer merges `_liqMarkers` into the marker set, and `destroyPanel` no longer tears down `derivTimer`/`liqWS`.
+- **`src/js/derivatives.js`** and **`src/derivatives.js`** (frontend + backend modules, funding/OI fetch + liquidation WS) — deleted; nothing else imported them once the toggle was gone.
+- **`src/js/palette.js`** — removed the "Toggle derivatives overlay" command-palette entry and its now-unused `toggleDerivatives` import.
+- **`server.js`** — removed `/api/derivatives` and `/api/derivatives/oi-history` (and their in-memory caches), the `fetchFundingOI`/`fetchOIHistory` import, and `fapi.binance.com`/`wss://fstream.binance.com` from the CSP's `connect-src` (no longer called from the browser).
+- **`public/css/style.css`** — removed `.panel-deriv-info`, `.oi-spark`, `.deriv-btn.active`.
+- **`public/sw.js`** — dropped `/js/derivatives.js` from the PWA shell precache list and bumped the cache name (`cpc-shell-v1` → `v2`) so the old list (which would now 404 on `cache.addAll` and block the service worker install) doesn't linger in already-installed clients.
+**Verified:** `node --check` clean on every touched file; full `npm test` — 35/35 passing (unaffected, no test covered this UI-only feature). Started the local server and confirmed `/js/charts.js` no longer contains `deriv-btn`/`panel-deriv-info` markup, and that `/api/derivatives` and `/js/derivatives.js` fall through to the app's existing SPA catch-all (serves `index.html`, same as any other unmatched route) rather than serving stale derivatives code or data.
+
+### Roadmap item 2 — events list refresh button + 1-week pruning + Postgres persistence
+**Problem:** the market-events calendar (`data/events.json`) was a static file re-read on every `/api/events` call, so there was no way to manually refresh the pane, no persistence layer to prune from, and no admin-facing way to add events without a deploy.
+**Fix:**
+- **`src/db.js`** — new `market_events` table (`id` primary key, `date timestamptz`, `title`, `category`, `country`, `impact`, `detail`), created in `init()`. `seedEvents(events)` does an `ON CONFLICT (id) DO NOTHING` batch insert (idempotent — safe to call every boot) so the curated JSON's events import into the table exactly once instead of being lost when switching to DB-backed storage. `pruneOldEvents()` deletes rows with `date < now() - interval '7 days'` (the roadmap's "remove events older than 1 week"). `listEvents()` returns everything left, ascending by date.
+- **`server.js`** — `seedEventsFromDisk()` runs once at startup (alongside `startAlertEngine()`) after `db.init()` succeeds, reading `data/events.json` and calling `db.seedEvents()`. `/api/events` now calls `db.pruneOldEvents()` then `db.listEvents()` when the DB is configured; when it isn't (e.g. local dev without Postgres credentials), it falls back to reading the JSON file directly, matching the existing DB-optional pattern used elsewhere in this file (layouts, alerts, etc.).
+- **`public/index.html`** — added a ⟳ `#evtRefreshBtn` next to the existing "High impact only" filter in the events pane header (grouped in a new `.events-head-actions` wrapper so `justify-content: space-between` doesn't awkwardly center the filter checkbox once a third element was added).
+- **`src/js/events.js`** — `initEvents()` wires the refresh button to re-run `loadEvents()` (adds a `.spinning` class for the duration, via a CSS keyframe rotation, so the click has visible feedback).
+- **`public/css/style.css`** — `.events-head-actions`, `.evt-refresh-btn` (hover state) and the `.spinning`/`@keyframes evt-spin` rotation.
+**Verified:** `node --check` clean on `src/db.js`/`server.js`/`src/js/events.js`; `npm test` 35/35 passing. Started the local server (no Postgres configured in this environment, so this exercised the file-fallback path) and confirmed `curl /api/events` returns all 16 curated events unchanged, and that the served `index.html` now contains the `#evtRefreshBtn` markup. The DB-backed path (`seedEvents`/`pruneOldEvents`/`listEvents`) couldn't be exercised against a live Postgres instance from this environment, but was verified by direct code review against the same query/pool helper (`q()`) every other table in `db.js` already uses successfully, and by confirming the three new functions are properly exported (`Object.keys(db)` check).
+
+**Both roadmap items implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.25.0.
+
+---
+
+## v1.24.3 — 2026-07-11 · Bug fix: derivatives really unavailable in the deployed app (server-IP block)
+
+### Bug fix — "Derivatives data unavailable" — actually still broken, this time with proof
+**Problem:** v1.24.2 re-checked this bug via local `curl`/server-side testing, found `/api/derivatives` returning `200` with correct data, and closed it as a stale report. It wasn't — the user supplied a screenshot of the deployed app showing the exact same "Derivatives data unavailable" text with a live BTC/USDT chart open, proving the failure is real in production even though the identical request succeeds from local dev/server-side testing. That combination — same code, same upstream, fails only from the deployed server's own network path — is the signature of an IP-based block: Binance is well known to reject requests from a large set of cloud/datacenter IP ranges (regulatory geofencing), which frequently includes serverless hosting IPs, while a user's own residential browser IP is unaffected. This app's price ticker and candles keep working in that same screenshot because those come from a direct **client-side** WebSocket to `stream.binance.com` (the browser's IP) — only the funding/OI data was going through this app's own server (`/api/derivatives` → `fapi.binance.com` from the *server's* IP), so it was the one path actually exposed to a server-side block.
+**Fix:** Confirmed (via live `curl` with an `Origin` header, not assumed) that all three Binance futures endpoints used here — `/fapi/v1/premiumIndex`, `/fapi/v1/openInterest`, `/futures/data/openInterestHist` — send `Access-Control-Allow-Origin: *`, meaning the browser can call them directly. **`src/js/derivatives.js`** — `fetchDerivatives`/`fetchOIHistory` now fetch straight from `fapi.binance.com` in the browser first (mirroring the existing direct-WebSocket pattern for price/klines/liquidations, all of which already bypass this app's server for exactly this kind of reason), and only fall back to the existing `/api/derivatives(/oi-history)` server proxy if the direct browser fetch throws — covering the opposite failure mode (a client network that blocks binance.com directly but not this app's own server). **`server.js`** — added `https://fapi.binance.com` to the CSP's `connect-src` (it only had `fstream.binance.com` for the liquidation WS before), otherwise the CSP itself would have blocked the new direct fetch.
+**Verified:** live `curl -H "Origin: ..."` confirmed CORS headers on all three endpoints before writing any code. After the change: `node --check` clean; `npm test` 35/35; started the local server and confirmed the served CSP header now includes `fapi.binance.com`; a standalone script reproduced the exact fetch + field-mapping logic now in `derivatives.js` against the live API and confirmed both the funding/OI shape and the OI-history array map correctly. The original failure mode (server-side IP block) can't be reproduced from this dev environment since its outbound IP isn't blocked — this fix is a direct structural response to the screenshot evidence and the CORS-availability findings, not a guess.
+**Lesson:** don't close a user-reported bug on server-side/local reproduction alone when the report describes the *deployed* app — ask for or accept concrete evidence (a screenshot, in this case) rather than trusting a passing local check over a live conflicting report.
+
+---
+
+## v1.24.2 — 2026-07-11 · Roadmap rescan: bug re-verified fixed + KuCoin WS relay + OI history sparkline
+
+### Bug re-check — "Derivatives data unavailable" on BTC/USDT
+**Investigated:** `CLAUDE.md`'s Bugs section still listed this after the v1.24.1 fix, so it was re-verified from scratch rather than assumed stale. Started the local server and curled `/api/derivatives?symbol=BTCUSDT` (and `ETHUSDT`/`DOGEUSDT`) directly — all returned `200` with correct funding rate/OI, and `derivativesAvailable()` (`src/js/derivatives.js`) correctly gates only on the `/USDT$/` suffix, not exchange. **Conclusion:** the v1.24.1 fix was already correct and complete; the bug entry was stale (left over from before that fix landed, never cleared from `CLAUDE.md`). Closed out — no code change needed.
+
+### P4 — KuCoin native WS relay (closes the P3-17 gap)
+**Problem:** P3-17 shipped a server-side WS relay for OKX/Gate.io but explicitly skipped KuCoin because its public WS needs a `POST /bullet-public` token handshake + periodic ping, leaving KuCoin on REST-poll for live candles.
+**Fix:** **`src/ws-relay.js`** — `kucoin` added to `RELAY_EXCHANGES`; `openUpstream` is now `async` and, for KuCoin, calls `fetchKucoinToken()` (hits `bullet-public`, extracts `token`/`instanceServers[0]`) before connecting to `${endpoint}?token=…&connectId=…`, waits for the `{type:'welcome'}` frame before subscribing to `/market/candles:{BASE-QUOTE}_{interval}`, and pings on a timer derived from the server's own `pingInterval` (capped 5–30s, minus a 5s safety margin) so KuCoin never drops the socket as idle. Candle tuples (`[time,open,close,high,low,volume,turnover]`) map to the same `{time,open,high,low,close,volume,closed}` shape every other relay path produces — `closed` is always `false`, same convention as Gate's relay and Bitvavo's client-side stream, since KuCoin's push has no per-tick closed flag either. **`src/js/data.js`** `openKlineStream` routes `kucoin` through `openRelayKlineStream` alongside OKX/Gate instead of returning `null` (REST-poll fallback). **`src/js/constants.js`** — KuCoin's `status` updated from `'REST only'` to `'REST + WebSocket (server relay)'`.
+**Verified live** (not assumed from docs): a standalone script confirmed the real `bullet-public` response shape and a real KuCoin candle push (`{data:{candles:[...]}}`) before writing the relay code. After implementing, a second standalone WS client connected to this app's own `/ws/relay` endpoint, subscribed `{exchange:'kucoin', symbol:'BTCUSDT', tf:'1m'}`, and received a correctly-shaped live candle back through the relay. Server log showed no `[ws-relay] failed…` errors during the run. `node --check` clean; full `npm test` — 35/35 passing (unaffected).
+
+### P4 — Open interest history sparkline (wires up a dead P2-9 endpoint)
+**Problem:** P2-9 shipped `GET /api/derivatives/oi-history` and a matching frontend `fetchOIHistory()`, but nothing in the UI ever called it — found via a repo-wide grep while rescanning for unfinished work. The funding/OI readout only ever showed the latest single OI number, with no sense of whether it's rising or falling.
+**Fix:** **`src/js/charts.js`** — `refreshOIHistory(panel)` fetches 48 hourly OI points and caches them on `panel._oiHistory`, on its own interval (`panel.oiTimer`, 60s) separate from the 20s funding-text poll (OI buckets only update hourly upstream, so polling it every 20s would've been wasted requests). `refreshDerivInfo` now appends a small `<canvas class="oi-spark">` after the funding text and repaints it from the cached history (`paintOISpark`) on every rebuild, so the sparkline survives the 20s funding-text DOM replace without being refetched. `startDerivatives`/`stopDerivatives` start/clear `oiTimer` and reset `_oiHistory` alongside the existing funding timer and liquidation stream. **`src/js/utils.js`** — the sparkline painter from `watchlist.js` (P2-16) was extracted into an exported `paintSparkline(canvas, values, up)` so this reuses it instead of duplicating the drawing code (`watchlist.js` updated to import it and its local copy removed). **`server.js`** — `/api/derivatives/oi-history` had no caching (unlike `/api/derivatives`'s 15s TTL), so a panel's periodic sparkline refresh would have hit Binance directly every time; added a 60s `OI_HIST_CACHE` keyed by `symbol|period|limit`, matching the endpoint's real update cadence. **`public/css/style.css`** — `.oi-spark` vertical-align/margin so it sits inline with the funding text.
+**Verified:** confirmed the endpoint returns real hourly OI buckets via curl, and that a second call within 60s is served from cache (near-zero response time). `node --check` clean on all touched files; `npm test` — 35/35 passing.
+
+**Bugs list cleared, roadmap re-scanned and both found items implemented directly per workflow rule 7.** Footer → v1.24.2.
+
+---
+
+## v1.24.1 — 2026-07-11 · Roadmap rescan: event markers default + funding-rate availability fix
+
+### Roadmap item — event markers off by default
+**Fix:** **`src/js/state.js`** — `showEventMarkers` default changed `true` → `false`. **`public/index.html`** — removed the `active` class from `#evtMarkersBtn` so the topbar button's initial visual state matches. `applyEventMarkers` (`src/js/events.js`) already no-ops when `state.showEventMarkers` is false, so no other logic changed — event markers can still be turned on per-session via the 📅 button or the command palette.
+
+### Bug fix — funding-rate toggle wrongly said "unavailable" on non-Binance panels
+**Problem:** `derivativesAvailable(symbol, exchange)` in `src/js/derivatives.js` required `exchange === 'binance'`, so the Ⓕ funding/OI/liquidations toggle showed "Futures data unavailable for this symbol/exchange" for *any* panel charting a Bybit/OKX/Gate/Bitvavo/etc. symbol — even a plain BTCUSDT — even though the funding-rate feed (`src/derivatives.js`, backend) always queries Binance's futures API directly and is unrelated to which exchange supplies the panel's spot price. Every symbol in this app is stored in the same compact Binance-style form (e.g. `'BTCUSDT'`) regardless of source exchange (confirmed via `constants.js`/`data.js` — per-exchange fetchers convert that canonical form to their own REST format internally), so the exchange gate was serving no purpose other than false negatives once P3 added OKX/Gate/Bitvavo as first-class chart sources.
+**Fix:** `derivativesAvailable(symbol)` now only checks the existing `/USDT$/` suffix requirement (what Binance USDT-M futures actually lists), dropping the `exchange` parameter. **`src/js/charts.js`** call site updated to match (`derivativesAvailable(panel.symbol)`). The graceful `catch` fallback in `refreshDerivInfo` ("Derivatives data unavailable") already covers the case where a symbol has no matching Binance perp market, so no new error handling was needed.
+**Verified:** `node --check` on `derivatives.js`/`charts.js`/`state.js`; full `npm test` suite (35/35 passing, unaffected).
+
+---
+
+## v1.24.0 — 2026-07-11 · P3 roadmap: platform, performance & hardening (10 of 10 items — 1 deliberately deferred)
+
+Shipped the P3 tier of the 2026-07-11 roadmap. Ordered here roughly safest→riskiest, which is also the order they were built and tested in. Verified with `node --check` on every touched file, the new `npm test` suite (35 unit tests), and multiple Playwright browser passes with `console --errors` checked clean each time — three real bugs were caught and fixed by that testing (see below), which is exactly why the passes kept happening after every risky change rather than only at the end.
+
+### P3-18 — Test suite + CI
+**Fix:** **`test/indicators.test.js`** — 13 tests against `calcOverlay`/`calcOscillator`/`calcHeikinAshi` (SMA/EMA converge on a constant series, RSI saturates at the range ends on monotonic series and stays in `[0,100]` on noisy ones, MACD histogram algebraically equals macd−signal, OBV direction, Heikin Ashi OHLC identities, AO rising-flag consistency). **`test/klines.test.js`** — 15 tests against `normalize`/`aggregateBars`/`toExSymbol`/`tfSupported`/`klineUrl` in `src/klines.js` (per-exchange field-order mapping including the newest-first-must-reverse cases for Bybit/OKX/KuCoin, 1M calendar-month bucketing vs fixed-width, empty-payload safety). **`test/totp.test.js`** — 7 tests (below). `package.json` — `"test": "node --test"` (default glob discovery; an explicit path argument choked on this Node/Windows combination — confirmed via testing, not assumed). **`.github/workflows/test.yml`** — `npm ci && npm test` plus a full `node --check` sweep, on every push/PR to `main`.
+
+### P3-23 — Chart snapshot & export
+**Fix:** **`src/js/snapshot.js`** (new) — `exportPanelPNG` composites `chart.takeScreenshot()` with the panel's own drawing-layer canvas (so trend lines/fibs/position-tool boxes are actually in the exported image) and stamps a symbol/TF/timestamp watermark, then downloads. `exportPanelCSV` exports only the bars in the current viewport (`getVisibleLogicalRange`), per the roadmap wording "visible bars," not the full loaded history. **`charts.js`** — 📷 and ⤓ panel-action buttons.
+
+### P3-24 — Undo/redo for drawings
+**Fix:** **`drawings.js`** — a per-panel list of full-`drawings`-array snapshots with a cursor (`panel._history` / `_historyIdx`), rather than modeling every mutation as an invertible command — drawing sets are small so cloning the whole array (`structuredClone`) on each change is cheap and far simpler. A single `document.addEventListener('drawings-changed', …)` at module scope pushes a snapshot on every genuine edit (creation, drag, resize, color/width/style/text/coordinate change, lock toggle, delete, import). `undo`/`redo` move the cursor and re-render; `applyHistoryState` calls the existing `scheduleAutosave()` directly rather than re-dispatching the change event (so navigating history doesn't itself get recorded as a new entry). **`persistence.js`** — `applyLayoutData` now calls `initDrawingsHistory(panel)` *after* restoring `panel.drawings` from a saved layout, not just at panel creation (when it was still empty) — otherwise the first undo after loading a saved layout would wipe the restored shapes instead of the user's first edit. **`ui.js`** — Ctrl/Cmd+Z undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redo, scoped to `state.activePanel`.
+
+### P3-26 — Larger grid layouts (6, 8 charts)
+**Fix:** **`constants.js`** `LAYOUT_COUNTS` — `l6: 6, l8: 8`. **`style.css`** — `.layout-l6` (3×2), `.layout-l8` (4×2) grid templates. **`ui.js`** — added to the layout-name/icon maps (the layout dropdown already iterates these generically, no other change needed). Per-cell drag-resize handles intentionally stay off for these two (matches the existing default for anything that isn't `l2h`/`l2v`/`l4`) — evenly-split grids are the expected use case at 6–8 panels.
+
+### P3-22 — Command palette (Ctrl/Cmd+K)
+**Fix:** **`src/js/palette.js`** (new) — a `showModal`-hosted overlay with a search input and a merged, scored result list: symbol matches (from the already-cached `fetchAllPairs()`, prefix matches ranked above substring matches) plus a curated action list (layout presets, toggle panels/theme/event-markers, save/open layouts, open templates/alerts/settings/account, and — when a panel is active — toggle derivatives/replay and export PNG/CSV for it). Actions that already exist as topbar buttons replay that button's click rather than duplicating its logic. Arrow keys navigate, Enter runs the selected entry, Escape closes.
+
+### P3-19 — Auth hardening
+**Scoped to:** rate limiting, security headers + CSP, CSRF mitigation, self-service password change, and optional TOTP 2FA. Email-based "forgot password" is **not** included — it needs an SMTP/email provider that isn't configured anywhere in this project (the same gap already noted for the alert engine's optional Telegram/webhook notifiers); building unverifiable send code for it seemed worse than being explicit about the gap.
+- **`src/totp.js`** (new) — RFC 6238 TOTP from scratch (HMAC-SHA1 via Node's `crypto`, hand-rolled base32 codec — no library). 7 unit tests, including drift-window and garbage-input handling.
+- **`src/auth.js`** — in-memory sliding-window rate limiter (10 login attempts/15 min/IP, 8 registrations/hour/IP; swept every 15 min so a long-running process doesn't leak the tracking map) — dependency-free rather than pulling in `express-rate-limit` for two routes. `POST /api/auth/change-password` (current-password verified). `POST /api/auth/2fa/setup|enable|disable` — setup stages a secret without enforcing it; enable requires proving the authenticator app actually has a valid code first, so a typo during setup can't lock someone out. `POST /api/auth/login` now returns `{requiresTotp:true}` when the password is right but the account has 2FA on and no/invalid code was supplied.
+- **`server.js`** — `app.set('trust proxy', 1)` (correct client IP behind Vercel/a reverse proxy, for the rate limiter). A CSP + `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` (+ HSTS in production) header middleware. The CSP's `connect-src` enumerates every host the browser talks to directly (exchange REST/WS hosts, CoinGecko) — **caught by testing**: the real Binance WS URL is `wss://stream.binance.com:9443`, and a CSP source with no port only matches the scheme's default port, so the first version silently blocked every Binance price/kline/orderbook/trade stream; fixed by adding the explicit `:9443`. CSRF mitigation is an Origin/Referer-header check on mutating `/api/*` requests, rejecting any whose Origin doesn't match the server's own host — chosen over a double-submit token because the frontend has ~15 independent `fetch()` call sites across modules with no shared HTTP helper, and token-based CSRF would have meant touching all of them with real risk of silently breaking one; SameSite=Lax session cookies already block the cross-site-form CSRF vector this exists to backstop.
+- **`src/js/main.js`** — the one pre-existing inline `onclick="location.reload()"` (in the "charting library failed to load" fallback) was converted to `addEventListener`, since a strict `script-src` (no `'unsafe-inline'`) blocks inline event-handler attributes.
+- **`src/js/auth.js`** — sign-in flow handles the two-step TOTP challenge (password → code prompt on `requiresTotp`); account modal gained a Security section (change password, enable/disable 2FA with the secret shown for manual authenticator-app entry — no QR image rendering, to avoid adding a QR-generation dependency for something a pasted secret already accomplishes).
+- **`src/db.js`** — `accounts` gains `totp_secret`/`totp_enabled`/`password_changed_at` via `alter table … add column if not exists`, so already-deployed databases pick them up on next boot without a manual migration.
+
+### P3-17 — Native WebSocket relay (server-side connection manager)
+**Fix:** **`src/ws-relay.js`** (new, `ws` package) — one upstream WS connection per `(exchange, symbol, tf)` **regardless of client count**, ref-counted (opens on first subscriber, closes 3s after the last one leaves, auto-reconnects while anyone's still subscribed), fanned out over the app's own `/ws/relay` endpoint (mounted on the same HTTP server/port — no separate process to deploy). Covers **OKX and Gate.io**, whose public kline WS APIs are plain connect-and-subscribe. **KuCoin is deliberately not included** — its public WS requires a `POST /bullet-public` token handshake plus periodic token refresh, a meaningfully bigger lifecycle than OKX/Gate's, and it stays on the existing REST-poll fallback. Bybit already had a direct client-side WS from P1 and needed no change. **`src/js/data.js`** — `openKlineStream` routes okx/gate through the new `openRelayKlineStream` instead of returning `null` (which previously meant REST polling). **Verified**: a standalone test client subscribed to both exchanges through the relay and received live, correctly-shaped candle ticks from real upstream connections.
+
+### P3-20 — Web Worker indicator computation
+**Fix:** **`src/js/indicator-worker.js`** (new, module worker) — imports the exact same pure `calcOverlay`/`calcOscillator`/`calcHeikinAshi` from `indicators.js` and runs them off the main thread. **`src/js/indicator-client.js`** (new) — promise-per-request bridge (one shared worker, requests matched to responses by id); rejects if Workers are unavailable or the worker errors, so callers can fall back cleanly. **`charts.js`** — `buildIndicator` is now `async`, awaits `computeInWorker(...)`, and falls back to the synchronous calc functions on any rejection. A per-indicator generation counter (`ind._gen`, bumped at the start of every `buildIndicator` call and in `teardownIndicator`) discards a result that arrives after that same indicator was rebuilt or removed while the worker was still computing — this matters because bar replay calls `recomputeIndicators` on every step (up to ~8/sec at 4×), which would otherwise be a real race between overlapping in-flight computations. `buildOscillator` now takes the precomputed result as a parameter instead of calling `calcOscillator` itself. **`volprofile`** (which renders directly to an SVG layer, not through `series.setData`) stays on the main thread — nothing to parallelize there. **Verified** in-browser with multiple overlays/oscillators added simultaneously, replay stepping, and undo — all rendered correctly with no stale/duplicate series.
+
+### P3-25 — Mobile/tablet layout + PWA
+**Fix:**
+- **Touch drawing** — **`drawings.js`**'s canvas interaction listeners switched from `mousedown`/`mousemove`/`mouseup` to `pointerdown`/`pointermove`/`pointerup` (Pointer Events carry the same `clientX`/`clientY` a `MouseEvent` does, and fire for touch/pen too — no parallel touch-event handlers needed). **`style.css`** — `touch-action: none` on `.draw-canvas` so the browser doesn't try to pan/scroll while a finger is drawing.
+- **Responsive layout** — a `max-width: 820px` block in `style.css`: any configured layout (1/2/4/6/8-chart) becomes a horizontally swipeable single-chart-at-a-time view (`scroll-snap-type: x mandatory`) instead of squeezing multiple panels into an unusable grid — the user's panels are all still there, one swipe away. The right panel (watchlist/book/scanner/paper/…) becomes a full-screen overlay via the existing hamburger (☰) toggle instead of a fixed sidebar.
+- **Bug caught by testing**: the right panel reused the desktop `.collapsed` class (default = visible, class added = hidden) for the mobile full-screen overlay too, so on first mobile load the watchlist covered the entire screen with no visible chart underneath. Fixed in **`main.js`** — `.collapsed` is now added by default on init when `window.innerWidth <= 820`, so mobile users see the chart first and open the watchlist via the same hamburger button.
+- **PWA** — **`public/manifest.json`** (name/icons/theme colors, reuses the existing `favicon.svg` — PNG icon variants would improve iOS/Android install-prompt fidelity but there's no image-generation tooling in this project to produce them). **`public/sw.js`** — caches the app shell (HTML/CSS/JS) for instant loads and an offline fallback; explicitly never intercepts `/api/*` or `/ws/*` (market data is only ever meaningful live). Registered from **`main.js`** after `load`.
+- **Verified**: a 390px-viewport Playwright pass confirmed the right panel starts `display:none`, opens correctly via the hamburger, and a click-drag trend line (exercising the same Pointer Events path a touch-drag uses) renders correctly on the narrow layout. Service worker confirmed reaching `active` state with no console errors.
+
+### P3-21 — LightweightCharts v4 → v5 upgrade: **researched, deliberately deferred**
+The roadmap flagged this as enabling native panes and simplifying the oscillator sub-pane code — real benefits, but this is the single highest-risk item in the batch (it touches the literal rendering core of every chart type, indicator, and overlay), so it got the most scrutiny before deciding whether to attempt it, not the least.
+
+**What was confirmed** (fetched from the official v4→v5 migration guide rather than assumed from training data, since being wrong here means shipping a broken chart engine):
+- Series creation changes from `chart.addCandlestickSeries(opts)` to `chart.addSeries(LightweightCharts.CandlestickSeries, opts)` (and equivalently for Line/Area/Bar/Histogram/Baseline). The standalone/UMD CDN build still exists and still exposes a `window.LightweightCharts` global with the series-type constructors on it — compatible with this project's no-bundler architecture.
+- `series.setMarkers(...)` is removed from the series instance entirely; markers become a separate primitive via `createSeriesMarkers(series, markers)`, with `.setMarkers()`/`.markers()` called on that primitive instead.
+- The chart-level `watermark` option is gone; it's replaced by `createTextWatermark(pane, options)` attached to a specific pane (`chart.panes()[0]` for a single-pane chart) — there is no chart-level watermark in v5.
+- An inventory of every v4 call site a migration would need to touch (`grep -n "addCandlestickSeries\|addLineSeries\|addHistogramSeries\|addAreaSeries\|addBarSeries\|setMarkers\|watermark" src/js/charts.js`): **13 series-creation sites** (all 7 chart types in `createMainSeries`, the volume histogram, heikin-ashi and line overlays, the 3 oscillator sub-chart series, the compare/overlay-symbol series), **1 markers call site** (`applyPanelMarkers`, but it's the funnel for cross-markers + event-markers + lux-algo signals + P2's liquidation markers, so its primitive would need a well-defined lifecycle tied to `panel.candleSeries` being recreated on chart-type switches), **2 watermark sites** (initial set in `loadPanelData`, theme-color update in `applyThemeToCharts`).
+- **What remained unverified after two documentation fetches**: whether/how `priceScale()`/`timeScale()` APIs changed (used constantly by this app's custom cross-panel alignment/sync logic — `alignPriceScales`, `syncTimeScales`, `startAlignMonitor`), the disposal/lifecycle semantics for the new markers and watermark primitives when their owning series is torn down and recreated, and how `chart.panes()` native-pane mechanics would map onto the current architecture of one *separate LightweightCharts instance per oscillator* synced by hand.
+
+**Decision:** deferred rather than attempted. A partially-correct migration of the core rendering engine — with unverified disposal semantics on a chart-type-switch-heavy app — is a worse outcome than shipping the other nine P3 items cleanly on a known-working v4. This writeup exists so a future attempt (by me or anyone else) starts from a concrete call-site inventory and confirmed API shapes instead of re-deriving them.
+
+**Verification (whole batch):** `node --check` on every touched/new file. `npm test` — 35/35 passing. Multiple Playwright passes against a running server: derivatives + replay + undo/redo interacting together, indicators added through the Worker path (overlay + oscillator) at both single-chart and 6-grid layouts, the command palette driving both symbol switches and a layout change, scanner/paper/templates/heatmap panels, and a narrow-viewport pass for the mobile layout and touch-style drawing — console errors clean (aside from the expected 500/503s from this local environment's disabled Postgres). Three real bugs were caught and fixed during these passes: the CSP's missing Binance WS port (blocked every live price feed), the mobile right-panel default-visible overlay (blocked the entire UI on phones), and — from the P2 session but relevant here since P3's browser passes exercise the same tape — none new beyond those two plus the CSP fix. Footer/readme/CLAUDE.md roadmap → v1.24.0.
+
+---
+
+## v1.23.0 — 2026-07-11 · P2 roadmap: pro-trader differentiators (8 items)
+
+Shipped the entire P2 tier of the 2026-07-11 roadmap in one release. Verified with `node --check` on every touched file, a local server smoke test hitting every new route (`/api/derivatives`, `/api/derivatives/oi-history`, `/api/templates`, `/api/scans`, `/api/paper` — all correctly 503 with DB disabled, malicious `symbol` params correctly 400), and a Playwright-driven browser pass against the running app (screenshots of every new panel/toggle, `console --errors` clean of JS exceptions). One real bug was caught and fixed during the browser pass (see P2-14 below).
+
+### P2-9 — Derivatives data overlays (funding rate, open interest, liquidations)
+**Fix:** **`src/derivatives.js`** (new, backend) — `fetchFundingOI`/`fetchOIHistory` hit Binance USDT-M futures (`fapi.binance.com`) public REST, no key needed. **`server.js`** — `GET /api/derivatives` (15s cache) and `GET /api/derivatives/oi-history`, both with fixed-host + regex-validated `symbol`/whitelisted `period` (no SSRF). **`src/js/derivatives.js`** (new, frontend) — fetch wrappers + `openLiquidationStream` (direct client WS to Binance's public `!forceOrder` stream per symbol). **`charts.js`** — new Ⓕ panel-action toggle; `.panel-deriv-info` span shows funding rate (colored) + countdown to next funding + OI; liquidations render as chart markers merged into the existing `applyPanelMarkers` pipeline (`panel._liqMarkers`). Scoped to Binance USDT-quoted symbols only (where the futures market actually exists); the toggle explains why it's unavailable otherwise.
+
+### P2-10 — Bar replay mode
+**Fix:** **`src/js/replay.js`** (new) — freezes `panel.data` to a historical slice, reveals bars one at a time via `candleSeries.update()`, recomputing indicators each step. Play/pause/step/speed (0.5–4×)/scrubber control bar (`.replay-bar`) appears under the panel. Exiting calls the existing `loadPanelData()` to cleanly restore full history and the live kline stream — no custom restore logic needed. **`charts.js`** — ⏮ panel-action button; `changeTimeframe`/`changeSymbol` force-exit replay first so a stale frozen slice can't fight the reload.
+
+### P2-11 — Position tool (long/short) + pitchfork + fib time zones + magnet snap
+**Fix:** **`drawings.js`** — two new drawing types, `long`/`short`: entry (p1) + target (p2) drag, with stop (p3) auto-placed at a default 1:2 R:R and independently draggable; renders a profit/loss zone box with live $ / % / R:R labels. `pitchfork` (3-point Andrews pitchfork: median + two parallel teeth, all extended rightward). `fibtime` (vertical lines at Fibonacci bar-offsets from a 2-point anchor). Magnet toggle (`drawingState.magnet`) snaps new points to the nearest bar's O/H/L/C via `magnetSnap()`. **`ui.js`** — toolbar icons for all four plus a magnet toggle button.
+
+### P2-12 — Indicator templates (user-saved)
+**Fix:** **`db.js`** — new `templates` table (uid, name, jsonb data), mirroring the existing `layouts` pattern. **`server.js`** — `GET/PUT/DELETE /api/templates(/:name)`. **`persistence.js`** — `getUserTemplates`/`saveUserTemplate`/`deleteUserTemplate` (server + `localStorage` fallback, same shape as named layouts). **`ui.js`** — `showTemplatesModal` now has a "My Templates" section (save current chart's indicators, load, delete) alongside the existing built-in presets.
+
+### P2-13 — Screener upgrade
+**Fix:** **`scanner.js`** — `scope=all` now covers every enabled-exchange pair (removed the 100-pair cap); added a **Volume Spike (≥2×)** scan type (last bar volume vs. 20-bar average); saved scans (name → `{type, scope}`) via new `saved_scans` DB table + `/api/scans` routes; an **Auto** checkbox re-runs the scan every 20s and toasts symbols that are newly matching (a lightweight client-side stand-in for full server-side scan-hit alerts, which would need alert-engine-level infrastructure — noted as a gap, not built here).
+
+### P2-14 — Time & sales + depth chart
+**Fix:** **`data.js`** — `openTradeStream` (Binance `@trade` WS, taker side derived from the `m` "buyer is maker" flag). **`orderbook.js`** — the "Book" right-tab gained Book/Trades/Depth sub-tabs; Trades renders a live-scrolling tape; Depth renders an SVG cumulative bid/ask area chart from the existing order-book snapshot. **`index.html`** — `.ob-subtabs`.
+**Bug caught during browser verification:** the trade tape's Qty column showed "0.00" for every row — `fmtVol()`'s fixed 2-decimal floor reads as zero for typical sub-0.01 BTC trade sizes. Fixed with a magnitude-aware `fmtQty()` local to `orderbook.js` (doesn't touch the shared `fmtVol` used elsewhere for larger aggregate volumes).
+
+### P2-15 — Paper trading & trade journal
+**Fix:** **`db.js`** — new `paper_trades` table (side, qty, entry/exit/stop/target, status, notes, tags). **`server.js`** — `GET/POST /api/paper`, `PUT /api/paper/:id/close`, `PUT /api/paper/:id/notes`, `DELETE /api/paper/:id`. **`src/js/paper.js`** (new) — new "Paper" right-tab: open positions with live unrealized P&L (polled every 2s from `state.prices`), a closed-trade journal with editable notes. **`drawings.js`** — the position-tool config popover gained a "📝 Log Trade" button that posts the drawing's entry/target/stop straight into a paper trade (`logDrawingAsTrade`), tying P2-11 and P2-15 together.
+
+### P2-16 — Watchlist enrichment
+**Fix:** **`watchlist.js`** — each row's `$ change` column was replaced with a 24h mini sparkline (canvas, cached per `exchange:symbol` for 5 min so the list's frequent 1.5s price-tick re-render doesn't refetch); 24h volume is shown as a hover tooltip on the price cell rather than a fixed column (kept — a persistent extra column risked overflowing the panel below ~300px width). **`data.js`** — `refreshVolumes()` batches Binance 24hr ticker stats for watchlist symbols every 30s (piggybacks the existing `pollMissing` cadence in `main.js`). New **Heatmap** view (`heatmapToggleBtn`) swaps the list for a tile grid colored by 24h %-change intensity, each tile also showing volume.
+
+**Scope notes (deliberate, to keep the batch shippable):** liquidation *levels* (aggregate liquidation-cluster estimation, vs. the live liquidation *events* shipped here) were out of scope; scan-hit alerts are client-side auto-refresh + toast, not server-side push; watchlist volume is a tooltip, not a column, for narrow-panel layout safety.
+
+**Verification:** `node --check` on every modified/new JS file (`server.js`, `src/db.js`, `src/derivatives.js`, `src/js/charts.js`, `src/js/drawings.js`, `src/js/ui.js`, `src/js/replay.js`, `src/js/derivatives.js`, `src/js/paper.js`, `src/js/scanner.js`, `src/js/orderbook.js`, `src/js/data.js`, `src/js/watchlist.js`, `src/js/persistence.js`, `src/js/main.js`, `src/js/state.js`). Local server start + curl against every new/changed route. Playwright screenshots of the derivatives readout, replay controls, all 4 new/changed drawing tools registering in the toolbar, the scanner's saved-scan controls, the Trades tape and Depth chart, the Paper Trading tab, the watchlist heatmap and sparklines, and the templates modal's new "My Templates" section — all rendered correctly against live Binance data with no console exceptions. Footer/readme/package.json → v1.23.0.
+
+---
+
+## v1.22.0 — 2026-07-11 · P1 roadmap: core charting gaps vs. TradingView (8 items)
+
+Shipped the entire P1 tier of the 2026-07-11 roadmap in one release. Verified with `node --check` on every touched file plus a local server smoke test (`/api/klines` on a native and an aggregated timeframe, `/api/klines/history` paging, alert route responses).
+
+### P1-8 — Extended timeframes (2h, 6h, 12h, 3d, 1M)
+**Problem:** Only 8 timeframes (1m–1w); pros expect the full TradingView set.
+**Fix:** **`constants.js`** — `TF_SECONDS` + new `TIMEFRAMES` list + `TF_AGGREGATE` map (aggregation base/factor per synthetic TF); every exchange's `intervals` map extended with its native spellings (Binance/OKX full set, Bybit `120/360/720/M`, KuCoin `2hour…1month`, Bitstamp second-steps, CryptoCompare `histohour|N`, Alpaca `NHour/1Month`, Bitvavo `2h/6h/12h`, Gate `30d`). **`src/klines.js`** — for TFs an exchange lacks natively, `fetchBars()` fetches the base TF and rolls it up server-side (`aggregateBars`; `1M` uses calendar-month UTC buckets). **`server.js`** — timeframe validation now accepts native-or-aggregatable (`tfSupported`). **`charts.js`** — panel TF buttons render from `TIMEFRAMES`; **`style.css`** lets the pill-group scroll on narrow panels.
+
+### P1-4 — Server-side kline database (Postgres)
+**Problem:** Bars only lived in per-request JSON cache files; no durable history.
+**Fix:** **`db.js`** — new `klines` table (PK exchange+symbol+tf+time) with chunked `upsertKlines`, `getKlinesBefore`, `oldestKlineTime`. **`server.js`** — every upstream fetch is persisted fire-and-forget (`storeBars`); JSON file cache still serves hot requests.
+
+### P1-1 — Infinite history scroll-back
+**Problem:** Charts were capped at one 500–1000 bar fetch; panning left hit a wall.
+**Fix:** **`server.js`** — new `GET /api/klines/history?before=<sec>` serves older bars from Postgres and tops up from the exchange (each exchange's "end time" paging param wired in **`src/klines.js`** `klineUrl`), persisting what it fetched; returns `exhausted` when upstream is dry. **`data.js`** — `fetchOlderKlines()`. **`charts.js`** — `maybeLoadHistory()` on `subscribeVisibleLogicalRangeChange`: within 20 bars of the left edge it prepends a 500-bar page, rebuilds series/indicators, and shifts the visible logical range by the prepended count so the viewport doesn't jump; 3-failure circuit breaker; the old 1500-bar cap in the live-candle path was removed so history can grow unbounded.
+
+### P1-2 — Log & percent price scales
+**Fix:** **`charts.js`** — per-panel `log`/`%` pill buttons (`setScaleMode`, price-scale mode 0/1/2), persisted and restored. **`style.css`** — `.scale-group`/`.scale-btn`.
+
+### P1-3 — Chart types (candles, hollow, bars, line, area, Heikin Ashi, Renko)
+**Problem:** Candles only (Heikin Ashi existed only as an overlay indicator).
+**Fix:** **`charts.js`** — per-panel chart-type `<select>`; `createMainSeries` builds the right LWC series while everything downstream keeps using `panel.candleSeries`; `mainSeriesData` transforms bars (HA via existing `calcHeikinAshi`, Renko via new ATR-brick `calcRenko` that merges same-bar bricks to keep times strictly ascending); `updateMainSeries` handles live ticks per type (incremental HA via `_haPrev`, Renko rebuilds on closed bars); crosshair OHLC readout handles value-only types; `applyCandleColors` is type-aware. Persisted per panel (snapshot v4).
+
+### P1-5 — Symbol link groups + cross-panel crosshair sync
+**Fix:** **`charts.js`** — ⛓ button cycles link group (none/1/2/3, colored); `changeSymbol` propagates to same-group panels (recursion-guarded). Crosshair moves mirror onto every other panel by time via `setCrosshairPosition` (binary-search nearest bar, recursion-guarded). Persisted per panel.
+
+### P1-7 — Complete the oscillator set
+**Finding:** OBV, MFI, CCI, Williams %R, StochRSI, CMF, ROC, DMI, TSI, UO already existed — only **Awesome Oscillator** was missing.
+**Fix:** **`constants.js`** — AO definition + description; **`indicators.js`** — AO calc (SMA5−SMA34 of bar midpoint) returning a direction-colored histogram; **`charts.js`** — `buildOscillator` honors `histByDirection` (rising green / falling red).
+
+### P1-6 — Server-side alert engine
+**Problem:** Alerts lived in the browser and died with the tab.
+**Fix:** **`db.js`** — `alerts` table + CRUD/trigger helpers. **`src/alert-engine.js`** (new) — evaluates active alerts every 30 s (per-pass fetch de-dup): price cross, %-move over a window, RSI level on any TF, volume spike vs 20-bar average; notifies via Telegram (`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`) and generic webhook (`ALERT_WEBHOOK_URL`); marks triggered in DB. **`server.js`** — `/api/alerts` CRUD + `/api/alerts/triggered?since=` feed; engine starts after `db.init()`. **`alerts.js`** — server-mode client (typed create modal, 30 s poll surfaces triggers as toast + browser notification, including ones fired while the tab was closed); falls back to the legacy in-browser price alerts when the DB is unavailable. **`.env.example`** documents the notifier vars.
+
+### Infrastructure
+**`src/klines.js`** (new) — exchange URL building, payload normalization, paging and aggregation extracted from `server.js` so the alert engine reuses one code path. Footer/readme → v1.22.0.
+
+---
+
+## v1.21.0 — 2026-07-09 · Plain ＋ compare button + stable panel bar during live price ticks (Roadmap + Bug)
+
+### Feature — remove the chart icon from the "add overlay" (compare) button
+**Problem:** The roadmap asked to remove the chart icon from the "add overlay" button. The compare button in each panel's action row showed `＋📈`, which looked busy next to the other single-glyph actions.
+
+**Fix:** **`charts.js`** — the `.compare-btn` markup in `addPanel` now renders just `＋` (tooltip "Compare / overlay symbol" unchanged).
+
+### Bug — chart panel visually shifted on every live price update
+**Problem:** The v1.19.0 live price readout (`.panel-sym-price`) sits at the start of the panel bar's flex row, before the timeframe buttons, legend, OHLC readout, and action buttons. Its width changed on almost every tick — `fmtPrice` used `maximumFractionDigits: 2` without a minimum (so `118,234.5` → `118,235` → `118,234.56` all differ in length) and the font uses proportional digits. Each tick therefore reflowed everything to the right of the price, making the chart header contents jump ("chart canvas moving with the price update").
+
+**Fix:** Three layers, so a tick can never change the element's width:
+- **`utils.js` `fmtPrice`:** prices ≥ 1000 now format with `minimumFractionDigits: 2` **and** `maximumFractionDigits: 2`, so the string length is constant for a given integer-digit count (all other magnitude branches already used fixed `toFixed` widths).
+- **`style.css` `.panel-sym-price`:** added `font-variant-numeric: tabular-nums` (every digit occupies the same advance width) and `white-space: nowrap`.
+- **`charts.js` `updatePanelPrice`:** ratchets a `min-width` (in `ch`) up to the widest price string seen for the current symbol, so even a rare digit-count change (e.g. 999.99 → 1,000.00) only ever grows the slot once instead of jiggling. The ratchet (`panel._priceCh`) and inline `min-width` reset in `changeSymbol`/`loadPanelData` so a new symbol re-measures from scratch.
+
+**Verification:** `node --check` passes on `src/js/charts.js` and `src/js/utils.js`. Traced both live paths (WebSocket kline + REST poll fallback) — they funnel through `updatePanelPrice`, which now writes a constant-width string into a width-ratcheted, tabular-nums element. Footer → v1.21.0.
+
+---
+
+## v1.20.0 — 2026-06-29 · Lock / unlock drawing objects on the charts (Roadmap)
+
+### Feature — protect a drawing from accidental move, resize, or deletion
+**Problem:** The roadmap asked for the ability to lock and unlock drawing objects. Previously every shape was always editable — a stray drag in select mode or a pass with the eraser could move or destroy a carefully placed trend line, level, or fib.
+
+**Fix:**
+- **`drawings.js`:**
+  - Shapes carry an optional `locked` boolean. When `true` the shape is rendered normally but interaction is disabled across every editing path.
+  - `renderDrawings` skips drawing resize handles for a locked selected shape and draws a small padlock badge (`drawLockBadge`) over every locked shape so the locked state is visible at a glance (badge sits at the primary anchor, with the same offset logic used for h/v-line handles).
+  - `hitTest` no longer offers grab handles for a locked shape; locked shapes are still body-hittable so they can be selected and unlocked.
+  - `updateSelectHover` shows a `not-allowed` cursor over locked shapes instead of `move`/`crosshair`.
+  - `handleSelectDown` selects a locked shape (to expose the unlock button) but returns before starting any drag — so locked shapes cannot be moved or resized.
+  - `eraseNearest` ignores locked shapes, so the eraser tool (and the Delete/Backspace shortcut, which switches to the eraser) cannot remove a locked drawing.
+  - The config popover gained a **🔒 Lock / 🔓 Unlock** toggle in the actions row. While locked, all body inputs (color, width, style, text, coordinates) are disabled and the **Delete** button is disabled; toggling rebuilds the popover and re-renders. The `locked` flag fires `drawings-changed` so it autosaves.
+- **`style.css`:** `.dc-actions` now spreads the lock + delete buttons (`space-between`); added `.dc-lock` (with an `.active` amber state for the locked/Unlock affordance) and disabled-state styling for `.dc-del`.
+- **Persistence:** `locked` lives on the drawing object, which `persistence.js` already serializes wholesale (`p.drawings`), so lock state survives reloads and saved layouts with no schema change.
+
+**Verification:** `node --check src/js/drawings.js` passes. Traced every mutation path — drag (`handleSelectDown`), eraser (`eraseNearest`), Delete shortcut (`ui.js` → eraser), and popover Delete button — all now gate on `locked`. Confirmed the whole drawing object (including the new flag) round-trips through `persistence.js`. Footer → v1.20.0.
+
+---
+
+## v1.19.0 — 2026-06-29 · Live current price next to the symbol name in the chart top bar (Roadmap)
+
+### Feature — bold current-price readout in each panel's top bar
+**Problem:** The roadmap asked for the current price shown in a bigger, bold font than the symbol name, right next to it in the chart's top bar. Previously the panel bar only showed the symbol button (base + quote); the live price was only visible on the vertical price axis.
+
+**Fix:**
+- **`charts.js`:**
+  - Added a `<span class="panel-sym-price">` to the `addPanel` panel-bar markup, immediately after the `.sym-btn`.
+  - New `updatePanelPrice(panel, price)` helper — writes `fmtPrice(price)` into the span and toggles `up`/`down` classes by comparing to `panel._lastPrice` so the value flashes green/red in the direction of the last move. Ignores null/non-finite prices.
+  - `loadPanelData` seeds the readout from the last REST candle's close (and resets `_lastPrice` so the colour starts neutral for the new symbol).
+  - The live `onCandle` handler calls `updatePanelPrice` on every tick (WS or REST poll), so the number tracks the chart in real time.
+  - `changeSymbol` clears the old symbol's price/colour immediately (before the async reload) to avoid showing a stale value during the switch.
+- **`style.css`:** `.panel-sym-price` is 18px / 800 weight (vs the symbol's 14px / 700), with `:empty { display:none }` so the slot collapses before data loads; `.up`/`.down` modifiers colour it with `--green`/`--red` and a short colour transition.
+
+**Verification:** `node --check` passes on `charts.js`. Traced the price flow: initial REST load → `updatePanelPrice` seeds the value; live kline WS / REST poll → `onCandle` → `updatePanelPrice` updates + colours each tick; `changeSymbol` and persistence restore reset cleanly (the separate span survives the `.sym-btn` innerHTML rebuild). Confirmed CSS vars `--green`/`--red` exist. Footer/readme → v1.19.0.
+
+---
+
+## v1.18.0 — 2026-06-29 · Toggle indicators on/off from the indicator bar (Roadmap)
+
+### Feature — deactivate / reactivate active indicators by clicking the chip
+**Problem:** The roadmap asked for the ability to hide an active indicator without removing it: clicking it in the indicator bar should deactivate it (and dim the chip), clicking again should reactivate it. Previously the only way to remove an indicator was the × button, which deletes it entirely — so re-adding meant re-picking it and re-entering its params.
+
+**Fix:**
+- **`charts.js`:**
+  - `addIndicator` now takes an `active = true` flag and stores `ind.active`; it only builds the indicator's series when active (so a restored-inactive indicator stays hidden).
+  - Extracted `teardownIndicator(panel, ind)` — the shared logic that removes an indicator's rendered artifacts (chart series, histogram, oscillator sub-chart/pane, Heikin-Ashi candles, volume-profile layer, LuxAlgo markers) and nulls the live refs (`subChart`, `hist`, `_oscDiv`, `_spacer`) **without** removing it from `panel.indicators`. Both `removeIndicator` (delete) and the new toggle reuse it.
+  - New `setIndicatorActive(panel, ind, active)` — flips `ind.active`; reactivating calls `buildIndicator`, deactivating calls `teardownIndicator`; then re-layouts oscillators, rebuilds MA-cross markers, fires `indicators-changed`, and autosaves.
+  - `buildIndicator` early-returns when `ind.active === false`, so `recomputeIndicators` (run on data load / timeframe change) leaves deactivated indicators hidden.
+  - `rebuildCrossMarkers` now ignores inactive SMA/EMA overlays so golden/death-cross arrows disappear when an MA is toggled off.
+- **`ui.js`:** `renderIndChips` adds the `inactive` class to dimmed chips; clicking the **name** now toggles active/inactive (was: open settings), the colored **dot** opens settings, and **×** still removes. Added tooltips clarifying each affordance.
+- **`style.css`:** `.ind-chip.inactive` dims to 0.45 opacity with a line-through name.
+- **`persistence.js`:** Serializes `active` per indicator and passes it back through `addIndicator` on restore, so the on/off state survives reloads and saved layouts.
+
+**Verification:** `node --check` passes on `charts.js`, `ui.js`, and `persistence.js`. Traced each indicator class through `teardownIndicator`/`buildIndicator`: overlays (line series), oscillators (sub-chart pane + spacer), Heikin-Ashi (candle series), volume-profile (DOM layer), and LuxAlgo (markers) all tear down and rebuild cleanly via the existing add/remove paths. Footer/readme → v1.18.0.
 
 ---
 

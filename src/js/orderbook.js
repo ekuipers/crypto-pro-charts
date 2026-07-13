@@ -2,25 +2,66 @@
 // ORDER BOOK + TECH INFO panes
 // ============================================================
 import { state } from './state.js';
-import { fetchOrderBook, openOrderBookStream, closeOrderBookStream, fetchPrice, getCachedKlines } from './data.js';
+import { fetchOrderBook, openOrderBookStream, closeOrderBookStream, openTradeStream, fetchPrice, getCachedKlines } from './data.js';
 import { fmtPrice, fmtVol, fmtPct } from './utils.js';
 
 let pollTimer = null;
+let tradeWS = null;
+let trades = []; // recent trade tape (P2-14), newest first, capped
 
 export function refreshOrderBook() {
   const panel = state.activePanel;
   if (!panel) return;
-  if (state.rightTab !== 'orderbook') { closeOrderBookStream(); if (pollTimer) clearInterval(pollTimer); return; }
+  if (state.rightTab !== 'orderbook') { teardownOrderBook(); return; }
   const symbol = panel.symbol;
   const exId = panel.exchange;
   closeOrderBookStream();
   if (pollTimer) clearInterval(pollTimer);
 
-  fetchOrderBook(symbol, 20, exId).then(ob => { state.obData = ob; renderOrderBook(); }).catch(() => {});
-  const ws = openOrderBookStream(symbol, ob => { state.obData = ob; renderOrderBook(); }, exId);
+  // Discard a response that lands after the panel's symbol/exchange has
+  // already moved on (rapid panel/symbol switching can reorder these REST
+  // calls) — otherwise a slow, stale response can overwrite fresher data.
+  const stillCurrent = () => panel.symbol === symbol && panel.exchange === exId;
+  const applyBook = ob => { if (stillCurrent()) { state.obData = ob; renderActiveSubtab(); } };
+  fetchOrderBook(symbol, 20, exId).then(applyBook).catch(() => {});
+  const ws = openOrderBookStream(symbol, applyBook, exId);
   if (!ws) {
-    pollTimer = setInterval(() => fetchOrderBook(symbol, 20, exId).then(ob => { state.obData = ob; renderOrderBook(); }).catch(() => {}), 5000);
+    pollTimer = setInterval(() => fetchOrderBook(symbol, 20, exId).then(applyBook).catch(() => {}), 5000);
   }
+  setupTradeStream(panel);
+  renderActiveSubtab();
+}
+
+function teardownOrderBook() {
+  closeOrderBookStream();
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (tradeWS) { try { tradeWS.close(); } catch {} tradeWS = null; }
+}
+
+function setupTradeStream(panel) {
+  if (tradeWS) { try { tradeWS.close(); } catch {} tradeWS = null; }
+  trades = [];
+  tradeWS = openTradeStream(panel.symbol, t => {
+    trades.unshift(t);
+    if (trades.length > 60) trades.length = 60;
+    if (state.obSubTab === 'trades') renderTrades();
+  }, panel.exchange);
+}
+
+function renderActiveSubtab() {
+  if (state.rightTab !== 'orderbook') return;
+  if (state.obSubTab === 'trades') renderTrades();
+  else if (state.obSubTab === 'depth') renderDepth();
+  else renderOrderBook();
+}
+
+// P2-14: Book / Trades / Depth sub-tabs within the right-panel "Book" tab.
+export function initOrderBookSubtabs() {
+  document.querySelectorAll('.ob-subtab').forEach(b => b.addEventListener('click', () => {
+    state.obSubTab = b.dataset.sub;
+    document.querySelectorAll('.ob-subtab').forEach(x => x.classList.toggle('active', x === b));
+    renderActiveSubtab();
+  }));
 }
 
 const SPREAD_LEVELS = ['auto', 0.0001, 0.001, 0.01, 0.1, 0.5, 1, 5, 10, 50, 100];
@@ -84,6 +125,67 @@ function row(o, maxQty, side) {
     <span class="ob-bar" style="width:${pct}%;background:${c}1f"></span>
     <span class="ob-price ${side}">${fmtPrice(o.price)}</span>
     <span class="ob-qty">${fmtVol(o.qty)}</span></div>`;
+}
+
+// ---- Time & sales (P2-14) ----
+// fmtVol's fixed 2-decimal floor reads as "0.00" for typical BTC-sized trade
+// quantities (e.g. 0.0003 BTC) — use magnitude-aware precision here instead.
+function fmtQty(v) {
+  if (v == null || isNaN(v)) return '--';
+  const a = Math.abs(v);
+  if (a >= 1000) return fmtVol(v);
+  if (a >= 1) return v.toFixed(3);
+  if (a >= 0.001) return v.toFixed(5);
+  return v.toFixed(8);
+}
+
+function renderTrades() {
+  const el = document.getElementById('obContent');
+  if (!el) return;
+  if (!trades.length) { el.innerHTML = '<div class="muted">Waiting for trades…</div>'; return; }
+  const rows = trades.map(t => `
+    <div class="tape-row ${t.side}">
+      <span class="tape-time">${new Date(t.time).toLocaleTimeString([], { hour12: false })}</span>
+      <span class="tape-price">${fmtPrice(t.price)}</span>
+      <span class="tape-qty">${fmtQty(t.qty)}</span>
+    </div>`).join('');
+  el.innerHTML = `<div class="tape-head"><span>Time</span><span>Price</span><span>Qty</span></div><div class="tape-list">${rows}</div>`;
+}
+
+// ---- Depth chart (P2-14): cumulative bid/ask visualization ----
+function renderDepth() {
+  const el = document.getElementById('obContent');
+  if (!el) return;
+  const { bids = [], asks = [] } = state.obData || {};
+  if (!bids.length || !asks.length) { el.innerHTML = '<div class="muted">No order book data</div>'; return; }
+  const sBids = [...bids].sort((a, b) => b.price - a.price);
+  const sAsks = [...asks].sort((a, b) => a.price - b.price);
+  let cum = 0;
+  const bidPts = sBids.map(b => ({ price: b.price, cum: (cum += b.qty) }));
+  cum = 0;
+  const askPts = sAsks.map(a => ({ price: a.price, cum: (cum += a.qty) }));
+  const maxCum = Math.max(bidPts[bidPts.length - 1]?.cum || 0, askPts[askPts.length - 1]?.cum || 0, 1e-9);
+  const loP = bidPts[bidPts.length - 1]?.price ?? sBids[0].price;
+  const hiP = askPts[askPts.length - 1]?.price ?? sAsks[0].price;
+  const W = 300, H = 170, PAD = 4;
+  const xOf = p => PAD + ((p - loP) / ((hiP - loP) || 1)) * (W - PAD * 2);
+  const yOf = c => H - PAD - (c / maxCum) * (H - PAD * 2 - 14);
+
+  const bidPath = `M${xOf(bidPts[bidPts.length - 1].price).toFixed(1)},${(H - PAD).toFixed(1)} ` +
+    bidPts.slice().reverse().map(p => `L${xOf(p.price).toFixed(1)},${yOf(p.cum).toFixed(1)}`).join(' ') +
+    ` L${xOf(sBids[0].price).toFixed(1)},${(H - PAD).toFixed(1)} Z`;
+  const askPath = `M${xOf(sAsks[0].price).toFixed(1)},${(H - PAD).toFixed(1)} ` +
+    askPts.map(p => `L${xOf(p.price).toFixed(1)},${yOf(p.cum).toFixed(1)}`).join(' ') +
+    ` L${xOf(askPts[askPts.length - 1].price).toFixed(1)},${(H - PAD).toFixed(1)} Z`;
+
+  el.innerHTML = `
+    <div class="depth-chart">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px">
+        <path d="${bidPath}" fill="rgba(38,166,154,0.25)" stroke="#26a69a" stroke-width="1.2"/>
+        <path d="${askPath}" fill="rgba(239,83,80,0.25)" stroke="#ef5350" stroke-width="1.2"/>
+      </svg>
+      <div class="depth-labels"><span class="up">${fmtPrice(loP)}</span><span>Mid ${fmtPrice((loP + hiP) / 2)}</span><span class="down">${fmtPrice(hiP)}</span></div>
+    </div>`;
 }
 
 // ---- Tech info (enhanced) ----
@@ -197,12 +299,17 @@ export async function refreshTechInfo() {
   const el = document.getElementById('techContent');
   if (!panel || !el) return;
   if (state.rightTab !== 'techinfo') return;
+  const symbol = panel.symbol, exchange = panel.exchange;
   el.innerHTML = '<div class="muted">Loading…</div>';
   try {
     const [p, bars] = await Promise.all([
-      fetchPrice(panel.symbol, panel.exchange),
-      getCachedKlines(panel.symbol, '1d', 400, panel.exchange).catch(() => []),
+      fetchPrice(symbol, exchange),
+      getCachedKlines(symbol, '1d', 400, exchange).catch(() => []),
     ]);
+    // The user may have switched panels/symbols while these requests were in
+    // flight — a slower, now-stale response landing after a newer one would
+    // otherwise overwrite the pane with the wrong symbol's data.
+    if (state.activePanel !== panel || panel.symbol !== symbol || panel.exchange !== exchange || state.rightTab !== 'techinfo') return;
     const up = p.change >= 0;
     const closes = bars.map(b => b.close);
     const last = closes[closes.length - 1] || p.price;

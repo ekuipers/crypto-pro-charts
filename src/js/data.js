@@ -3,7 +3,7 @@
 // ============================================================
 import { EXCHANGES, TF_SECONDS } from './constants.js';
 import { state } from './state.js';
-import { fetchJSON, baseAsset, quoteAsset, log, warn } from './utils.js';
+import { fetchJSON, baseAsset, quoteAsset, log, warn, priceKey } from './utils.js';
 
 // Quote currencies to include when fetching all pairs
 const SUPPORTED_QUOTES = ['USDT', 'USDC', 'EUR', 'USD'];
@@ -164,6 +164,18 @@ export async function fetchKlines(symbol, tf, limit = 500, exId = defaultExchang
   throw new Error(`No data source returned bars for ${symbol} ${tf}`);
 }
 
+// ---- History paging (P1-1) ---------------------------------
+// Older bars strictly BEFORE `before` (epoch sec) via the server's Postgres
+// kline store (which tops itself up from the exchange). Returns ascending bars;
+// an empty array means history is exhausted.
+export async function fetchOlderKlines(symbol, tf, before, limit = 500, exId = defaultExchange()) {
+  const j = await fetchJSON(
+    `/api/klines/history?exchange=${ex(exId).id}&symbol=${encodeURIComponent(symbol)}&tf=${tf}&before=${Math.floor(before)}&limit=${limit}`,
+    {}, 20000,
+  );
+  return (j && Array.isArray(j.bars)) ? j.bars : [];
+}
+
 // Cached wrapper (1 min TTL)
 export async function getCachedKlines(symbol, tf, limit = 500, exId = defaultExchange()) {
   const key = `${exId}:${symbol}:${tf}`;
@@ -256,7 +268,7 @@ export async function fetchPrice(symbol, exId = defaultExchange()) {
 export async function refreshMissingPrices(items) {
   // Tolerate plain string symbols for backward compatibility.
   const norm = items.map(s => typeof s === 'string' ? { symbol: s, exchange: defaultExchange() } : s);
-  const missing = norm.filter(s => !state.prices[s.symbol] || !state.prices[s.symbol].price);
+  const missing = norm.filter(s => { const k = priceKey(s.symbol, s.exchange); return !state.prices[k] || !state.prices[k].price; });
   if (!missing.length) return;
   const found = new Set();
   // Batch only the symbols actually sourced from Binance.
@@ -273,13 +285,31 @@ export async function refreshMissingPrices(items) {
     } catch (e2) { warn('refreshMissingPrices batch', e2.message); }
   }
   // Everything else: fetch individually from the item's own exchange.
-  const remaining = missing.filter(s => !found.has(s.symbol));
+  // (Filtered by exchange, not just symbol — a symbol can be missing on one
+  // exchange but already satisfied by the Binance batch above on another.)
+  const remaining = missing.filter(s => s.exchange !== 'binance' || !found.has(s.symbol));
   await Promise.allSettled(remaining.map(async ({ symbol, exchange }) => {
     try {
       const p = await fetchPrice(symbol, exchange);
-      state.prices[symbol] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
+      state.prices[priceKey(symbol, exchange)] = { price: p.price, open: p.open, change: p.change, chgVal: p.chgVal ?? p.price - p.open };
     } catch {}
   }));
+}
+
+// P2-16: 24h quote volume for Binance-listed watchlist symbols, merged into
+// state.prices[sym].volume. Other exchanges are skipped (no cheap batch
+// endpoint) — their rows simply show no volume figure.
+export async function refreshVolumes(items) {
+  const binanceSyms = items.filter(s => s.exchange === 'binance').map(s => s.symbol);
+  if (!binanceSyms.length) return;
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(binanceSyms));
+    const arr = await fetchJSON(`${EXCHANGES.binance.rest}/ticker/24hr?symbols=${encoded}`);
+    for (const t of (Array.isArray(arr) ? arr : [])) {
+      if (!state.prices[t.symbol]) state.prices[t.symbol] = {};
+      state.prices[t.symbol].volume = +t.quoteVolume;
+    }
+  } catch (e) { warn('refreshVolumes failed', e.message); }
 }
 
 // ---- All tradeable pairs (USDT + USDC + EUR) from the active exchange --------
@@ -498,7 +528,11 @@ export function openKlineStream(symbol, tf, onCandle, exId = defaultExchange()) 
     }
     if (e.id === 'bybit') return openBybitKlineStream(symbol, interval, onCandle);
     if (e.id === 'bitvavo') return openBitvavoKlineStream(toExchangeSymbol(symbol, 'bitvavo'), interval, onCandle);
-    return null; // okx / gate / hyperliquid: no public kline WS wired here yet
+    // P3-17/P4: OKX, Gate.io and KuCoin stream via our own server-side relay
+    // (one shared upstream socket per symbol+tf regardless of client count)
+    // instead of a REST poll. Hyperliquid/etc. still fall back to REST polling.
+    if (e.id === 'okx' || e.id === 'gate' || e.id === 'kucoin') return openRelayKlineStream(e.id, symbol, tf, onCandle);
+    return null;
   } catch (e2) {
     warn('openKlineStream failed', e2.message);
     return null;
@@ -555,6 +589,31 @@ function openBitvavoKlineStream(market, interval, onCandle) {
   return ws;
 }
 
+// P3-17: relay kline stream — connects to our own server (which holds the
+// single upstream socket per symbol+tf) instead of the exchange directly.
+// Mirrors the exact onCandle({time,open,high,low,close,volume,closed})
+// shape every other openXxxKlineStream produces.
+function openRelayKlineStream(exchange, symbol, tf, onCandle) {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/ws/relay`);
+    ws.addEventListener('open', () => {
+      try { ws.send(JSON.stringify({ action: 'subscribe', exchange, symbol, tf })); } catch {}
+    });
+    ws.addEventListener('message', ev => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type !== 'kline' || !m.candle) return;
+      onCandle(m.candle);
+    });
+    ws.addEventListener('error', () => warn('relay kline stream error'));
+    return ws;
+  } catch (e) {
+    warn('openRelayKlineStream failed', e.message);
+    return null;
+  }
+}
+
 // ---- WebSocket: order book stream -------------------------
 export function openOrderBookStream(symbol, onBook, exId = defaultExchange()) {
   closeOrderBookStream();
@@ -580,4 +639,26 @@ export function openOrderBookStream(symbol, onBook, exId = defaultExchange()) {
 
 export function closeOrderBookStream() {
   if (state.orderBookWS) { try { state.orderBookWS.close(); } catch {} state.orderBookWS = null; }
+}
+
+// ---- WebSocket: live trade tape (P2-14 time & sales) -------
+// onTrade({ time(ms), price, qty, side: 'buy'|'sell' }). side is the taker's
+// side, derived from Binance's "buyer is maker" flag.
+export function openTradeStream(symbol, onTrade, exId = defaultExchange()) {
+  const e = ex(exId);
+  if (e.id !== 'binance') return null;
+  try {
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@trade`);
+    ws.onmessage = ev => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.e !== 'trade') return;
+      onTrade({ time: m.T, price: +m.p, qty: +m.q, side: m.m ? 'sell' : 'buy' });
+    };
+    ws.onerror = () => warn('trade stream error');
+    return ws;
+  } catch (e2) {
+    warn('openTradeStream failed', e2.message);
+    return null;
+  }
 }

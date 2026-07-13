@@ -2,7 +2,7 @@
 // MAIN — app entry point
 // ============================================================
 import { state } from './state.js';
-import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, defaultExchange } from './data.js';
+import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, refreshVolumes, defaultExchange } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
@@ -11,18 +11,13 @@ import { initAlerts } from './alerts.js';
 import { initSettings } from './settings.js';
 import { initScanner } from './scanner.js';
 import { initEvents } from './events.js';
-import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
+import { refreshOrderBook, refreshTechInfo, initOrderBookSubtabs } from './orderbook.js';
 import { autosave, loadAutosave } from './persistence.js';
 import { initAuth } from './auth.js';
+import { initReplay } from './replay.js';
+import { initPaper } from './paper.js';
+import { initCommandPalette } from './palette.js';
 import { debounce, log, toast } from './utils.js';
-
-// A symbol charted on a non-Binance exchange has its price owned by that chart
-// (see charts.js startKlineStream), so the Binance mini-ticker must not clobber
-// it — otherwise the charted symbol's watchlist row would disagree with the
-// chart's own price axis.
-function isChartPinned(symbol) {
-  return state.panels.some(p => p.symbol === symbol && p.exchange !== 'binance');
-}
 
 function startPriceStream() {
   // Cancel any pending reconnect so we don't stack duplicate sockets when a
@@ -30,7 +25,9 @@ function startPriceStream() {
   clearTimeout(startPriceStream._reconnect);
   updateWSStatus('');
   const ws = openPriceStream(batch => {
-    if (isChartPinned(batch.symbol)) return;
+    // Binance mini-ticker always writes the plain (Binance) key — a chart on a
+    // different exchange for the same symbol now lives at its own namespaced
+    // key (see priceKey in utils.js), so the two can never collide.
     state.prices[batch.symbol] = { price: batch.price, open: batch.open, change: batch.change, chgVal: batch.chgVal };
   }, onPriceStreamClosed);
   if (ws) {
@@ -47,7 +44,7 @@ function startPriceStream() {
     const pollMissing = async () => {
       const wl = state.watchlists[state.currentWatchlist] || [];
       const items = wl.map(s => ({ symbol: s.symbol, exchange: s.exchange || defaultExchange() }));
-      if (items.length) { await refreshMissingPrices(items); updatePriceRows(); }
+      if (items.length) { await Promise.all([refreshMissingPrices(items), refreshVolumes(items)]); updatePriceRows(); }
     };
     setTimeout(pollMissing, 2000);
     startPriceStream._missingTimer = setInterval(pollMissing, 30000);
@@ -73,7 +70,10 @@ function ensurePriceStream() {
 
 async function init() {
   if (!window.LightweightCharts) {
-    document.getElementById('chartsArea').innerHTML = '<div class="panel-error" style="display:flex"><div><p>Charting library failed to load. Check your connection and reload.</p><button onclick="location.reload()" class="retry-btn">Reload</button></div></div>';
+    const area = document.getElementById('chartsArea');
+    area.innerHTML = '<div class="panel-error" style="display:flex"><div><p>Charting library failed to load. Check your connection and reload.</p><button class="retry-btn">Reload</button></div></div>';
+    // No inline onclick= — a strict CSP (script-src without 'unsafe-inline') blocks inline event handlers.
+    area.querySelector('.retry-btn').addEventListener('click', () => location.reload());
     return;
   }
   setAutosaveFn(autosave);
@@ -87,6 +87,12 @@ async function init() {
   document.documentElement.dataset.theme = state.theme;
   if (!restored) setLayout('l1');
 
+  // P3-25: on a phone/narrow-tablet viewport the right panel becomes a
+  // full-screen overlay (see the mobile media query in style.css) — default
+  // it to hidden so the chart is what a mobile user actually sees first,
+  // same hamburger (☰) button reveals it either way.
+  if (window.innerWidth <= 820) document.getElementById('rightPanel')?.classList.add('collapsed');
+
   initUI();
   initWatchlist();
   initMarketStatus();
@@ -94,6 +100,10 @@ async function init() {
   initSettings();
   initScanner();
   initEvents();
+  initReplay();
+  initOrderBookSubtabs();
+  initPaper();
+  initCommandPalette();
 
   startPriceStream();
   document.addEventListener('restart-price-stream', startPriceStream);
@@ -135,3 +145,10 @@ function initSplitter() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
+
+// P3-25: PWA — register the app-shell service worker (installable, opens
+// instantly, offline fallback). Registered after load so it never competes
+// with first-paint for bandwidth/CPU.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}

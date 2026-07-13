@@ -20,6 +20,12 @@ export function initEvents() {
   const highOnly = document.getElementById('evtHighOnly');
   if (highOnly) highOnly.addEventListener('change', renderEventsPane);
 
+  const refreshBtn = document.getElementById('evtRefreshBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => {
+    refreshBtn.classList.add('spinning');
+    loadEvents().finally(() => refreshBtn.classList.remove('spinning'));
+  });
+
   document.addEventListener('panel-data-loaded', e => {
     const panel = e.detail?.panel;
     if (panel) applyEventMarkers(panel);

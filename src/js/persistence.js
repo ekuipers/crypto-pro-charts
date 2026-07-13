@@ -4,12 +4,14 @@
 import { state } from './state.js';
 import { LEGACY_THEME, THEMES, DEFAULT_THEME } from './constants.js';
 import { debounce, toast, esc, baseAsset, quoteAsset } from './utils.js';
-import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData } from './charts.js';
+import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPanelData, applyPanelViewOptions, renderTfGroup } from './charts.js';
+import { initDrawingsHistory } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
 
-const AUTOSAVE_KEY = 'cryptopro_autosave';
-const LAYOUTS_KEY  = 'cryptopro_layouts';
-const VERSION = 3;
+const AUTOSAVE_KEY  = 'cryptopro_autosave';
+const LAYOUTS_KEY   = 'cryptopro_layouts';
+const TEMPLATES_KEY = 'cryptopro_templates';
+const VERSION = 4;
 
 export function snapshot() {
   return {
@@ -32,7 +34,8 @@ export function snapshot() {
     symColors: state.symColors,
     panels: state.panels.map(p => ({
       symbol: p.symbol, symbolName: p.symbolName, exchange: p.exchange, tf: p.tf,
-      indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color })),
+      chartType: p.chartType || 'candles', scaleMode: p.scaleMode || 0, linkGroup: p.linkGroup || null,
+      indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color, active: i.active !== false })),
       overlays: (p.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange, color: o.color })),
       drawings: p.drawings,
     })),
@@ -124,12 +127,17 @@ export function applyLayoutData(data) {
     if (!pd) return;
     panel.symbol = pd.symbol; panel.symbolName = pd.symbolName; panel.tf = pd.tf;
     panel.exchange = pd.exchange || (state.settings.exchanges?.[0] || state.settings.exchange || 'binance');
+    panel.chartType = pd.chartType || 'candles';
+    panel.scaleMode = pd.scaleMode || 0;
+    panel.linkGroup = pd.linkGroup || null;
+    applyPanelViewOptions(panel);
     panel.drawings = pd.drawings || [];
+    initDrawingsHistory(panel); // P3-24: seed undo/redo from the restored (not empty) state
     panel.overlays = (pd.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange || panel.exchange, color: o.color, series: null, data: [], ws: null }));
     panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(pd.symbol)}<span class="sym-quote">${quoteAsset(pd.symbol)}</span>`;
-    panel.el.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf === pd.tf));
+    renderTfGroup(panel);
     loadPanelData(panel).then(() => {
-      (pd.indicators || []).forEach(ind => addIndicator(panel, ind.defId, ind.params, ind.color));
+      (pd.indicators || []).forEach(ind => addIndicator(panel, ind.defId, ind.params, ind.color, ind.active !== false));
     });
   });
   if (state.panels[0]) setActivePanel(state.panels[0]);
@@ -179,6 +187,39 @@ export function showSaveLayoutModal() {
       if (n) { await saveNamedLayout(n); closeModal(); }
     });
   });
+}
+
+// ---- User-saved indicator templates (P2-12) ----
+export async function getUserTemplates() {
+  try { return await apiGet('/api/templates'); } catch {}
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '{}'); } catch { return {}; }
+}
+
+// `indicators` is an array of { defId, params, color } — see ui.js showTemplatesModal.
+export async function saveUserTemplate(name, indicators) {
+  try {
+    const all = await getUserTemplates();
+    if (Object.keys(all).length >= 20 && !all[name]) { toast('Max 20 saved templates', 'warn'); return; }
+    await apiPut(`/api/templates/${encodeURIComponent(name)}`, indicators);
+    toast(`Saved template "${name}"`, 'info');
+    return;
+  } catch {}
+  try {
+    const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '{}');
+    if (Object.keys(all).length >= 20 && !all[name]) { toast('Max 20 saved templates', 'warn'); return; }
+    all[name] = indicators;
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));
+    toast(`Saved template "${name}"`, 'info');
+  } catch {}
+}
+
+export async function deleteUserTemplate(name) {
+  try { await apiDelete(`/api/templates/${encodeURIComponent(name)}`); return; } catch {}
+  try {
+    const all = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '{}');
+    delete all[name];
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 export async function showLayoutsModal() {

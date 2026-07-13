@@ -5,14 +5,18 @@ import { state, drawingState } from './state.js';
 import { INDICATORS_DEF, INDICATOR_DESC, COLORS, THEMES, EXCHANGES } from './constants.js';
 import { indDef } from './indicators.js';
 import {
-  setLayout, addIndicator, removeIndicator, recomputeIndicators,
+  setLayout, addIndicator, removeIndicator, recomputeIndicators, setIndicatorActive,
   applyThemeToCharts, resizeAllCharts, scheduleAutosave, refreshAllPanels,
 } from './charts.js';
-import { setTool, clearDrawings, exportDrawings, importDrawings } from './drawings.js';
+import { setTool, clearDrawings, exportDrawings, importDrawings, undo, redo } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
-import { showSaveLayoutModal, showLayoutsModal, getNamedLayouts, applyLayoutData } from './persistence.js';
+import {
+  showSaveLayoutModal, showLayoutsModal, getNamedLayouts, applyLayoutData,
+  getUserTemplates, saveUserTemplate, deleteUserTemplate,
+} from './persistence.js';
 import { refreshOrderBook, refreshTechInfo } from './orderbook.js';
 import { setEventMarkersVisible } from './events.js';
+import { refreshPaper } from './paper.js';
 import { esc, clamp, toast } from './utils.js';
 
 const TEMPLATES = {
@@ -37,6 +41,10 @@ const DRAW_TOOLS = [
   { id: 'channel', label: 'Parallel Channel', icon: _I(`<line x1="2" y1="5" x2="14" y2="3" ${_S}/><line x1="2" y1="11" x2="14" y2="9" ${_S}/><line x1="2" y1="5" x2="2" y2="11" stroke="currentColor" stroke-width="1" opacity="0.4"/><line x1="14" y1="3" x2="14" y2="9" stroke="currentColor" stroke-width="1" opacity="0.4"/>`) },
   { id: 'fibret', label: 'Fib Retracement', icon: _I(`<text x="1.5" y="8.5" font-size="5.5" font-weight="700" fill="currentColor" font-family="sans-serif">FIB</text><line x1="1" y1="10.5" x2="15" y2="10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="7.5" x2="15" y2="7.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.5"/><line x1="1" y1="13" x2="15" y2="13" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.5"/>`) },
   { id: 'fibext', label: 'Fib Extension', icon: _I(`<text x="1.5" y="7.5" font-size="5.5" font-weight="700" fill="currentColor" font-family="sans-serif">FIB</text><line x1="1" y1="10" x2="15" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1" y1="12.5" x2="15" y2="12.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.5"/><path d="M12.5 8.5L15 10L12.5 11.5" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/>`) },
+  { id: 'fibtime', label: 'Fib Time Zones', icon: _I(`<line x1="2" y1="2" x2="2" y2="14" stroke="currentColor" stroke-width="1.2" opacity="0.6"/><line x1="5" y1="2" x2="5" y2="14" stroke="currentColor" stroke-width="1.2" opacity="0.6"/><line x1="9" y1="2" x2="9" y2="14" stroke="currentColor" stroke-width="1.2" opacity="0.6"/><line x1="14" y1="2" x2="14" y2="14" stroke="currentColor" stroke-width="1.2" opacity="0.6"/>`) },
+  { id: 'pitchfork', label: 'Pitchfork', icon: _I(`<path d="M2 13L8 3" ${_S}/><path d="M8 3L13 6" ${_S}/><path d="M8 3L13 10" ${_S}/><circle cx="2" cy="13" r="1.3" fill="currentColor"/><circle cx="13" cy="6" r="1.3" fill="currentColor"/><circle cx="13" cy="10" r="1.3" fill="currentColor"/>`) },
+  { id: 'long', label: 'Long Position', icon: _I(`<path d="M2 12L14 4" ${_S} stroke="#26a69a"/><rect x="2" y="4" width="12" height="6" fill="#26a69a" opacity="0.25"/>`) },
+  { id: 'short', label: 'Short Position', icon: _I(`<path d="M2 4L14 12" ${_S} stroke="#ef5350"/><rect x="2" y="8" width="12" height="6" fill="#ef5350" opacity="0.25"/>`) },
   { id: 'text', label: 'Text', icon: _I(`<text x="2.5" y="13" font-size="12" font-weight="700" fill="currentColor" font-family="serif">A</text><line x1="1" y1="14.5" x2="15" y2="14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`) },
   { id: 'measure', label: 'Measure', icon: _I(`<line x1="3" y1="8" x2="13" y2="8" ${_S}/><line x1="3" y1="5.5" x2="3" y2="10.5" ${_S}/><line x1="13" y1="5.5" x2="13" y2="10.5" ${_S}/><path d="M3 8L6 6.5M3 8L6 9.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><path d="M13 8L10 6.5M13 8L10 9.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>`) },
   { id: 'eraser', label: 'Eraser', icon: _I(`<path d="M9.5 2.5L13.5 6.5L8 12H4L2 10L7.5 4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="7.2" y1="5.8" x2="11.2" y2="9.8" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.4"/>`) },
@@ -133,10 +141,13 @@ export function renderIndChips() {
   if (!panel) return;
   panel.indicators.forEach(ind => {
     const def = indDef(ind.defId);
+    const inactive = ind.active === false;
     const chip = document.createElement('div');
-    chip.className = 'ind-chip';
-    chip.innerHTML = `<span class="chip-dot" style="background:${ind.color}"></span><span class="chip-name">${def.name}</span><button class="chip-x">×</button>`;
-    chip.querySelector('.chip-name').addEventListener('click', () => showIndicatorModal(ind.defId, ind, panel));
+    chip.className = inactive ? 'ind-chip inactive' : 'ind-chip';
+    chip.innerHTML = `<span class="chip-dot" style="background:${ind.color}" title="Edit settings"></span><span class="chip-name" title="Click to hide / show">${def.name}</span><button class="chip-x" title="Remove">×</button>`;
+    // Click the name toggles the indicator on/off (dimmed when off); the colored
+    // dot opens settings; × removes it entirely.
+    chip.querySelector('.chip-name').addEventListener('click', () => setIndicatorActive(panel, ind, ind.active === false));
     chip.querySelector('.chip-dot').addEventListener('click', () => showIndicatorModal(ind.defId, ind, panel));
     chip.querySelector('.chip-x').addEventListener('click', () => removeIndicator(panel, ind));
     wrap.appendChild(chip);
@@ -179,8 +190,8 @@ export function showIndicatorModal(defId, existingInd = null, panel = state.acti
 }
 
 // ---------- Layout selector dropdown ----------
-const LAYOUT_NAMES = { l1: 'Single', l2h: '2 Columns', l2v: '2 Rows', l4: '4 Grid' };
-const LAYOUT_ICONS = { l1: '▢', l2h: '▢▢', l2v: '⊟', l4: '⊞' };
+const LAYOUT_NAMES = { l1: 'Single', l2h: '2 Columns', l2v: '2 Rows', l4: '4 Grid', l6: '6 Grid', l8: '8 Grid' };
+const LAYOUT_ICONS = { l1: '▢', l2h: '▢▢', l2v: '⊟', l4: '⊞', l6: '⊞⊞', l8: '⊞⊞⊞' };
 
 export function updateLayoutDropBtn() {
   const btn = document.getElementById('layoutDropBtn');
@@ -264,7 +275,11 @@ function buildDrawingToolbar() {
   const clr = document.createElement('button'); clr.className = 'draw-tool clear'; clr.title = 'Clear all drawings';
   clr.innerHTML = _I(`<path d="M4 6h8v7a1 1 0 01-1 1H5a1 1 0 01-1-1V6z" ${_S}/><path d="M3 6h10" ${_S}/><path d="M6 6V4.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V6" ${_S}/>`);
   clr.addEventListener('click', () => state.activePanel && clearDrawings(state.activePanel));
-  tb.append(exp, imp, clr);
+  // P2-11: magnet — snap new drawing points to the nearest bar's OHLC price.
+  const mag = document.createElement('button'); mag.className = 'draw-tool magnet-tool'; mag.title = 'Magnet: snap to OHLC';
+  mag.innerHTML = _I(`<path d="M4 2v6a4 4 0 008 0V2" ${_S}/><path d="M4 2H2v6a6 6 0 0012 0V2h-2" ${_S}/><line x1="4" y1="4.5" x2="6" y2="4.5" stroke="currentColor" stroke-width="1.2"/><line x1="10" y1="4.5" x2="12" y2="4.5" stroke="currentColor" stroke-width="1.2"/>`);
+  mag.addEventListener('click', () => { drawingState.magnet = !drawingState.magnet; mag.classList.toggle('active', drawingState.magnet); });
+  tb.append(exp, imp, clr, mag);
 
   document.getElementById('drawColor').addEventListener('input', e => { drawingState.color = e.target.value; });
 }
@@ -356,17 +371,50 @@ function showThemeMenu() {
   });
 }
 
-function showTemplatesModal() {
-  const cards = Object.entries(TEMPLATES).map(([name, inds]) =>
+async function showTemplatesModal() {
+  const builtinCards = Object.entries(TEMPLATES).map(([name, inds]) =>
     `<button class="tpl-card" data-name="${esc(name)}"><b>${esc(name)}</b><span>${inds.map(i => indDef(i[0])?.name).join(', ')}</span></button>`).join('');
-  showModal(`<h3>Indicator Templates</h3><div class="tpl-grid">${cards}</div>
-    <div class="modal-actions"><button id="tplClose">Close</button></div>`, m => {
+
+  const userTpls = await getUserTemplates();
+  const userNames = Object.keys(userTpls);
+  const userCards = userNames.length ? userNames.map(name => `
+    <div class="tpl-user-row">
+      <button class="tpl-card tpl-user" data-user="${esc(name)}">
+        <b>${esc(name)}</b><span>${(userTpls[name] || []).map(i => indDef(i.defId)?.name).filter(Boolean).join(', ') || 'Empty'}</span>
+      </button>
+      <button class="tpl-user-del" data-del="${esc(name)}" title="Delete template">✕</button>
+    </div>`).join('') : '<p class="muted">No saved templates yet — set up indicators on a chart, then "Save current as template".</p>';
+
+  showModal(`<h3>Indicator Templates</h3>
+    <div class="tpl-sep">Presets</div>
+    <div class="tpl-grid">${builtinCards}</div>
+    <div class="tpl-sep">My Templates</div>
+    <div class="tpl-user-list">${userCards}</div>
+    <div class="modal-actions"><button id="tplSaveCur">Save current as template</button><button id="tplClose">Close</button></div>`, m => {
     m.querySelector('#tplClose').addEventListener('click', closeModal);
-    m.querySelectorAll('.tpl-card').forEach(c => c.addEventListener('click', () => {
+    m.querySelectorAll('.tpl-card:not(.tpl-user)').forEach(c => c.addEventListener('click', () => {
       const panel = state.activePanel; if (!panel) return;
       TEMPLATES[c.dataset.name].forEach(([id, params]) => addIndicator(panel, id, params));
       closeModal();
     }));
+    m.querySelectorAll('.tpl-user').forEach(c => c.addEventListener('click', () => {
+      const panel = state.activePanel; if (!panel) return;
+      (userTpls[c.dataset.user] || []).forEach(i => addIndicator(panel, i.defId, i.params, i.color));
+      closeModal();
+    }));
+    m.querySelectorAll('.tpl-user-del').forEach(b => b.addEventListener('click', async e => {
+      e.stopPropagation();
+      await deleteUserTemplate(b.dataset.del);
+      showTemplatesModal();
+    }));
+    m.querySelector('#tplSaveCur').addEventListener('click', () => {
+      const panel = state.activePanel;
+      if (!panel || !panel.indicators.length) { toast('Active chart has no indicators to save', 'warn'); return; }
+      const name = prompt('Template name:');
+      if (!name) return;
+      const inds = panel.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color }));
+      saveUserTemplate(name.trim(), inds).then(() => showTemplatesModal());
+    });
   });
 }
 
@@ -379,6 +427,7 @@ function wireRightTabs() {
     document.querySelectorAll('.right-tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === id));
     if (id === 'orderbook') refreshOrderBook();
     if (id === 'techinfo') refreshTechInfo();
+    if (id === 'paper') refreshPaper();
   }));
 }
 
@@ -404,9 +453,26 @@ export function updateWSStatus(s) {
 // ---------- Keyboard ----------
 function onKey(e) {
   if (e.target.matches('input, textarea, select')) return;
+  // Escape always works (even with a modal open, to close it) — everything
+  // else below is a global shortcut that must not fire behind an open modal
+  // (none of the modals opened via showModal()/showThemeMenu()/etc. trap
+  // focus or stop propagation, so without this guard e.g. pressing "t" while
+  // the Settings modal is open silently switches the active drawing tool).
+  if (e.key === 'Escape') { closeModal(); selectTool('select'); state.activePanel?._cancelDraw?.(); return; }
+  if (document.getElementById('modalOverlay')) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); showSaveLayoutModal(); return; }
+  // P3-24: Ctrl/Cmd+Z undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redo (on the active chart's drawings).
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redo(state.activePanel); else undo(state.activePanel);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(state.activePanel); return; }
+  // Single-letter tool shortcuts must not fire alongside a modifier — otherwise
+  // e.g. Ctrl+V (paste), Ctrl+F (find), Ctrl+T/R (tab/refresh) or Alt+Backspace
+  // (back navigation) anywhere on the page also silently switches drawing tools.
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const map = { t: 'trend', h: 'hline', v: 'vline', r: 'rect', f: 'fibret', m: 'measure' };
   if (map[e.key.toLowerCase()]) selectTool(map[e.key.toLowerCase()]);
   if (e.key === 'Backspace' || e.key === 'Delete') selectTool('eraser');
-  if (e.key === 'Escape') { selectTool('select'); state.activePanel?._cancelDraw?.(); closeModal(); }
 }

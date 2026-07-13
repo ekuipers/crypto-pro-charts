@@ -4,7 +4,22 @@
 const BINANCE = 'https://api.binance.com/api/v3';
 
 // Candle interval duration in seconds, keyed by timeframe id.
-export const TF_SECONDS = { '1m':60,'5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'1d':86400,'1w':604800 };
+export const TF_SECONDS = { '1m':60,'5m':300,'15m':900,'30m':1800,'1h':3600,'2h':7200,'4h':14400,'6h':21600,'12h':43200,'1d':86400,'3d':259200,'1w':604800,'1M':2592000 };
+// Ordered list of every selectable timeframe (panel TF dropdown + server aggregation).
+export const TIMEFRAMES = ['1m','5m','15m','30m','1h','2h','4h','6h','12h','1d','3d','1w','1M'];
+// Roadmap: timeframes pinned as always-visible pills in the panel top bar by
+// default (user-adjustable per-account via the star toggle in the TF dropdown).
+export const DEFAULT_FAVORITE_TIMEFRAMES = ['1m','5m','15m','1h','4h','1d'];
+// For timeframes an exchange has no native interval for, the server aggregates
+// from this base timeframe (factor = how many base bars form one target bar).
+export const TF_AGGREGATE = {
+  '2h':  { base: '1h', factor: 2 },
+  '6h':  { base: '1h', factor: 6 },
+  '12h': { base: '1h', factor: 12 },
+  '3d':  { base: '1d', factor: 3 },
+  '1w':  { base: '1d', factor: 7 },
+  '1M':  { base: '1d', factor: 30 },
+};
 const COLORS = ['#2962ff','#f7a600','#9c27b0','#00bcd4','#4caf50','#ff5722','#e91e63','#607d8b','#795548','#009688','#ff9800','#3f51b5'];
 
 const WATCHLISTS_INIT = {
@@ -132,31 +147,33 @@ const INDICATORS_DEF = [
     params:[{ n:'long', l:'Long', d:25, mn:2, mx:100 },{ n:'short', l:'Short', d:13, mn:2, mx:100 }], color:'#9c27b0' },
   { id:'uo',        name:'UO',        full:'Ultimate Oscillator',          type:'oscillator',
     params:[{ n:'p1', l:'Period 1', d:7, mn:1, mx:50 },{ n:'p2', l:'Period 2', d:14, mn:1, mx:100 },{ n:'p3', l:'Period 3', d:28, mn:1, mx:200 }], color:'#f7a600' },
+  { id:'ao',        name:'AO',        full:'Awesome Oscillator',           type:'oscillator',
+    params:[{ n:'fast', l:'Fast', d:5, mn:1, mx:100 },{ n:'slow', l:'Slow', d:34, mn:2, mx:300 }], color:'#26a69a' },
 ];
 
 const EXCHANGES = {
   binance: { id:'binance', name:'Binance', rest:'https://api.binance.com/api/v3', status:'Full: REST + WebSocket',
-    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' } },
+    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','2h':'2h','4h':'4h','6h':'6h','12h':'12h','1d':'1d','3d':'3d','1w':'1w','1M':'1M' } },
   bybit:   { id:'bybit',   name:'Bybit',   rest:'https://api.bybit.com/v5/market', status:'Full: REST + WebSocket',
-    intervals:{ '1m':'1','5m':'5','15m':'15','30m':'30','1h':'60','4h':'240','1d':'D','1w':'W' } },
-  okx:     { id:'okx',     name:'OKX',     rest:'https://www.okx.com/api/v5/market', status:'REST only',
-    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','4h':'4H','1d':'1D','1w':'1W' } },
-  gate:    { id:'gate',    name:'Gate.io', rest:'https://api.gateio.ws/api/v4/spot', status:'REST only',
-    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'7d' } },
+    intervals:{ '1m':'1','5m':'5','15m':'15','30m':'30','1h':'60','2h':'120','4h':'240','6h':'360','12h':'720','1d':'D','1w':'W','1M':'M' } },
+  okx:     { id:'okx',     name:'OKX',     rest:'https://www.okx.com/api/v5/market', status:'REST + WebSocket (server relay)',
+    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','2h':'2H','4h':'4H','6h':'6H','12h':'12H','1d':'1D','3d':'3D','1w':'1W','1M':'1M' } },
+  gate:    { id:'gate',    name:'Gate.io', rest:'https://api.gateio.ws/api/v4/spot', status:'REST + WebSocket (server relay)',
+    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','8h':'8h','1d':'1d','1w':'7d','1M':'30d' } },
   hyperliquid: { id:'hyperliquid', name:'Hyperliquid', rest:'https://api.hyperliquid.xyz/info', status:'Perps only',
-    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d','1w':'1w' } },
-  kucoin: { id:'kucoin', name:'KuCoin', rest:'https://api.kucoin.com/api/v1', status:'REST only',
-    intervals:{ '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','4h':'4hour','1d':'1day','1w':'1week' } },
+    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','2h':'2h','4h':'4h','12h':'12h','1d':'1d','3d':'3d','1w':'1w','1M':'1M' } },
+  kucoin: { id:'kucoin', name:'KuCoin', rest:'https://api.kucoin.com/api/v1', status:'REST + WebSocket (server relay)',
+    intervals:{ '1m':'1min','5m':'5min','15m':'15min','30m':'30min','1h':'1hour','2h':'2hour','4h':'4hour','6h':'6hour','12h':'12hour','1d':'1day','1w':'1week','1M':'1month' } },
   bitstamp: { id:'bitstamp', name:'Bitstamp', rest:'https://www.bitstamp.net/api/v2', status:'REST only',
-    intervals:{ '1m':'60','5m':'300','15m':'900','30m':'1800','1h':'3600','4h':'14400','1d':'86400','1w':'604800' } },
+    intervals:{ '1m':'60','5m':'300','15m':'900','30m':'1800','1h':'3600','2h':'7200','4h':'14400','6h':'21600','12h':'43200','1d':'86400','3d':'259200','1w':'604800' } },
   cryptocompare: { id:'cryptocompare', name:'CryptoCompare', rest:'https://min-api.cryptocompare.com/data/v2', status:'REST only (aggregated)',
-    intervals:{ '1m':'histominute','5m':'histominute|5','15m':'histominute|15','30m':'histominute|30','1h':'histohour','4h':'histohour|4','1d':'histoday','1w':'histoday|7' } },
+    intervals:{ '1m':'histominute','5m':'histominute|5','15m':'histominute|15','30m':'histominute|30','1h':'histohour','2h':'histohour|2','4h':'histohour|4','6h':'histohour|6','12h':'histohour|12','1d':'histoday','3d':'histoday|3','1w':'histoday|7','1M':'histoday|30' } },
   alpaca: { id:'alpaca', name:'Alpaca', rest:'https://data.alpaca.markets/v1beta3/crypto/us', status:'REST only (US crypto, USD-quoted)',
-    intervals:{ '1m':'1Min','5m':'5Min','15m':'15Min','30m':'30Min','1h':'1Hour','4h':'4Hour','1d':'1Day','1w':'1Week' } },
+    intervals:{ '1m':'1Min','5m':'5Min','15m':'15Min','30m':'30Min','1h':'1Hour','2h':'2Hour','4h':'4Hour','6h':'6Hour','12h':'12Hour','1d':'1Day','1w':'1Week','1M':'1Month' } },
   // Bitvavo is EUR-focused: stable-quote symbols (USDT/USDC) map to EUR. Has no
-  // native weekly candle, so '1w' is intentionally omitted and falls back.
+  // native weekly/monthly candle, so those fall back to server aggregation.
   bitvavo: { id:'bitvavo', name:'Bitvavo', rest:'https://api.bitvavo.com/v2', status:'Full: REST + WebSocket (EUR)',
-    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','4h':'4h','1d':'1d' } },
+    intervals:{ '1m':'1m','5m':'5m','15m':'15m','30m':'30m','1h':'1h','2h':'2h','4h':'4h','6h':'6h','12h':'12h','1d':'1d' } },
 };
 
 // Short, plain-language descriptions shown as a hover tooltip in the indicator
@@ -196,9 +213,11 @@ const INDICATOR_DESC = {
   cmf: 'Chaikin Money Flow — volume-weighted accumulation/distribution over N bars.',
   tsi: 'True Strength Index — a double-smoothed momentum oscillator that filters noise.',
   uo: 'Ultimate Oscillator — blends three timeframes into one 0–100 momentum reading.',
+  ao: 'Awesome Oscillator — 5 vs 34-period SMA of the bar midpoint; histogram colored by momentum direction.',
 };
 
-const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4 };
+// P3-26: 6- and 8-chart grids for multi-market monitoring on big screens.
+const LAYOUT_COUNTS = { l1: 1, l2h: 2, l2v: 2, l4: 4, l6: 6, l8: 8 };
 
 // Stablecoin base-asset tickers. Used by the symbol picker's "Hide stablecoins"
 // filter to drop stable/stable pairs (e.g. USDCUSDT, DAIUSDT) that clutter the

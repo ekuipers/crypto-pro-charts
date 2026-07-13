@@ -16,13 +16,21 @@ export const GUEST = '__guest__';
 // Row name under which a user's autosave session-state is stored in `layouts`.
 export const SESSION_NAME = '__session__';
 
-// Prefer a direct (non-pooling) connection for this long-lived server; fall back
-// to the pooled URL or generic names.
+// Prefer the transaction-mode pooler (Supavisor, port 6543) over the
+// "non-pooling" URL. On this Supabase project the "non-pooling" connection
+// string is itself routed through Supavisor's *session* mode, which caps the
+// whole project at a small number of concurrent clients (observed: 15) —
+// every open connection (this server, any other instance, even a Studio SQL
+// tab) holds one of those slots for its entire session. That's what was
+// causing the recurring "sign-in failed — database error": once the project
+// was near that ceiling, any new login attempt's connection got rejected.
+// Transaction-mode pooling hands connections back after each query instead of
+// holding them for the session, so it supports far more concurrent callers.
 const CONN_VARS = [
-  'DBCRYPTOCHARTS_POSTGRES_URL_NON_POOLING',
   'DBCRYPTOCHARTS_POSTGRES_URL',
-  'POSTGRES_URL_NON_POOLING',
+  'DBCRYPTOCHARTS_POSTGRES_URL_NON_POOLING',
   'POSTGRES_URL',
+  'POSTGRES_URL_NON_POOLING',
   'DATABASE_URL',
 ];
 function connString() {
@@ -45,7 +53,10 @@ function getPool() {
     pool = new Pool({
       connectionString: normalizeSsl(connString()),
       max: 5,
-      connectionTimeoutMillis: 12000,
+      // Supabase free-tier projects pause after inactivity and can take well
+      // over 12s to wake on the first request after a nap — that cold start
+      // was being misread as a connection failure. 20s gives it room.
+      connectionTimeoutMillis: 20000,
       idleTimeoutMillis: 30000,
     });
     pool.on('error', (e) => console.error('[db] idle client error:', e.message));
@@ -53,14 +64,23 @@ function getPool() {
   return pool;
 }
 
-// Query with one retry on transient connection errors.
+// Query with retries on transient connection errors. Beyond the known
+// transient error codes, also treat pg-pool's own "timeout exceeded when
+// trying to connect" / "Connection terminated due to connection timeout"
+// (thrown without an error code) as retryable — that's what a Supabase
+// cold-start or brief pool exhaustion looks like from here.
+function isTransient(e) {
+  const codes = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE', '57P01', '08006', '08003'];
+  if (codes.includes(e.code)) return true;
+  return /timeout/i.test(e.message || '');
+}
 async function q(text, params) {
+  const delays = [300, 1500, 4000];
   for (let i = 0; ; i++) {
     try { return await getPool().query(text, params); }
     catch (e) {
-      const transient = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE', '57P01', '08006', '08003'];
-      if (i >= 1 || !transient.includes(e.code)) throw e;
-      await new Promise(r => setTimeout(r, 300));
+      if (i >= delays.length || !isTransient(e)) throw e;
+      await new Promise(r => setTimeout(r, delays[i]));
     }
   }
 }
@@ -179,6 +199,15 @@ export async function init() {
     detail   text not null default ''
   )`);
   await q(`create index if not exists market_events_date_idx on market_events(date)`);
+  // Market status snapshot (Fear & Greed / Altcoin Season / global cap) — was a
+  // local disk file (cache/market-status.json) that doesn't survive a restart
+  // on this host, so every cold start had to re-hit CoinGecko's rate-limited
+  // free API with no fallback. A single Postgres row survives restarts.
+  await q(`create table if not exists market_status_cache (
+    id         int primary key default 1,
+    data       jsonb not null,
+    updated_at timestamptz not null default now()
+  )`);
   console.log('[db] connected; tables ready');
   return true;
 }
@@ -464,4 +493,17 @@ export async function pruneOldEvents() {
 export async function listEvents() {
   const { rows } = await q('select * from market_events order by date asc');
   return rows.map(toEvent);
+}
+
+// ---- Market status cache (single shared snapshot) ---------------------------
+export async function getMarketStatusCache() {
+  const { rows } = await q('select data, updated_at from market_status_cache where id = 1');
+  return rows[0] ? { data: rows[0].data, updatedAt: new Date(rows[0].updated_at).getTime() } : null;
+}
+export async function setMarketStatusCache(data) {
+  await q(
+    `insert into market_status_cache (id, data, updated_at) values (1, $1::jsonb, now())
+     on conflict (id) do update set data = excluded.data, updated_at = now()`,
+    [JSON.stringify(data)],
+  );
 }

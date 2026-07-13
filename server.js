@@ -313,25 +313,48 @@ async function fetchMarketStatus() {
   };
 }
 
+// Prefers the Postgres-backed cache (survives restarts/deploys); falls back to
+// a local disk file if the DB is unavailable/erroring, or isn't configured at
+// all (e.g. local dev) — a DB hiccup here shouldn't take the panel down when a
+// perfectly good file cache could serve the last known snapshot instead.
+async function readMarketStatusCache() {
+  if (db.dbEnabled()) {
+    try {
+      const row = await db.getMarketStatusCache();
+      if (row) return { data: row.data, ageMs: Date.now() - row.updatedAt };
+    } catch (e) { console.error('[market-status] db cache read failed, trying file cache:', e.message); }
+  }
+  const stat = await fs.stat(MARKET_STATUS_CACHE);
+  const data = JSON.parse(await fs.readFile(MARKET_STATUS_CACHE, 'utf8'));
+  return { data, ageMs: Date.now() - stat.mtimeMs };
+}
+async function writeMarketStatusCache(data) {
+  if (db.dbEnabled()) {
+    try { return await db.setMarketStatusCache(data); }
+    catch (e) { console.error('[market-status] db cache write failed, falling back to file cache:', e.message); }
+  }
+  await fs.mkdir(dirname(MARKET_STATUS_CACHE), { recursive: true });
+  await fs.writeFile(MARKET_STATUS_CACHE, JSON.stringify(data));
+}
+
 app.get('/api/market-status', async (_req, res) => {
   try {
-    const stat = await fs.stat(MARKET_STATUS_CACHE);
-    if (Date.now() - stat.mtimeMs < MARKET_STATUS_TTL_MS) {
-      const cached = JSON.parse(await fs.readFile(MARKET_STATUS_CACHE, 'utf8'));
-      return res.json({ ...cached, cached: true });
+    const cached = await readMarketStatusCache();
+    if (cached && cached.ageMs < MARKET_STATUS_TTL_MS) {
+      return res.json({ ...cached.data, cached: true });
     }
   } catch { /* no cache yet */ }
 
   try {
     const data = await fetchMarketStatus();
-    await fs.mkdir(dirname(MARKET_STATUS_CACHE), { recursive: true });
-    await fs.writeFile(MARKET_STATUS_CACHE, JSON.stringify(data));
+    await writeMarketStatusCache(data);
     res.json({ ...data, cached: false });
   } catch (e) {
     try {
-      const cached = JSON.parse(await fs.readFile(MARKET_STATUS_CACHE, 'utf8'));
-      return res.json({ ...cached, cached: true, stale: true });
+      const cached = await readMarketStatusCache();
+      if (cached) return res.json({ ...cached.data, cached: true, stale: true });
     } catch { /* none */ }
+    console.error('[market-status] fetch failed and no cache to fall back on:', e.message || e);
     res.status(502).json({ error: String(e.message || e) });
   }
 });

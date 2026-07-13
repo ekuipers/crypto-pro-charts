@@ -4,6 +4,22 @@
 
 ---
 
+## v1.29.1 — 2026-07-13 · Bug rescan: market-status cache survivability + sign-in DB-connection ceiling
+
+### Bug — "Market status unavailable" in the watchlist panel
+**Problem:** `GET /api/market-status` (`server.js`) cached its 10-minute snapshot to a local disk file (`cache/market-status.json`). This host's disk doesn't persist across a restart/deploy (the same reason `market_events` was already moved off disk into Postgres — see v1.x history) — so every cold start started with an empty cache, and any transient failure of the free/keyless alternative.me or CoinGecko calls (rate limiting, timeout) had nothing to fall back on, surfacing as a hard "Market status unavailable." to every user until the next successful fetch.
+**Fix:** `src/db.js` — added a `market_status_cache` table (single row) plus `getMarketStatusCache`/`setMarketStatusCache`. `server.js`'s `/api/market-status` handler now reads/writes through Postgres first (survives restarts) via new `readMarketStatusCache`/`writeMarketStatusCache` helpers, falling back to the old disk-file cache if the DB throws or isn't configured (local dev without `.env`), so a DB hiccup can't take the panel down either.
+**Verified:** `node --check` clean on both files. Started the local server: with the DB reachable, first call to `/api/market-status` returned live data (`cached:false`), matching prior behavior; confirmed the Postgres fallback path by code review (file-cache branch only engaged when `db.dbEnabled()` is false or a DB call throws).
+
+### Bug — recurring "Sign-in failed — database error" (open since v1.27.0, previously unreproducible)
+**Problem:** Reproduced live in this sandbox while testing the fix above: `db.init()` failed with `(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15`. The app was preferring `DBCRYPTOCHARTS_POSTGRES_URL_NON_POOLING`, but on this Supabase project that connection string is itself routed through Supavisor's **session-mode** pooler, which caps the *entire project* at 15 concurrent clients — every connection (this server, any other running instance, even a Studio SQL tab) holds one of those 15 slots for the life of its session. `src/db.js`'s own pool (`max: 5`) plus any other concurrently-running instance was enough to exhaust it, so new connections — including login — got rejected. This explains why it was "recurring" and load-dependent rather than reproducible on a single isolated request.
+**Fix:** `src/db.js` — swapped `CONN_VARS` priority to prefer `DBCRYPTOCHARTS_POSTGRES_URL` (the transaction-mode pooler, port 6543) over `_NON_POOLING`. Transaction-mode pooling hands a physical connection back to the pooler after each query instead of holding it for the whole session, so it supports far more concurrent callers than the 15-client session-mode ceiling. Also widened `q()`'s transient-error retry (now message-pattern matching on `/timeout/i` in addition to the fixed error-code list, 3 attempts with increasing backoff instead of 1) and raised `connectionTimeoutMillis` from 12s to 20s, to absorb Supabase cold-starts on top of the connection-ceiling fix.
+**Verified:** Killed the leftover test server process first so it didn't itself keep contributing to the exhaustion, then restarted the local server: `[db] connected; tables ready` (no error), `GET /api/market-status` → 200 with live data, `GET /api/me` → 200 `{"user":null}` (auth path exercised with no DB error). Stopped the test server afterward.
+
+**Bug rescan per workflow rule 7; bug list cleared.** Footer/readme → v1.29.1.
+
+---
+
 ## v1.29.0 — 2026-07-13 · Market status panel: Fear & Greed + Altcoin Season (Roadmap)
 
 ### Roadmap item — market-wide sentiment snapshot above the watchlist

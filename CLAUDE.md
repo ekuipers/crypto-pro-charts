@@ -26,5 +26,4 @@ Add the creator to the footer of the website.
 _No open roadmap items. Shipped items move to `memory.md` (see v1.28.0)._
 
 ## Bugs
-
-_No open bugs. Fixed bugs are logged in `memory.md`._
+_None open. See `memory.md` v1.29.1 for the market-status and sign-in database-error fixes._

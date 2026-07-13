@@ -4,7 +4,7 @@
 
 ---
 
-## v1.18.0 — 2026-07-13 · Market status panel: Fear & Greed + Altcoin Season (Roadmap)
+## v1.29.0 — 2026-07-13 · Market status panel: Fear & Greed + Altcoin Season (Roadmap)
 
 ### Feature — market-wide sentiment snapshot above the watchlist
 **Problem:** The roadmap asked for a section in the watchlist area showing overall market status — Fear & Greed Index, Altcoin Season, and whatever else is useful — similar to CoinMarketCap's dashboard widgets.

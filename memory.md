@@ -4,6 +4,24 @@
 
 ---
 
+## v1.18.0 — 2026-07-13 · Market status panel: Fear & Greed + Altcoin Season (Roadmap)
+
+### Feature — market-wide sentiment snapshot above the watchlist
+**Problem:** The roadmap asked for a section in the watchlist area showing overall market status — Fear & Greed Index, Altcoin Season, and whatever else is useful — similar to CoinMarketCap's dashboard widgets.
+
+**Fix:**
+- New backend route `GET /api/market-status` (`server.js`) proxies and caches (10-min TTL, single JSON file at `cache/market-status.json`, stale-cache fallback on upstream failure — same pattern as the existing `/api/klines` proxy):
+  - **Fear & Greed Index** from `alternative.me` (value, classification, day-over-day delta).
+  - **Altcoin Season Index**, computed server-side from CoinGecko's free `/coins/markets` endpoint (no API key): % of the top 50 coins by market cap (excluding BTC and stablecoins) that outperformed BTC over the trailing 30 days. ≥75 = "Altcoin Season", ≤25 = "Bitcoin Season", else "Neutral". (CoinGecko's free tier doesn't expose a 90-day change field, so 30d is used and labelled as such — the classic methodology's threshold logic is unchanged.)
+  - **Global market snapshot** from CoinGecko `/global`: total market cap, 24h volume, BTC/ETH dominance, market-cap 24h change.
+- New frontend module `src/js/marketstatus.js` (`initMarketStatus`, wired into `main.js`) fetches `/api/market-status` on load and every 10 minutes, rendering two labelled meter bars (Fear & Greed, Altcoin Season, color-coded by band) plus a 3-up stat row (BTC dominance, market cap ± 24h change, 24h volume).
+- New `#marketStatus` container in `index.html` at the top of the Watchlist tab, above the symbol search box; styled in `style.css` (`.market-status`, `.ms-*`) using the app's existing theme variables so it matches all 6 themes automatically.
+- Footer version bumped to v1.18.0.
+
+**Verification:** `node --check` passed on `server.js`, `marketstatus.js`, `main.js`. Started the local server, confirmed `GET /api/market-status` returns live Fear & Greed / Altcoin Season / global data on first call (`cached:false`) and a cached response (`cached:true`) on the next call within the TTL window; confirmed `index.html` and `/js/marketstatus.js` serve with HTTP 200.
+
+---
+
 ## v1.17.0 — 2026-06-22 · Refresh-all-charts button in the top bar (Roadmap)
 
 ### Feature — one-click refresh of every chart

@@ -191,6 +191,97 @@ app.get('/api/events', async (_req, res) => {
   }
 });
 
+// ---- Market status: Fear & Greed, Altcoin Season, global market snapshot ---
+// Sourced from alternative.me (Fear & Greed) and CoinGecko's free /global and
+// /coins/markets endpoints (no API key). Cached to a single disk file since
+// this is one shared snapshot, not per-symbol — mirrors the kline cache
+// pattern above but with a longer TTL matched to how slowly these move.
+const MARKET_STATUS_CACHE = join(__dirname, 'cache', 'market-status.json');
+const MARKET_STATUS_TTL_MS = 10 * 60_000;
+const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'FDUSD', 'TUSD', 'USDP', 'USDD', 'PYUSD', 'EURT', 'GUSD', 'USDE']);
+
+function classifyAltcoinSeason(idx) {
+  if (idx >= 75) return 'Altcoin Season';
+  if (idx <= 25) return 'Bitcoin Season';
+  return 'Neutral';
+}
+
+async function fetchMarketStatus() {
+  const [fngRes, globalRes, marketsRes] = await Promise.all([
+    fetch('https://api.alternative.me/fng/?limit=2', { signal: AbortSignal.timeout(10_000) }),
+    fetch('https://api.coingecko.com/api/v3/global', { signal: AbortSignal.timeout(10_000) }),
+    fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&price_change_percentage=30d&sparkline=false', { signal: AbortSignal.timeout(10_000) }),
+  ]);
+
+  const fng = fngRes.ok ? await fngRes.json() : null;
+  const glob = globalRes.ok ? await globalRes.json() : null;
+  const markets = marketsRes.ok ? await marketsRes.json() : [];
+
+  const fgToday = fng?.data?.[0];
+  const fgYesterday = fng?.data?.[1];
+
+  const btc = Array.isArray(markets) ? markets.find(c => c.symbol?.toLowerCase() === 'btc') : null;
+  const btcChange30d = btc?.price_change_percentage_30d_in_currency;
+
+  let altcoinSeason = null;
+  if (typeof btcChange30d === 'number' && Array.isArray(markets)) {
+    const pool = markets.filter(c => c.symbol?.toLowerCase() !== 'btc' && !STABLECOIN_SYMBOLS.has(String(c.symbol).toUpperCase()));
+    const withChange = pool.filter(c => typeof c.price_change_percentage_30d_in_currency === 'number');
+    if (withChange.length) {
+      const outperforming = withChange.filter(c => c.price_change_percentage_30d_in_currency > btcChange30d).length;
+      altcoinSeason = {
+        index: Math.round((outperforming / withChange.length) * 100),
+        window: '30d',
+        sample: withChange.length,
+      };
+      altcoinSeason.classification = classifyAltcoinSeason(altcoinSeason.index);
+    }
+  }
+
+  const g = glob?.data;
+
+  return {
+    fearGreed: fgToday ? {
+      value: Number(fgToday.value),
+      classification: fgToday.value_classification,
+      previousValue: fgYesterday ? Number(fgYesterday.value) : null,
+      updatedAt: Number(fgToday.timestamp) * 1000,
+    } : null,
+    altcoinSeason,
+    global: g ? {
+      totalMarketCapUsd: g.total_market_cap?.usd ?? null,
+      totalVolumeUsd: g.total_volume?.usd ?? null,
+      btcDominance: g.market_cap_percentage?.btc ?? null,
+      ethDominance: g.market_cap_percentage?.eth ?? null,
+      marketCapChange24h: g.market_cap_change_percentage_24h_usd ?? null,
+    } : null,
+    fetchedAt: Date.now(),
+  };
+}
+
+app.get('/api/market-status', async (_req, res) => {
+  try {
+    const stat = await fs.stat(MARKET_STATUS_CACHE);
+    if (Date.now() - stat.mtimeMs < MARKET_STATUS_TTL_MS) {
+      const cached = JSON.parse(await fs.readFile(MARKET_STATUS_CACHE, 'utf8'));
+      return res.json({ ...cached, cached: true });
+    }
+  } catch { /* no cache yet */ }
+
+  try {
+    const data = await fetchMarketStatus();
+    await fs.mkdir(dirname(MARKET_STATUS_CACHE), { recursive: true });
+    await fs.writeFile(MARKET_STATUS_CACHE, JSON.stringify(data));
+    res.json({ ...data, cached: false });
+  } catch (e) {
+    try {
+      const cached = JSON.parse(await fs.readFile(MARKET_STATUS_CACHE, 'utf8'));
+      return res.json({ ...cached, cached: true, stale: true });
+    } catch { /* none */ }
+    res.status(502).json({ error: String(e.message || e) });
+  }
+});
+
 // ---- Session & named layout persistence (Postgres, scoped per user) --------
 // Each request's data belongs to the signed-in account, or the GUEST uid when
 // anonymous — exactly the scoping the old per-user folders provided.

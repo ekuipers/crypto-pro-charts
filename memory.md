@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-07-16 · Diagnosis: "Info pane still not updating" was a deployment desync, not a code bug
+
+User reported the v1.30.1 fix still didn't work in production (`https://crypto-charting-pro.vercel.app/`). Loaded the live site with browser tools and fetched the served JS directly (`cache: 'no-store'`, confirmed `x-vercel-cache: MISS` so this is straight from origin, not a stale CDN/browser cache): `/js/orderbook.js` and `/js/main.js` contain **none** of the v1.30.0/v1.30.1 changes — no `id="tiPrice"`, no `updateTechInfoPrice`, no `redrawAllPanels`. Yet the served `index.html` footer correctly read `v1.30.1`.
+
+**Conclusion:** the deployment is out of sync with itself — the HTML shell updated but the JS bundle serving `/js/*` didn't (likely deploying from a different checkout than `C:\Claude\Projects\crypto-pro-charts`, or a stale build). The source in this project folder is correct as of v1.30.1; there was no remaining logic bug to chase. Told the user to verify the Vercel project deploys from this same folder/repo and to redeploy (ideally without build cache), then confirm via dev tools that `/js/orderbook.js` contains `tiPrice` before re-testing.
+
+**Lesson for future sessions:** when a shipped fix "still doesn't work" on a deployed environment, check the actually-served JS (`fetch(path, {cache:'no-store'})` + inspect headers) before assuming the logic is wrong — a version string in the footer is not proof the rest of the bundle deployed.
+
+---
+
+## v1.30.1 — 2026-07-16 · Bug fix: Info pane price genuinely still wasn't live
+
+**Reported:** user tested the v1.30.0 "live Info pane price" fix and it was still frozen.
+
+**Problem:** the v1.30.0 fix (`updateTechInfoPrice()` in `src/js/orderbook.js`) only ever read from `state.prices`, which is written exclusively by the Binance `!miniTicker@arr` WebSocket in `data.js`/`main.js`. That stream is Binance-only and only forwards symbols quoted in USDT/USDC/EUR/USD (`SUPPORTED_QUOTES`). Any chart panel on a non-Binance exchange (Bybit/OKX/Gate/KuCoin/Bitstamp/Bitvavo/CryptoCompare/Alpaca), or a Binance pair quoted in something else (e.g. `ETHBTC`), never received a single write to `state.prices` after the one-time REST fetch `refreshTechInfo()` does on tab-open/symbol-change — so the pane's price was correct once, then simply never touched again for the rest of the session. On a real chart that isn't the default Binance/USDT pair, this reads exactly as "still not updating."
+
+**Fix:** `updateTechInfoPrice()` still prefers the free WS-cache patch when it's actually being kept fresh (Binance + a WS-covered quote), but now falls back to a throttled (4s) direct `fetchPrice(symbol, exchange)` REST call — the same helper `refreshTechInfo()`/`refreshOrderBook()` already use for every exchange — whenever the cache isn't covering this panel. The REST result is written back into `state.prices` (so the paper-trade chart overlays and watchlist benefit too) and patches `#tiPrice`/`#tiChg` directly. In-flight/throttle guards (`_tiRestLast`, `_tiRestInFlight`) keep this from firing more than once per ~4s regardless of the 1.5s tick cadence.
+
+**Files:** `src/js/orderbook.js`.
+
+**Verified:** re-read the full updated function and its call site in `main.js` end-to-end; traced every branch (WS-covered Binance pair, non-Binance exchange, Binance pair with an uncovered quote, tab not active, panel/symbol changed mid-flight) against the actual `SUPPORTED_QUOTES`/`openPriceStream` logic in `data.js`. **Could not exercise this in a live browser this session** — same environment limitation as v1.30.0 (see below); ask the user to hard-refresh (bypass any cached JS) and confirm on both a Binance/USDT chart and a non-Binance chart. If it's still stale after a hard refresh, the next thing to check is exactly which symbol/exchange was open when it froze.
+
+**Bug logged and fixed per workflow rule 7; bug list cleared.** Footer → v1.30.1.
+
+---
+
+## v1.30.0 — 2026-07-16 · Roadmap: live Info-pane price + leveraged paper trading on-chart
+
+### Roadmap item 1 — Info pane price wasn't updating live like the watchlist
+**Problem:** the "Info" right-tab (`techinfo`, built by `refreshTechInfo()` in `src/js/orderbook.js`) only fetched/rendered the symbol's price once — on initial tab-open or on an `active-symbol-changed` event (`src/js/ui.js`). Unlike the watchlist, which repaints every ~1.5s off the live mini-ticker WS via `updatePriceRows()` (`main.js`), the Info pane's price and 24h-change figures just sat frozen between symbol switches.
+**Fix:** added `id="tiPrice"`/`id="tiChg"` to the pane's price/change markup, and a new lightweight `updateTechInfoPrice()` export in `orderbook.js` that patches just those two elements straight from the already-populated `state.prices` cache (no re-fetch, no re-render of the RSI/seasonals/52-week-range sections below it). Wired into the same 1.5s interval in `main.js` (`startPriceStream._timer`) that already drives `updatePriceRows()`, so the Info pane price now ticks live at the same cadence as the watchlist, for free.
+**Files:** `src/js/orderbook.js`, `src/js/main.js`.
+
+### Roadmap item 2 — leveraged futures-style paper trades, shown as long/short positions on the chart
+**Problem:** the Paper pane (`src/js/paper.js`) only supported unleveraged spot-style paper trades (qty + entry, optional stop/target) with no leverage, no liquidation modeling, and open positions were never reflected on the chart itself — only the manual chart drawing tool could produce a "long/short" visual, and only in the *other* direction (drawing → logged as a trade via `logDrawingAsTrade`), never trade → chart.
+**Fix:**
+- **`src/db.js`** — `paper_trades` gets `leverage` (default 1) and `liquidation_price` columns; added as idempotent `alter table ... add column if not exists` so existing deployments backfill safely. `toPaperTrade`/`createPaperTrade` updated accordingly.
+- **`server.js`** — `POST /api/paper` now accepts `leverage` (clamped 1–125) and computes `liquidationPrice` server-side via `calcLiquidationPrice()` — an isolated-margin estimate (`entry × (1 ∓ 1/leverage ± maintenanceMarginRate)`, MMR = 0.5%) explicitly documented as an approximation (no fees/funding/tiered maintenance brackets — real exchanges are more complex). Leverage 1 (spot) always yields `liquidationPrice: null`.
+- **`src/js/paper.js`** — New Trade modal gained a Leverage field with a live client-side liquidation-price preview (`estLiquidationPrice`, mirrors the server formula). Open-position rows now show the leverage badge, TP/SL/liquidation levels, and margin (`qty×entry/leverage`); a row whose live price has crossed its liquidation level gets a `liquidated` style, a warning banner, and a one-click "Close at liquidation" action (`closeAtLiquidation`) that settles the trade at that price via the existing close endpoint — there's no background liquidation engine, so this is a manual-confirm safety net rather than an automatic force-close. `refreshPaper()` now always fetches the trade cache (previously gated behind the Paper tab being active) and calls the new `redrawAllPanels()` so chart overlays stay live regardless of which right-tab is open; `initPaper()` loads the cache at startup and polls every 30s.
+- **`src/js/drawings.js`** — new `drawPaperPositions()`, called at the end of `renderDrawings()` for every panel. For each open trade matching `panel.symbol`+`panel.exchange` it draws a solid entry line (green/red by side) with a live P&L badge, plus dashed TP/SL/liquidation level lines spanning the chart width. Deliberately **not** stored in `panel.drawings` — these are a read-only live view of `paper.js`'s cache (via new export `openTradesForSymbol`), so they're never selectable, draggable, erasable, or persisted by the drawing-tool/autosave code paths, avoiding any risk of clobbering the user's actual drawings.
+- **`src/js/charts.js`** — new `redrawAllPanels()` export (repaints every panel's drawing overlay); **`src/js/main.js`** calls it on the existing 1.5s price tick alongside `updatePriceRows()`/`updateTechInfoPrice()`, so position lines and their live P&L move with the price stream.
+- **`public/css/style.css`** — `.paper-lev`, `.paper-row-meta`, `.paper-row.liquidated`, `.paper-liq-warning`, `.paper-liq-close-btn`, `.pt-liq-preview`.
+**Not implemented (scope note):** no automatic server-side liquidation engine (would need a background price-watching job) — liquidation is detected client-side and requires the user's one-click confirm to settle. Position lines render for the panel's *base* symbol only, not overlay symbols.
+**Verified:** every touched file re-read in full after editing and manually traced for syntax/logic correctness (matching brace/paren counts, insert-column-count vs. placeholder-count in the new SQL, import/export names cross-checked at both ends). **Could not run `node --check`, `npm test`, or start the local server this session** — this sandbox's shell (`mcp__workspace__bash`) mounts a stale, already-corrupted snapshot of this project frozen at 2026-07-12 00:53 (confirmed via `stat`: mtime doesn't move, and the file tail is truncated mid-statement even for files this session never touched), disconnected from the live filesystem the Read/Write/Edit tools operate on — re-requesting the folder connection didn't refresh it. Flagging this explicitly rather than claiming live verification; the user should run `node --check` on the changed files and click through both features locally before trusting this in production. Git commit/push were skipped for the same reason (the shell can't see or push the real changes) — **the user needs to commit and push these changes themselves.**
+
+**Roadmap items implemented per workflow rule 7; roadmap cleared.** Footer → v1.30.0.
+
+---
+
 ## v1.28.0 — 2026-07-12 · Roadmap: per-chart timeframe dropdown + favorite timeframes
 
 ### Roadmap item — timeframe selectors in a dropdown + pinnable favorites shown permanently in the chart top bar

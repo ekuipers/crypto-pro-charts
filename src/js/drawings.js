@@ -5,8 +5,8 @@
 // configuration popover (color / width / line style / coordinates).
 // ============================================================
 import { state, drawingState } from './state.js';
-import { fmtPrice } from './utils.js';
-import { logDrawingAsTrade } from './paper.js';
+import { fmtPrice, priceKey } from './utils.js';
+import { logDrawingAsTrade, openTradesForSymbol } from './paper.js';
 import { scheduleAutosave } from './charts.js';
 
 const FIB_RET = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -222,6 +222,12 @@ export function renderDrawings(panel, preview) {
   const all = preview ? [...panel.drawings, preview] : panel.drawings;
   for (const d of all) drawOne(panel, ctx, d, w, h);
 
+  // Roadmap (2026-07-16): paint open paper-trade positions from the Paper pane
+  // as long/short lines on the chart — separate from user drawings (not part
+  // of panel.drawings, so they're never selectable/persisted/erased by the
+  // drawing tools) but rendered on the same canvas/pass.
+  drawPaperPositions(panel, ctx, w, h);
+
   // Lock badges sit on top of every locked shape so locked state is visible at a glance.
   for (const d of panel.drawings) if (d.locked) drawLockBadge(panel, ctx, d);
 
@@ -229,6 +235,74 @@ export function renderDrawings(panel, preview) {
   if (sel && drawingState.selectedPanel === panel && panel.drawings.includes(sel) && !sel.locked) drawHandles(panel, ctx, sel);
 
   refreshConfigCoords();
+}
+
+// Roadmap (2026-07-16): render each open paper trade on `panel.symbol` as a
+// long/short position — an entry line plus dashed take-profit/stop-loss/
+// liquidation levels spanning the full chart width, with a live P&L badge.
+// Read-only: unlike panel.drawings these aren't draggable/selectable, and
+// aren't part of autosave — they're a live view of paper.js's trade cache.
+function drawPaperPositions(panel, ctx, w, h) {
+  const trades = openTradesForSymbol(panel.symbol, panel.exchange);
+  if (!trades.length) return;
+  const curPrice = state.prices[priceKey(panel.symbol, panel.exchange)]?.price;
+
+  ctx.save();
+  for (const t of trades) {
+    const isLong = t.side === 'long';
+    const col = isLong ? '#26a69a' : '#ef5350';
+    const yEntry = panel.candleSeries.priceToCoordinate(t.entryPrice);
+    if (yEntry == null) continue;
+
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(0, yEntry); ctx.lineTo(w, yEntry); ctx.stroke();
+
+    let pnlTxt = '';
+    if (curPrice != null) {
+      const dir = isLong ? 1 : -1;
+      const abs = (curPrice - t.entryPrice) * dir * t.qty;
+      const pct = ((curPrice - t.entryPrice) / t.entryPrice) * dir * 100;
+      const up = abs >= 0;
+      pnlTxt = `  ${up ? '+' : ''}${fmtPrice(abs)} (${up ? '+' : ''}${pct.toFixed(2)}%)`;
+    }
+    const levTag = t.leverage > 1 ? ` ${t.leverage}×` : '';
+    const label = `${isLong ? 'LONG' : 'SHORT'}${levTag}  ${fmtPrice(t.entryPrice)}${pnlTxt}`;
+    ctx.font = 'bold 11px sans-serif';
+    const tw = ctx.measureText(label).width;
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = col;
+    ctx.fillRect(4, yEntry - 15, tw + 10, 15);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, 9, yEntry - 3);
+
+    if (t.target != null) drawPositionLevel(panel, ctx, w, t.target, '#26a69a', `TP ${fmtPrice(t.target)}`, false);
+    if (t.stop != null) drawPositionLevel(panel, ctx, w, t.stop, '#ef5350', `SL ${fmtPrice(t.stop)}`, false);
+    if (t.liquidationPrice != null) drawPositionLevel(panel, ctx, w, t.liquidationPrice, '#ff9800', `LIQ ${fmtPrice(t.liquidationPrice)}`, true);
+  }
+  ctx.restore();
+}
+
+// A dashed horizontal level line (TP/SL/liquidation) with a right-aligned label.
+function drawPositionLevel(panel, ctx, w, price, color, label, thick) {
+  const y = panel.candleSeries.priceToCoordinate(price);
+  if (y == null) return;
+  ctx.setLineDash([4, 3]);
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = thick ? 1.6 : 1;
+  ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = '10px sans-serif';
+  const tw = ctx.measureText(label).width;
+  ctx.fillStyle = color;
+  ctx.fillRect(w - tw - 10, y - 12, tw + 8, 13);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(label, w - tw - 6, y - 2);
 }
 
 // A small padlock glyph drawn at the shape's primary anchor to mark it as locked.

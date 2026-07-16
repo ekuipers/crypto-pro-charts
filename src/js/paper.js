@@ -6,9 +6,36 @@ import { state } from './state.js';
 import { fmtPrice, fmtPct, esc, toast, baseAsset, quoteAsset, priceKey } from './utils.js';
 import { showModal, closeModal } from './alerts.js';
 import { defaultExchange } from './data.js';
+import { redrawAllPanels } from './charts.js';
 
 let pnlTimer = null;
+let paperPollTimer = null;
 let cache = [];
+
+// Isolated-margin liquidation-price estimate, mirroring the server-side calc
+// in server.js (calcLiquidationPrice) — used for the live preview in the New
+// Trade modal only; the authoritative value comes back from the API.
+const LIQUIDATION_MMR = 0.005;
+function estLiquidationPrice(side, entryPrice, leverage) {
+  if (!(leverage > 1) || !Number.isFinite(entryPrice) || entryPrice <= 0) return null;
+  const liq = side === 'short'
+    ? entryPrice * (1 + 1 / leverage - LIQUIDATION_MMR)
+    : entryPrice * (1 - 1 / leverage + LIQUIDATION_MMR);
+  return liq > 0 ? liq : null;
+}
+
+// Open trades matching a chart panel's symbol+exchange — the integration
+// point for drawings.js to paint long/short position lines on the chart.
+export function openTradesForSymbol(symbol, exchange) {
+  const ex = exchange || 'binance';
+  return cache.filter(t => t.status === 'open' && t.symbol === symbol && (t.exchange || 'binance') === ex);
+}
+
+// True once price has traded through a leveraged trade's liquidation level.
+function isLiquidated(t, curPrice) {
+  if (t.liquidationPrice == null || curPrice == null) return false;
+  return t.side === 'long' ? curPrice <= t.liquidationPrice : curPrice >= t.liquidationPrice;
+}
 
 async function apiGet(path) { const r = await fetch(path); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
 async function apiSend(method, path, data) {
@@ -20,13 +47,20 @@ async function apiDelete(path) { const r = await fetch(path, { method: 'DELETE' 
 
 export function initPaper() {
   document.getElementById('paperNewBtn')?.addEventListener('click', showNewTradeModal);
+  // Load open positions at startup (not gated on the Paper tab being active)
+  // so the chart pane can paint long/short position lines immediately —
+  // roadmap: "Add the positions created in the paper pane to the chart pane".
+  refreshPaper();
+  if (!paperPollTimer) paperPollTimer = setInterval(refreshPaper, 30000);
 }
 
 export async function refreshPaper() {
-  if (state.rightTab !== 'paper') { if (pnlTimer) { clearInterval(pnlTimer); pnlTimer = null; } return; }
   try { cache = await apiGet('/api/paper'); } catch { cache = []; }
-  render();
-  if (!pnlTimer) pnlTimer = setInterval(render, 2000);
+  if (state.rightTab === 'paper') {
+    render();
+    if (!pnlTimer) pnlTimer = setInterval(render, 2000);
+  } else if (pnlTimer) { clearInterval(pnlTimer); pnlTimer = null; }
+  redrawAllPanels();
 }
 
 function pnl(t, curPrice) {
@@ -49,22 +83,39 @@ function render() {
   const open = cache.filter(t => t.status === 'open');
   const closed = cache.filter(t => t.status === 'closed');
 
-  openList.innerHTML = open.length ? open.map(t => `
-    <div class="paper-row">
+  openList.innerHTML = open.length ? open.map(t => {
+    const curPrice = state.prices[priceKey(t.symbol, t.exchange)]?.price;
+    const lev = t.leverage || 1;
+    const liq = isLiquidated(t, curPrice);
+    const margin = lev > 1 ? (t.qty * t.entryPrice) / lev : null;
+    return `
+    <div class="paper-row${liq ? ' liquidated' : ''}">
       <div class="paper-row-main">
         <span class="paper-sym">${esc(baseAsset(t.symbol))}<span class="sym-quote-tag">${esc(quoteAsset(t.symbol))}</span></span>
         <span class="paper-side ${t.side}">${t.side.toUpperCase()}</span>
+        ${lev > 1 ? `<span class="paper-lev">${lev}×</span>` : ''}
         <span class="paper-qty">×${t.qty}</span>
       </div>
       <div class="paper-row-sub">
         <span>Entry ${fmtPrice(t.entryPrice)}</span>
-        ${pnlHtml(pnl(t, state.prices[priceKey(t.symbol, t.exchange)]?.price))}
+        ${pnlHtml(pnl(t, curPrice))}
       </div>
+      ${(t.target != null || t.stop != null || t.liquidationPrice != null || margin != null) ? `
+      <div class="paper-row-meta">
+        ${t.target != null ? `<span class="muted">TP ${fmtPrice(t.target)}</span>` : ''}
+        ${t.stop != null ? `<span class="muted">SL ${fmtPrice(t.stop)}</span>` : ''}
+        ${t.liquidationPrice != null ? `<span class="muted">Liq ${fmtPrice(t.liquidationPrice)}</span>` : ''}
+        ${margin != null ? `<span class="muted">Margin ${fmtPrice(margin)}</span>` : ''}
+      </div>` : ''}
+      ${liq ? '<div class="paper-liq-warning">⚠ Price crossed the liquidation level (estimate)</div>' : ''}
       <div class="paper-row-actions">
-        <button class="paper-close-btn" data-id="${t.id}">Close</button>
+        ${liq
+          ? `<button class="paper-liq-close-btn" data-id="${t.id}">Close at liquidation</button>`
+          : `<button class="paper-close-btn" data-id="${t.id}">Close</button>`}
         <button class="paper-del-btn" data-id="${t.id}" title="Delete">✕</button>
       </div>
-    </div>`).join('') : '<div class="muted">No open positions.</div>';
+    </div>`;
+  }).join('') : '<div class="muted">No open positions.</div>';
 
   journalList.innerHTML = closed.length ? closed.map(t => `
     <div class="paper-row journal">
@@ -88,6 +139,7 @@ function render() {
 
 function wireRows() {
   document.querySelectorAll('.paper-close-btn').forEach(b => b.addEventListener('click', () => closeTrade(b.dataset.id)));
+  document.querySelectorAll('.paper-liq-close-btn').forEach(b => b.addEventListener('click', () => closeAtLiquidation(b.dataset.id)));
   document.querySelectorAll('.paper-del-btn').forEach(b => b.addEventListener('click', () => deleteTrade(b.dataset.id)));
   document.querySelectorAll('.paper-note-btn').forEach(b => b.addEventListener('click', () => editNote(b.dataset.id)));
 }
@@ -105,6 +157,19 @@ async function closeTrade(id) {
   if (!Number.isFinite(exitPrice) || exitPrice <= 0) { toast('Invalid exit price', 'warn'); return; }
   try { await apiSend('PUT', `/api/paper/${id}/close`, { exitPrice }); toast('Trade closed', 'info'); refreshPaper(); }
   catch { toast('Failed to close trade', 'error'); }
+}
+
+// Convenience close for a trade whose price has crossed its (estimated)
+// liquidation level — settles the paper trade at that level rather than
+// requiring the user to type it in manually.
+async function closeAtLiquidation(id) {
+  const trade = cache.find(t => t.id === id);
+  if (!trade || trade.liquidationPrice == null) return;
+  try {
+    await apiSend('PUT', `/api/paper/${id}/close`, { exitPrice: trade.liquidationPrice });
+    toast('Position liquidated', 'warn');
+    refreshPaper();
+  } catch { toast('Failed to close trade', 'error'); }
 }
 
 async function deleteTrade(id) {
@@ -131,17 +196,35 @@ function showNewTradeModal() {
     <label>Side<select id="ptSide"><option value="long">Long</option><option value="short">Short</option></select></label>
     <label>Quantity<input id="ptQty" type="number" step="any" value="1"></label>
     <label>Entry price<input id="ptEntry" type="number" step="any" value="${curPrice || ''}"></label>
+    <label>Leverage<input id="ptLev" type="number" step="1" min="1" max="125" value="1"></label>
+    <div class="pt-liq-preview muted" id="ptLiqPreview">1× = spot, no liquidation risk</div>
     <label>Stop (optional)<input id="ptStop" type="number" step="any"></label>
     <label>Target (optional)<input id="ptTarget" type="number" step="any"></label>
     <label>Notes<input id="ptNotes"></label>
     <div class="modal-actions"><button id="ptCancel">Cancel</button><button id="ptSave" class="primary-btn">Open Trade</button></div>`, m => {
     m.querySelector('#ptCancel').addEventListener('click', closeModal);
+
+    const updateLiqPreview = () => {
+      const side = m.querySelector('#ptSide').value;
+      const entry = parseFloat(m.querySelector('#ptEntry').value);
+      const lev = parseFloat(m.querySelector('#ptLev').value) || 1;
+      const preview = m.querySelector('#ptLiqPreview');
+      if (lev <= 1) { preview.textContent = '1× = spot, no liquidation risk'; return; }
+      const liq = estLiquidationPrice(side, entry, lev);
+      preview.textContent = liq != null
+        ? `Est. liquidation ≈ ${fmtPrice(liq)} at ${lev}× (approximation — ignores fees/funding)`
+        : 'Enter a valid entry price to estimate liquidation';
+    };
+    ['#ptSide', '#ptEntry', '#ptLev'].forEach(sel => m.querySelector(sel).addEventListener('input', updateLiqPreview));
+    updateLiqPreview();
+
     m.querySelector('#ptSave').addEventListener('click', async () => {
       const body = {
         symbol: m.querySelector('#ptSym').value.trim().toUpperCase(),
         exchange, side: m.querySelector('#ptSide').value,
         qty: parseFloat(m.querySelector('#ptQty').value),
         entryPrice: parseFloat(m.querySelector('#ptEntry').value),
+        leverage: parseFloat(m.querySelector('#ptLev').value) || 1,
         stop: m.querySelector('#ptStop').value ? parseFloat(m.querySelector('#ptStop').value) : null,
         target: m.querySelector('#ptTarget').value ? parseFloat(m.querySelector('#ptTarget').value) : null,
         notes: m.querySelector('#ptNotes').value,

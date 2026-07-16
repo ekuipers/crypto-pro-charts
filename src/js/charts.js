@@ -943,6 +943,14 @@ export function destroyPanel(panel) {
   if (state.activePanel === panel) setActivePanel(state.panels[0] || null);
 }
 
+// Roadmap (2026-07-16): repaint every panel's drawing overlay — used to keep
+// paper-trade long/short position lines (drawn in drawings.js) in sync with
+// live price ticks and with open/close/delete actions in the Paper pane,
+// regardless of which right-hand tab is currently active.
+export function redrawAllPanels() {
+  state.panels.forEach(p => renderDrawings(p));
+}
+
 export function resizeAllCharts() {
   requestAnimationFrame(() => {
     state.panels.forEach(p => {

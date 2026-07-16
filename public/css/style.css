@@ -331,6 +331,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .paper-row-actions { display: flex; gap: 6px; margin-top: 6px; }
 .paper-row-actions button { flex: 1; padding: 4px; border-radius: 5px; background: var(--panel2); font-size: 11px; }
 .paper-row-actions button:hover { background: var(--hover); }
+/* Roadmap (2026-07-16): leveraged futures-style paper trades */
+.paper-lev { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; background: rgba(255,152,0,.18); color: #ff9800; }
+.paper-row-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.paper-row.liquidated { border-color: #ff9800; }
+.paper-liq-warning { margin-top: 6px; padding: 4px 6px; border-radius: 5px; background: rgba(255,152,0,.15); color: #ff9800; font-size: 11px; font-weight: 600; }
+.paper-liq-close-btn { background: #ff9800 !important; color: #1a1a1a !important; font-weight: 700; }
+.paper-liq-close-btn:hover { background: #ffa726 !important; }
+.pt-liq-preview { font-size: 11px; margin: -6px 0 8px; }
 .dc-log { margin-right: auto; }
 
 /* Tech info */

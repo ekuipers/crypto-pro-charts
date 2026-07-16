@@ -3,7 +3,7 @@
 // ============================================================
 import { state } from './state.js';
 import { fetchOrderBook, openOrderBookStream, closeOrderBookStream, openTradeStream, fetchPrice, getCachedKlines } from './data.js';
-import { fmtPrice, fmtVol, fmtPct } from './utils.js';
+import { fmtPrice, fmtVol, fmtPct, priceKey } from './utils.js';
 
 let pollTimer = null;
 let tradeWS = null;
@@ -330,8 +330,8 @@ export async function refreshTechInfo() {
     el.innerHTML = `
       <div class="ti-header">
         <div>
-          <div class="ti-price ${up ? 'up' : 'down'}">${fmtPrice(p.price)}</div>
-          <div class="ti-chg ${up ? 'up' : 'down'}">${fmtPct(p.change)} 24h</div>
+          <div class="ti-price ${up ? 'up' : 'down'}" id="tiPrice">${fmtPrice(p.price)}</div>
+          <div class="ti-chg ${up ? 'up' : 'down'}" id="tiChg">${fmtPct(p.change)} 24h</div>
         </div>
         <div class="ti-perfs">
           <div class="ti-perf-row"><span>7D</span>${perf7d != null ? perfPill(perf7d) : '<span class="muted">–</span>'}</div>
@@ -363,4 +363,66 @@ export async function refreshTechInfo() {
   } catch {
     el.innerHTML = '<div class="muted">Failed to load</div>';
   }
+}
+
+// Roadmap: keep the Info pane's price/24h-change in sync with the live price
+// stream, the same way watchlist rows do — cheap DOM patch straight from
+// state.prices (already updated by the mini-ticker WS in main.js) rather than
+// re-fetching/re-rendering the whole pane (which also carries RSI/seasonals
+// that don't need to move every tick). Called on the same ~1.5s cadence as
+// updatePriceRows(); no-ops until refreshTechInfo() has rendered the pane once.
+//
+// Bug (2026-07-16): the WS-only version of this looked right on paper but
+// never actually moved for a real chunk of panels — `openPriceStream`'s
+// `!miniTicker@arr` subscription is Binance-only and only forwards symbols
+// quoted in USDT/USDC/EUR/USD (see SUPPORTED_QUOTES in data.js). Any panel on
+// a different exchange (Bybit/OKX/Gate/KuCoin/Bitstamp/Bitvavo/etc.), or a
+// Binance pair quoted in something else (e.g. ETHBTC), never gets a single
+// write to state.prices after the one-time fetch inside refreshTechInfo() —
+// so the pane silently froze at whatever price that first fetch returned,
+// which reads exactly like "still not updating". Fixed by falling back to a
+// throttled direct REST price fetch (same fetchPrice() refreshTechInfo already
+// uses) whenever the live cache doesn't cover this panel, so every exchange/
+// quote combination keeps ticking.
+let _tiRestLast = 0;
+let _tiRestInFlight = false;
+export function updateTechInfoPrice() {
+  const panel = state.activePanel;
+  if (!panel || state.rightTab !== 'techinfo') return;
+  const priceEl = document.getElementById('tiPrice');
+  const chgEl = document.getElementById('tiChg');
+  if (!priceEl || !chgEl) return;
+
+  const exchange = panel.exchange || 'binance';
+  const cached = state.prices[priceKey(panel.symbol, exchange)];
+  if (cached && cached.price != null) paintTiPrice(priceEl, chgEl, cached.price, cached.change);
+
+  // Binance-quoted-in-a-supported-currency panels are already kept fresh by
+  // the cache above (written every ~second by the mini-ticker WS) — only fall
+  // through to REST for the cases that stream can't reach, throttled to avoid
+  // hammering the API on every 1.5s tick.
+  const wsCovers = exchange === 'binance' && cached && cached.price != null;
+  if (wsCovers || _tiRestInFlight) return;
+  const now = Date.now();
+  if (now - _tiRestLast < 4000) return;
+  _tiRestLast = now;
+  _tiRestInFlight = true;
+  const symbol = panel.symbol;
+  fetchPrice(symbol, exchange).then(p => {
+    _tiRestInFlight = false;
+    if (state.activePanel !== panel || panel.symbol !== symbol || (panel.exchange || 'binance') !== exchange || state.rightTab !== 'techinfo') return;
+    state.prices[priceKey(symbol, exchange)] = { ...(state.prices[priceKey(symbol, exchange)] || {}), price: p.price, change: p.change, open: p.open };
+    const pEl = document.getElementById('tiPrice'), cEl = document.getElementById('tiChg');
+    if (pEl && cEl) paintTiPrice(pEl, cEl, p.price, p.change);
+  }).catch(() => { _tiRestInFlight = false; });
+}
+
+function paintTiPrice(priceEl, chgEl, price, change) {
+  const up = (change ?? 0) >= 0;
+  priceEl.textContent = fmtPrice(price);
+  priceEl.classList.toggle('up', up);
+  priceEl.classList.toggle('down', !up);
+  chgEl.textContent = `${fmtPct(change)} 24h`;
+  chgEl.classList.toggle('up', up);
+  chgEl.classList.toggle('down', !up);
 }

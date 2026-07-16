@@ -389,16 +389,35 @@ app.post('/api/paper', async (req, res) => {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return res.status(400).json({ error: 'invalid entry price' });
   const stop = Number.isFinite(+b.stop) ? +b.stop : null;
   const target = Number.isFinite(+b.target) ? +b.target : null;
+  // Roadmap (2026-07-16): leveraged futures-style paper trades. Leverage 1 =
+  // spot (no liquidation risk). Clamp to a sane exchange-typical range.
+  const rawLev = Number(b.leverage);
+  const leverage = Number.isFinite(rawLev) && rawLev > 0 ? Math.min(125, Math.max(1, rawLev)) : 1;
+  const liquidationPrice = calcLiquidationPrice(side, entryPrice, leverage);
   const rec = {
     id: crypto.randomBytes(9).toString('hex'),
     uid: await currentUid(req),
-    symbol, exchange, side, qty, entryPrice, stop, target,
+    symbol, exchange, side, qty, entryPrice, stop, target, leverage, liquidationPrice,
     notes: String(b.notes || '').slice(0, 2000),
     tags: String(b.tags || '').slice(0, 200),
   };
-  try { await db.createPaperTrade(rec); res.json({ ok: true, id: rec.id }); }
+  try { await db.createPaperTrade(rec); res.json({ ok: true, id: rec.id, liquidationPrice }); }
   catch (e) { res.status(500).json({ error: String(e.message) }); }
 });
+
+// Isolated-margin liquidation-price estimate (no fees, flat maintenance-margin
+// rate). Real exchanges use tiered maintenance-margin brackets and factor in
+// fees/funding, so this is an approximation for paper-trading purposes only.
+// leverage === 1 (spot) carries no liquidation risk.
+const LIQUIDATION_MAINTENANCE_MARGIN_RATE = 0.005;
+function calcLiquidationPrice(side, entryPrice, leverage) {
+  if (!(leverage > 1)) return null;
+  const mmr = LIQUIDATION_MAINTENANCE_MARGIN_RATE;
+  const liq = side === 'short'
+    ? entryPrice * (1 + 1 / leverage - mmr)
+    : entryPrice * (1 - 1 / leverage + mmr);
+  return liq > 0 ? liq : null;
+}
 
 app.put('/api/paper/:id/close', async (req, res) => {
   if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });

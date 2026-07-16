@@ -149,23 +149,30 @@ export async function init() {
   // Paper trading & journal (P2-15): simulated positions with a persisted P&L
   // trail once closed.
   await q(`create table if not exists paper_trades (
-    id          text primary key,
-    uid         text not null,
-    symbol      text not null,
-    exchange    text not null default 'binance',
-    side        text not null default 'long',
-    qty         double precision not null,
-    entry_price double precision not null,
-    exit_price  double precision,
-    stop        double precision,
-    target      double precision,
-    status      text not null default 'open',
-    notes       text not null default '',
-    tags        text not null default '',
-    opened_at   timestamptz not null default now(),
-    closed_at   timestamptz
+    id                text primary key,
+    uid               text not null,
+    symbol            text not null,
+    exchange          text not null default 'binance',
+    side              text not null default 'long',
+    qty               double precision not null,
+    entry_price       double precision not null,
+    exit_price        double precision,
+    stop              double precision,
+    target            double precision,
+    leverage          double precision not null default 1,
+    liquidation_price  double precision,
+    status            text not null default 'open',
+    notes             text not null default '',
+    tags              text not null default '',
+    opened_at         timestamptz not null default now(),
+    closed_at         timestamptz
   )`);
   await q(`create index if not exists paper_trades_uid_idx on paper_trades(uid, status)`);
+  // Roadmap (2026-07-16): leveraged futures-style paper trades — existing
+  // deployments already have a paper_trades table from before leverage/
+  // liquidation support existed, so backfill the columns idempotently.
+  await q(`alter table paper_trades add column if not exists leverage double precision not null default 1`);
+  await q(`alter table paper_trades add column if not exists liquidation_price double precision`);
   // Market events calendar (roadmap 2026-07-11): was a static curated JSON file
   // on disk; moved to Postgres so events persist across deploys and can be
   // pruned once stale (see pruneOldEvents).
@@ -403,15 +410,18 @@ function toPaperTrade(r) {
     id: r.id, uid: r.uid, symbol: r.symbol, exchange: r.exchange, side: r.side,
     qty: +r.qty, entryPrice: +r.entry_price, exitPrice: r.exit_price != null ? +r.exit_price : null,
     stop: r.stop != null ? +r.stop : null, target: r.target != null ? +r.target : null,
+    leverage: r.leverage != null ? +r.leverage : 1,
+    liquidationPrice: r.liquidation_price != null ? +r.liquidation_price : null,
     status: r.status, notes: r.notes, tags: r.tags,
     openedAt: r.opened_at, closedAt: r.closed_at,
   };
 }
 export async function createPaperTrade(rec) {
   await q(
-    `insert into paper_trades (id, uid, symbol, exchange, side, qty, entry_price, stop, target, notes, tags)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [rec.id, rec.uid, rec.symbol, rec.exchange, rec.side, rec.qty, rec.entryPrice, rec.stop, rec.target, rec.notes || '', rec.tags || ''],
+    `insert into paper_trades (id, uid, symbol, exchange, side, qty, entry_price, stop, target, leverage, liquidation_price, notes, tags)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [rec.id, rec.uid, rec.symbol, rec.exchange, rec.side, rec.qty, rec.entryPrice, rec.stop, rec.target,
+      rec.leverage ?? 1, rec.liquidationPrice ?? null, rec.notes || '', rec.tags || ''],
   );
 }
 export async function listPaperTrades(uid) {

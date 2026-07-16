@@ -3,14 +3,14 @@
 // ============================================================
 import { state } from './state.js';
 import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, refreshVolumes, defaultExchange } from './data.js';
-import { setLayout, setAutosaveFn, resizeAllCharts } from './charts.js';
+import { setLayout, setAutosaveFn, resizeAllCharts, redrawAllPanels } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
 import { initAlerts } from './alerts.js';
 import { initSettings } from './settings.js';
 import { initScanner } from './scanner.js';
 import { initEvents } from './events.js';
-import { refreshOrderBook, refreshTechInfo, initOrderBookSubtabs } from './orderbook.js';
+import { refreshOrderBook, refreshTechInfo, initOrderBookSubtabs, updateTechInfoPrice } from './orderbook.js';
 import { autosave, loadAutosave } from './persistence.js';
 import { initAuth } from './auth.js';
 import { initReplay } from './replay.js';
@@ -33,9 +33,11 @@ function startPriceStream() {
     ws.addEventListener('open', () => { startPriceStream._retry = 0; updateWSStatus('connected'); });
     ws.addEventListener('error', () => updateWSStatus('error'));
   }
-  // throttle row updates to ~1s
+  // throttle row updates to ~1s (also keeps the Info pane's price/24h-change,
+  // and any open paper-trade position lines drawn on the chart, ticking live
+  // at the same cadence as the watchlist rows)
   if (!startPriceStream._timer) {
-    startPriceStream._timer = setInterval(() => updatePriceRows(), 1500);
+    startPriceStream._timer = setInterval(() => { updatePriceRows(); updateTechInfoPrice(); redrawAllPanels(); }, 1500);
   }
   // poll REST for watchlist symbols that Binance stream doesn't carry (e.g. USDC
   // pairs listed only on Gate.io/KuCoin). First run after 2 s, then every 30 s.

@@ -3,9 +3,9 @@
 // ============================================================
 import { state } from './state.js';
 import { fetchAllPairs, getCachedKlines, defaultExchange } from './data.js';
-import { baseAsset, fmtPrice, fmtPct, fmtVol, toast, priceKey } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, fmtPct, fmtVol, esc, toast, priceKey } from './utils.js';
 import { changeSymbol, scheduleAutosave } from './charts.js';
-import { renderSymbolList } from './watchlist.js';
+import { renderSymbolList, exLabel } from './watchlist.js';
 
 const SCAN_TYPES = [
   { id: 'gainers', label: 'Top Gainers' },
@@ -186,7 +186,7 @@ function renderResults(rows) {
     <div class="scan-row" data-sym="${r.sym}" data-ex="${r.ex || ''}">
       <input type="checkbox" class="scan-row-check" ${selectedRows.has(rowKey(r.sym, r.ex)) ? 'checked' : ''}>
       <span class="scan-row-vals">
-        <span>${baseAsset(r.sym)}</span>
+        <span class="scan-row-sym">${esc(baseAsset(r.sym))}<span class="sym-quote-tag">${esc(quoteAsset(r.sym))}</span><span class="sym-ex-tag" title="${esc(exLabel(r.ex))}">${esc(exLabel(r.ex))}</span></span>
         <span class="${r.up ? 'up' : 'down'}">${r.val}</span>
       </span>
     </div>`).join('');

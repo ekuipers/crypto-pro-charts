@@ -4,6 +4,19 @@
 
 ---
 
+## v1.34.0 — 2026-07-16 · Roadmap: full pair + exchange label on Scanner results
+
+### Roadmap item — "In the scanner page with the returned symbols, format the symbols to include the full pair and add the exchange as label."
+**Problem:** `renderResults` in `src/js/scanner.js` rendered each scan hit's symbol via `baseAsset(r.sym)` alone (e.g. "BTC" instead of "BTCUSDT"), with no indication of which exchange the pair came from — a real gap for "All pairs" scope scans, which cover every enabled exchange and can return the same base asset from more than one venue with no way to tell them apart in the results list.
+**Fix:**
+- **`src/js/watchlist.js`** — exported the existing local `exLabel(id)` helper (short display name for an exchange id, e.g. `binance` → "Binance") instead of duplicating it in `scanner.js`.
+- **`src/js/scanner.js`** — imports `quoteAsset`/`esc` from `utils.js` and `exLabel` from `watchlist.js`. Each result row now renders `baseAsset(r.sym)` + a `.sym-quote-tag` span for the quote asset + a `.sym-ex-tag` span (with a title tooltip) for `exLabel(r.ex)` — reusing the exact same three CSS classes the watchlist's `renderSymbolList` already uses for its per-row symbol/quote/exchange display, so the two panes look consistent without new CSS.
+**Verified:** `node --check` clean on both modified files; `npm test` — 35/35 passing (unaffected, no coverage of this rendering path). Started the local server (`node server.js`, Postgres disabled — expected in this sandbox) and confirmed `/`, `/js/scanner.js`, `/js/watchlist.js` all serve 200. **Could not click through the live Scanner tab in a browser this session — no browser-automation tool is available in this sandbox** (same recurring limitation as prior entries, e.g. v1.32.0/v1.31.0). The user should open the Scanner pane, run a scan with scope "All pairs", and confirm each row shows the full pair (base + quote) with an exchange badge before considering this fully verified.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.34.0.
+
+---
+
 ## v1.33.0 — 2026-07-16 · Roadmap: add scanned symbols to an existing watchlist from the Scanner pane
 
 ### Roadmap item — "In the scanner pane when scanning all pairs, add the ability to add the symbols to an existing watchlist"

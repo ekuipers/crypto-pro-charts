@@ -8,8 +8,8 @@ import { selectWatchlistSymbol, scheduleAutosave, addOverlaySymbol } from './cha
 import { showModal, closeModal } from './alerts.js';
 import { STABLECOINS, EXCHANGES } from './constants.js';
 
-// Short exchange label for badges in the watchlist + picker.
-function exLabel(id) { return EXCHANGES[id]?.name || id; }
+// Short exchange label for badges in the watchlist + picker (also used by the scanner).
+export function exLabel(id) { return EXCHANGES[id]?.name || id; }
 // Resolve a watchlist item's exchange, falling back for legacy (untagged) items.
 function itemExchange(item) { return item.exchange || defaultExchange(); }
 

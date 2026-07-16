@@ -23,7 +23,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Completed items are logged in `memory.md` (see v1.33.0)._
+_No open roadmap items. Completed items are logged in `memory.md` (see v1.34.0)._
 
 ## Bugs
 

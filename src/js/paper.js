@@ -88,6 +88,7 @@ function render() {
     const lev = t.leverage || 1;
     const liq = isLiquidated(t, curPrice);
     const margin = lev > 1 ? (t.qty * t.entryPrice) / lev : null;
+    const shown = t.showOnChart !== false;
     return `
     <div class="paper-row${liq ? ' liquidated' : ''}">
       <div class="paper-row-main">
@@ -109,6 +110,8 @@ function render() {
       </div>` : ''}
       ${liq ? '<div class="paper-liq-warning">⚠ Price crossed the liquidation level (estimate)</div>' : ''}
       <div class="paper-row-actions">
+        <button class="paper-chart-btn${shown ? ' active' : ''}" data-id="${t.id}" title="${shown ? 'Showing on chart — click to hide' : 'Hidden from chart — click to show'}">${shown ? '👁' : '🚫'}</button>
+        <button class="paper-edit-btn" data-id="${t.id}" title="Edit position">✎</button>
         ${liq
           ? `<button class="paper-liq-close-btn" data-id="${t.id}">Close at liquidation</button>`
           : `<button class="paper-close-btn" data-id="${t.id}">Close</button>`}
@@ -142,6 +145,18 @@ function wireRows() {
   document.querySelectorAll('.paper-liq-close-btn').forEach(b => b.addEventListener('click', () => closeAtLiquidation(b.dataset.id)));
   document.querySelectorAll('.paper-del-btn').forEach(b => b.addEventListener('click', () => deleteTrade(b.dataset.id)));
   document.querySelectorAll('.paper-note-btn').forEach(b => b.addEventListener('click', () => editNote(b.dataset.id)));
+  document.querySelectorAll('.paper-edit-btn').forEach(b => b.addEventListener('click', () => showEditTradeModal(b.dataset.id)));
+  document.querySelectorAll('.paper-chart-btn').forEach(b => b.addEventListener('click', () => toggleChartVisibility(b.dataset.id)));
+}
+
+// Roadmap: toggle whether an open position is painted on the chart, without
+// closing it — flips `showOnChart` server-side then repaints every panel.
+async function toggleChartVisibility(id) {
+  const trade = cache.find(t => t.id === id);
+  if (!trade) return;
+  const next = !(trade.showOnChart !== false);
+  try { await apiSend('PUT', `/api/paper/${id}/visibility`, { showOnChart: next }); refreshPaper(); }
+  catch { toast('Failed to update chart visibility', 'error'); }
 }
 
 async function closeTrade(id) {
@@ -231,6 +246,50 @@ function showNewTradeModal() {
       };
       try { await apiSend('POST', '/api/paper', body); toast('Paper trade opened', 'info'); closeModal(); refreshPaper(); }
       catch (e) { toast(e.message || 'Failed to open trade', 'error'); }
+    });
+  });
+}
+
+// Roadmap: edit an open position's terms (qty/entry/stop/target/leverage).
+// Symbol/exchange/side stay fixed — changing those is really "open a new
+// trade", not editing this one.
+function showEditTradeModal(id) {
+  const trade = cache.find(t => t.id === id);
+  if (!trade) return;
+  showModal(`
+    <h3>Edit Position — ${esc(baseAsset(trade.symbol))}<span class="sym-quote-tag">${esc(quoteAsset(trade.symbol))}</span> <span class="paper-side ${trade.side}">${trade.side.toUpperCase()}</span></h3>
+    <label>Quantity<input id="ptQty" type="number" step="any" value="${trade.qty}"></label>
+    <label>Entry price<input id="ptEntry" type="number" step="any" value="${trade.entryPrice}"></label>
+    <label>Leverage<input id="ptLev" type="number" step="1" min="1" max="125" value="${trade.leverage || 1}"></label>
+    <div class="pt-liq-preview muted" id="ptLiqPreview"></div>
+    <label>Stop (optional)<input id="ptStop" type="number" step="any" value="${trade.stop ?? ''}"></label>
+    <label>Target (optional)<input id="ptTarget" type="number" step="any" value="${trade.target ?? ''}"></label>
+    <div class="modal-actions"><button id="ptCancel">Cancel</button><button id="ptSave" class="primary-btn">Save Changes</button></div>`, m => {
+    m.querySelector('#ptCancel').addEventListener('click', closeModal);
+
+    const updateLiqPreview = () => {
+      const entry = parseFloat(m.querySelector('#ptEntry').value);
+      const lev = parseFloat(m.querySelector('#ptLev').value) || 1;
+      const preview = m.querySelector('#ptLiqPreview');
+      if (lev <= 1) { preview.textContent = '1× = spot, no liquidation risk'; return; }
+      const liq = estLiquidationPrice(trade.side, entry, lev);
+      preview.textContent = liq != null
+        ? `Est. liquidation ≈ ${fmtPrice(liq)} at ${lev}× (approximation — ignores fees/funding)`
+        : 'Enter a valid entry price to estimate liquidation';
+    };
+    ['#ptEntry', '#ptLev'].forEach(sel => m.querySelector(sel).addEventListener('input', updateLiqPreview));
+    updateLiqPreview();
+
+    m.querySelector('#ptSave').addEventListener('click', async () => {
+      const body = {
+        qty: parseFloat(m.querySelector('#ptQty').value),
+        entryPrice: parseFloat(m.querySelector('#ptEntry').value),
+        leverage: parseFloat(m.querySelector('#ptLev').value) || 1,
+        stop: m.querySelector('#ptStop').value ? parseFloat(m.querySelector('#ptStop').value) : null,
+        target: m.querySelector('#ptTarget').value ? parseFloat(m.querySelector('#ptTarget').value) : null,
+      };
+      try { await apiSend('PUT', `/api/paper/${id}`, body); toast('Position updated', 'info'); closeModal(); refreshPaper(); }
+      catch (e) { toast(e.message || 'Failed to update position', 'error'); }
     });
   });
 }

@@ -533,6 +533,43 @@ function calcLiquidationPrice(side, entryPrice, leverage) {
   return liq > 0 ? liq : null;
 }
 
+// Roadmap (2026-07-16): edit an open paper position's terms (qty/entry/stop/
+// target/leverage) — liquidation price is recomputed from the new values,
+// same validation as opening a new trade. Only an open trade can be edited;
+// db.updatePaperTrade's `status = 'open'` guard returns no row otherwise.
+app.put('/api/paper/:id', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  const b = req.body || {};
+  const qty = Number(b.qty), entryPrice = Number(b.entryPrice);
+  if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'invalid qty' });
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) return res.status(400).json({ error: 'invalid entry price' });
+  const stop = Number.isFinite(+b.stop) ? +b.stop : null;
+  const target = Number.isFinite(+b.target) ? +b.target : null;
+  const rawLev = Number(b.leverage);
+  const leverage = Number.isFinite(rawLev) && rawLev > 0 ? Math.min(125, Math.max(1, rawLev)) : 1;
+  try {
+    const existing = await db.listPaperTrades(await currentUid(req));
+    const trade = existing.find(t => t.id === String(req.params.id));
+    if (!trade) return res.status(404).json({ error: 'not found' });
+    const liquidationPrice = calcLiquidationPrice(trade.side, entryPrice, leverage);
+    const updated = await db.updatePaperTrade(await currentUid(req), String(req.params.id),
+      { qty, entryPrice, stop, target, leverage, liquidationPrice });
+    if (!updated) return res.status(404).json({ error: 'not found or already closed' });
+    res.json(updated);
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
+// Roadmap (2026-07-16): show/hide an open position's on-chart overlay without
+// closing it — independent of editing its terms above.
+app.put('/api/paper/:id/visibility', async (req, res) => {
+  if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
+  try {
+    const ok = await db.setPaperTradeVisibility(await currentUid(req), String(req.params.id), !!req.body?.showOnChart);
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message) }); }
+});
+
 app.put('/api/paper/:id/close', async (req, res) => {
   if (!db.dbEnabled()) return res.status(503).json({ error: 'db disabled' });
   const exitPrice = Number(req.body?.exitPrice);

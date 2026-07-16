@@ -181,6 +181,7 @@ export async function init() {
     target            double precision,
     leverage          double precision not null default 1,
     liquidation_price  double precision,
+    show_on_chart     boolean not null default true,
     status            text not null default 'open',
     notes             text not null default '',
     tags              text not null default '',
@@ -193,6 +194,8 @@ export async function init() {
   // liquidation support existed, so backfill the columns idempotently.
   await q(`alter table paper_trades add column if not exists leverage double precision not null default 1`);
   await q(`alter table paper_trades add column if not exists liquidation_price double precision`);
+  // Roadmap (2026-07-16): edit an open position + toggle its on-chart overlay.
+  await q(`alter table paper_trades add column if not exists show_on_chart boolean not null default true`);
   // Market events calendar (roadmap 2026-07-11): was a static curated JSON file
   // on disk; moved to Postgres so events persist across deploys and can be
   // pruned once stale (see pruneOldEvents).
@@ -441,6 +444,7 @@ function toPaperTrade(r) {
     stop: r.stop != null ? +r.stop : null, target: r.target != null ? +r.target : null,
     leverage: r.leverage != null ? +r.leverage : 1,
     liquidationPrice: r.liquidation_price != null ? +r.liquidation_price : null,
+    showOnChart: r.show_on_chart !== false,
     status: r.status, notes: r.notes, tags: r.tags,
     openedAt: r.opened_at, closedAt: r.closed_at,
   };
@@ -452,6 +456,24 @@ export async function createPaperTrade(rec) {
     [rec.id, rec.uid, rec.symbol, rec.exchange, rec.side, rec.qty, rec.entryPrice, rec.stop, rec.target,
       rec.leverage ?? 1, rec.liquidationPrice ?? null, rec.notes || '', rec.tags || ''],
   );
+}
+// Roadmap (2026-07-16): edit an open position (qty/entry/stop/target/leverage,
+// with the liquidation price recomputed server-side). Closed trades are a
+// settled record, so this only ever touches a still-open row.
+export async function updatePaperTrade(uid, id, fields) {
+  const { rows } = await q(
+    `update paper_trades set qty = $3, entry_price = $4, stop = $5, target = $6,
+       leverage = $7, liquidation_price = $8
+     where uid = $1 and id = $2 and status = 'open' returning *`,
+    [uid, id, fields.qty, fields.entryPrice, fields.stop, fields.target, fields.leverage, fields.liquidationPrice],
+  );
+  return toPaperTrade(rows[0]);
+}
+// Toggle whether an open position is painted on the chart — independent of
+// editing its terms, so a trade can be hidden from the chart without closing it.
+export async function setPaperTradeVisibility(uid, id, showOnChart) {
+  const { rowCount } = await q('update paper_trades set show_on_chart = $3 where uid = $1 and id = $2', [uid, id, !!showOnChart]);
+  return rowCount > 0;
 }
 export async function listPaperTrades(uid) {
   const { rows } = await q('select * from paper_trades where uid = $1 order by opened_at desc', [uid]);

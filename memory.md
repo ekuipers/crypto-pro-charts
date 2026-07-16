@@ -4,6 +4,23 @@
 
 ---
 
+## v1.31.0 — 2026-07-16 · Roadmap: edit an open paper position + per-position show/hide-on-chart toggle
+
+### Roadmap item — "change the position in paper trading and a toggle whether to show it on the chart or hide it"
+**Problem:** since v1.30.0, open paper trades draw as live long/short lines on the chart (`drawPaperPositions` in `src/js/drawings.js`), but a position's terms (qty/entry/stop/target/leverage) were fixed at creation — the only actions on an open row were Close, Delete, and (for closed trades) editing the journal note. There was also no way to hide a specific position's overlay from the chart short of closing it outright.
+**Fix:**
+- **`src/db.js`** — `paper_trades` gets a `show_on_chart` boolean column (default `true`), added as an idempotent `alter table ... add column if not exists` so existing rows/deployments backfill safely. New `updatePaperTrade(uid, id, fields)` updates qty/entryPrice/stop/target/leverage/liquidationPrice, guarded to `status = 'open'` (editing a settled/closed trade doesn't make sense — mirrors the existing guard on `closePaperTrade`). New `setPaperTradeVisibility(uid, id, showOnChart)` flips the flag independently of the trade's terms. `toPaperTrade` now exposes `showOnChart`.
+- **`server.js`** — new `PUT /api/paper/:id` re-validates qty/entryPrice/stop/target/leverage exactly like the existing `POST /api/paper`, looks up the trade's `side` (unchanged — symbol/exchange/side aren't editable, only the trade's numeric terms) to recompute `liquidationPrice` via the existing `calcLiquidationPrice()`, then calls `db.updatePaperTrade`. New `PUT /api/paper/:id/visibility` calls `db.setPaperTradeVisibility`.
+- **`src/js/paper.js`** — each open-position row gains an eye/edit action pair: a `👁`/`🚫` toggle button (`toggleChartVisibility`) that flips `showOnChart` server-side and repaints (via the existing `refreshPaper()` → `redrawAllPanels()` path), and a `✎` button (`showEditTradeModal`) opening a modal pre-filled with the trade's current qty/entry/leverage/stop/target — mirrors the New Trade modal's live liquidation-price preview — that PUTs the changes and refreshes.
+- **`src/js/drawings.js`** — `drawPaperPositions` now filters `openTradesForSymbol(...)` on `t.showOnChart !== false` before painting, so a hidden position stays open and tracked in the Paper pane but simply isn't drawn.
+- **`public/css/style.css`** — `.paper-chart-btn`/`.paper-edit-btn` (dimmed by default, full opacity on hover; the chart-toggle button gets `--accent` color when active/shown).
+**Not implemented (scope note):** symbol/exchange/side are not editable on an existing position — changing any of those is really "close this and open a new trade," not an edit of the same position.
+**Verified:** `node --check` clean on `server.js`, `src/db.js`, `src/js/paper.js`, `src/js/drawings.js`. `npm test` — 35/35 passing (unaffected). Started the local server and confirmed the new routes are live: `PUT /api/paper/:id` and `PUT /api/paper/:id/visibility` both return `503 db disabled` (this sandbox has no Postgres configured) rather than 404 or a crash, confirming correct route registration and that Express's `:id` segment doesn't shadow/get-shadowed-by the existing `/:id/close`, `/:id/notes`, `/:id/visibility` routes; `/js/paper.js` and `/index.html` served 200. **Could not exercise the actual edit-modal / eye-toggle click-through against a live DB-backed trade in a browser this session** — no Postgres credentials and no browser-automation tool available in this sandbox. Flagging this explicitly; the user should click through both the edit flow and the chart-visibility toggle against the deployed DB before fully trusting this in production.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.31.0.
+
+---
+
 ## 2026-07-16 · Diagnosis: "Info pane still not updating" was a deployment desync, not a code bug
 
 User reported the v1.30.1 fix still didn't work in production (`https://crypto-charting-pro.vercel.app/`). Loaded the live site with browser tools and fetched the served JS directly (`cache: 'no-store'`, confirmed `x-vercel-cache: MISS` so this is straight from origin, not a stale CDN/browser cache): `/js/orderbook.js` and `/js/main.js` contain **none** of the v1.30.0/v1.30.1 changes — no `id="tiPrice"`, no `updateTechInfoPrice`, no `redrawAllPanels`. Yet the served `index.html` footer correctly read `v1.30.1`.

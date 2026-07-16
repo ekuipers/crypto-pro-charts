@@ -352,6 +352,10 @@ input:focus, select:focus { border-color: var(--accent); }
 .paper-liq-close-btn { background: #ff9800 !important; color: #1a1a1a !important; font-weight: 700; }
 .paper-liq-close-btn:hover { background: #ffa726 !important; }
 .pt-liq-preview { font-size: 11px; margin: -6px 0 8px; }
+/* Roadmap (2026-07-16): edit position + show/hide-on-chart toggle */
+.paper-chart-btn, .paper-edit-btn { flex: 0 0 auto !important; min-width: 30px; opacity: .6; }
+.paper-chart-btn.active { opacity: 1; color: var(--accent); }
+.paper-chart-btn:hover, .paper-edit-btn:hover { opacity: 1; }
 .dc-log { margin-right: auto; }
 
 /* Tech info */

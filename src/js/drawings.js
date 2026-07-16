@@ -243,7 +243,10 @@ export function renderDrawings(panel, preview) {
 // Read-only: unlike panel.drawings these aren't draggable/selectable, and
 // aren't part of autosave — they're a live view of paper.js's trade cache.
 function drawPaperPositions(panel, ctx, w, h) {
-  const trades = openTradesForSymbol(panel.symbol, panel.exchange);
+  // Roadmap (2026-07-16): per-position show/hide-on-chart toggle from the
+  // Paper pane — a trade with showOnChart === false stays open/tracked but
+  // is simply never painted here.
+  const trades = openTradesForSymbol(panel.symbol, panel.exchange).filter(t => t.showOnChart !== false);
   if (!trades.length) return;
   const curPrice = state.prices[priceKey(panel.symbol, panel.exchange)]?.price;
 

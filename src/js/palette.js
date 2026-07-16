@@ -1,6 +1,6 @@
 // ============================================================
 // COMMAND PALETTE (P3-22) — Ctrl/Cmd+K: instant symbol search/switch and
-// an action launcher, TradingView-style.
+// an action launcher.
 // ============================================================
 import { state } from './state.js';
 import { esc, baseAsset, quoteAsset } from './utils.js';

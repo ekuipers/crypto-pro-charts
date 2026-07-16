@@ -1,7 +1,7 @@
 {
   "name": "crypto-charting-pro",
   "version": "1.0.0",
-  "description": "Professional crypto trading chart with TradingView-style UI",
+  "description": "Professional crypto trading chart with a polished multi-panel UI",
   "type": "module",
   "main": "server.js",
   "scripts": {

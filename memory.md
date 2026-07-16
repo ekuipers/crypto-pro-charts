@@ -4,6 +4,14 @@
 
 ---
 
+## Docs/code cleanup — 2026-07-16 · Removed marketing/comparison references to TradingView
+
+**Change:** Per user request, removed comparison-style references to the third-party "TradingView" brand from user-facing text and code comments — `CLAUDE.md` ("It has the same like user interface as tradingview." → "a professional-grade, industry-standard charting user interface"), `readme.md` (dropped "TradingView-style" from the tagline and the command-palette bullet), `package.json` description, and code comments in `src/js/charts.js` (crosshair sync) and `src/js/palette.js` (command palette).
+**Left unchanged (intentionally):** the `LightweightCharts` library attribution/link in `readme.md` (`https://tradingview.github.io/lightweight-charts/`) — that's the real name and source of the actual third-party dependency in use, not a stylistic comparison, so removing it would misattribute the library. Historical `memory.md` changelog entries (v1.22.0 roadmap comparison) were also left as-is — they're a factual record of what was benchmarked against at the time, not current marketing copy.
+**Verified:** `node --check` clean on both edited `.js` files; `npm test` — 35/35 passing (comment/text-only changes, no behavior touched).
+
+---
+
 ## v1.34.1 — 2026-07-16 · CLAUDE.md rescan: rule 10 ("Use favicon as Site logo") wasn't followed
 
 **Problem:** Rescanning CLAUDE.md rule 10 found the favicon (`public/favicon.svg`, a candlestick-chart icon) was wired only as the browser tab icon (`<link rel="icon">` / `apple-touch-icon`) — the actual on-page logos in the top bar (`.logo`) and footer (`.footer-logo`) still used a 📈 emoji instead of the favicon graphic.

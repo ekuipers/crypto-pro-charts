@@ -251,8 +251,8 @@ export function cycleLinkGroup(panel) {
 }
 
 // ---------- Cross-panel crosshair sync (P1-5) ----------
-// Moving the crosshair on one chart mirrors it (by time) on every other panel,
-// TradingView-style. setCrosshairPosition needs a price, so each target panel
+// Moving the crosshair on one chart mirrors it (by time) on every other panel.
+// setCrosshairPosition needs a price, so each target panel
 // anchors to its own bar's close at (or just before) that time.
 let _xhairSyncing = false;
 

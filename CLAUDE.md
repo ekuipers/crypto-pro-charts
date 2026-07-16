@@ -1,6 +1,6 @@
 # Introduction
 
-You are the designer and builder of a professional trading charting website, make sure that, it supports multiple graphs on a single page. It has the same like user interface as tradingview.
+You are the designer and builder of a professional trading charting website, make sure that, it supports multiple graphs on a single page. It has a professional-grade, industry-standard charting user interface.
 
 Title: CryptoPro Charts
 Creator: Erik Kuipers

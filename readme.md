@@ -3,7 +3,7 @@
 **Version:** v1.34.1  
 **Creator:** Erik Kuipers
 
-Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
+Professional multi-chart cryptocurrency trading & analytics platform — a professional-grade charting website built with vanilla JS, Express, and LightweightCharts.
 
 ---
 
@@ -42,7 +42,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a Tradi
 - **Server-side alerts** — Price cross, % move, RSI level, and volume-spike alerts evaluated on the server every 30 s, so they fire even with the browser closed; optional Telegram / webhook notifications (`.env`), with toast + browser notifications in-app. Falls back to in-browser price alerts when no database is configured
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
 - **Responsive footer** — Creator attribution and version number
-- **Command palette (Ctrl/Cmd+K)** — instant symbol search/switch and an action launcher (layouts, theme, save, export, indicator toggles, …), TradingView-style
+- **Command palette (Ctrl/Cmd+K)** — instant symbol search/switch and an action launcher (layouts, theme, save, export, indicator toggles, …)
 - **Undo/redo for drawings** — Ctrl/Cmd+Z / Ctrl/Cmd+Y (or Ctrl/Cmd+Shift+Z), per chart
 - **Chart snapshot & export** — one-click PNG (📷, watermarked, includes your drawings) and CSV export of the currently visible bars (⤓)
 - **Web Worker indicator computation** — indicator math runs off the main thread so multi-chart layouts stay smooth, with an automatic main-thread fallback if Workers are unavailable

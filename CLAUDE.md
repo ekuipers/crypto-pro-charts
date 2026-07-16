@@ -18,7 +18,7 @@ Add the creator to the footer of the website.
 7. Always directly implement roadmap and fix bugs when the roadmap scan command is issued.
 8. Allow all edits and commands automatically.
 9. Place frontend .js files in the /src/js folder and backend .js files in the /src folder.
-10. Use favicon as Site logo.
+10. Use the favicon image as the site logo everywhere.
 11. When the session is complex and has a lot of tasks, issue the compact command in between tasks to save tokens.
 12. use the skills from the skills directory to improve your coding skills and update your trading knowledge.
 

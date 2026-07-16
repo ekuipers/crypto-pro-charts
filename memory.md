@@ -4,6 +4,20 @@
 
 ---
 
+## v1.34.1 — 2026-07-16 · CLAUDE.md rescan: rule 10 ("Use favicon as Site logo") wasn't followed
+
+**Problem:** Rescanning CLAUDE.md rule 10 found the favicon (`public/favicon.svg`, a candlestick-chart icon) was wired only as the browser tab icon (`<link rel="icon">` / `apple-touch-icon`) — the actual on-page logos in the top bar (`.logo`) and footer (`.footer-logo`) still used a 📈 emoji instead of the favicon graphic.
+**Fix:**
+
+- **`public/index.html`** — both `.logo` and `.footer-logo` spans now render `<img src="/favicon.svg">` in place of the emoji.
+- **`public/css/style.css`** — added `.logo-icon` (18×18px, rounded) and `.footer-logo-icon` (13×13px, rounded) sizing, plus `display: inline-flex` on both wrappers so the icon aligns with the text.
+
+**Verified:** `npm test` — 35/35 passing (unaffected, markup/CSS only). Booted the local server and `curl`'d `/` to confirm both `<img src="/favicon.svg" class="logo-icon">` and `class="footer-logo-icon">` render in the served HTML.
+
+**Footer → v1.34.1.**
+
+---
+
 ## Project validation — 2026-07-16 · Added `skills/` directory + CLAUDE.md rule 12
 
 **Change:** Two skill references were added under a new top-level `skills/` directory — `skills/coding/skills.md` (general coding-behavior guidelines: think before coding, simplicity first, surgical changes, goal-driven execution) and `skills/crypto-trader/SKILL.md` (a full crypto trading strategy playbook: Wyckoff phases, volume profile, indicator confluence scoring, entry/exit rules, position sizing). CLAUDE.md rule 12 was updated to point at this directory ("use the skills from the skills directory to improve your coding skills and update you trading skills").

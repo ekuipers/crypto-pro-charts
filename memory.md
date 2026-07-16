@@ -4,6 +4,23 @@
 
 ---
 
+## v1.32.0 — 2026-07-16 · Roadmap: redesigned Buy/Sell gauge in the Technical Info pane
+
+### Roadmap item — "Replace the Buy/Sell gauge... with a better looking design"
+**Problem:** `rsiSpeedometerSvg()` in `src/js/orderbook.js` drew the RSI-based Buy/Sell indicator as three hard-edged color bands (`stroke-dasharray` segments) with a plain 1px line for a needle — functional but visually flat, with no tick marks or depth.
+**Fix:** rebuilt the gauge as a proper speedometer:
+- The three flat bands became one continuous `linearGradient` (green → amber → red, `userSpaceOnUse` spanning the arc's endpoints) laid over a recessed groove (`var(--panel2)` track behind it) instead of a plain background arc.
+- Added radial tick marks at 0/25/50/75/100 (`var(--muted)`, low opacity) so the arc reads as a real scale, not just a colored bar.
+- The needle is now a tapered polygon (was a thin line) rotated via SVG `transform="rotate(...)"` about the hub — the rotation angle is derived algebraically from the original `nx/ny` cos/sin formula (`rot = rsi×1.8 − 180`) so the needle lands in the exact same position as before, just rendered as a proper pointer shape.
+- Added a `feDropShadow` filter on the needle/hub for a touch of depth, and a two-tier hub (outer ring in `var(--panel)` + colored stroke, small solid center dot).
+- All neutral/track colors use the existing theme CSS variables (`var(--panel2)`, `var(--muted)`, `var(--panel)`) so the gauge stays correct across all six themes (dark-classic/midnight/matrix/carbon, light-classic/warm); the semantic green/amber/red band colors are unchanged from the original (buy=left/green, sell=right/red), preserving the existing "Strong Buy / Buy / Neutral / Sell / Strong Sell" labeling logic untouched.
+**Files:** `src/js/orderbook.js` (`rsiSpeedometerSvg`), `public/css/style.css` (`.ti-speedometer-label`/`.ti-speedometer-rsi` sizing bump to match the more prominent gauge), `public/index.html` (footer version).
+**Verified:** `node --check src/js/orderbook.js` clean; `npm test` 35/35 passing (unaffected — no tests cover this rendering path). Hand-traced the SVG geometry: confirmed the arc path formula is untouched from the previously-shipped version, derived the needle's `rotate()` angle algebraically from the original cos/sin needle-tip formula to confirm it produces the identical pointer direction for every RSI value (spot-checked rsi=0 → −180°, rsi=50 → −90° [straight up], rsi=100 → 0°), and confirmed tick/label coordinates stay within the new `0 0 200 140` viewBox. Built a standalone static HTML preview (`gauge-preview.html`, not committed) rendering the gauge at RSI 15/42/50/58/85 against this project's actual theme CSS variables to sanity-check the markup structure. **Could not capture an actual browser screenshot or click through the live app this session — no browser-automation tool is available in this sandbox** (same recurring limitation noted in the v1.30.0 entry below). The user should open the Technical Info pane and confirm the gauge renders correctly, especially in both a dark and a light theme, before considering this fully verified.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.32.0.
+
+---
+
 ## v1.31.0 — 2026-07-16 · Roadmap: edit an open paper position + per-position show/hide-on-chart toggle
 
 ### Roadmap item — "change the position in paper trading and a toggle whether to show it on the chart or hide it"

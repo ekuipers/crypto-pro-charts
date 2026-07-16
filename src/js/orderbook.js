@@ -228,32 +228,49 @@ function rangeGaugeSvg(value, lo, hi, label) {
 }
 
 function rsiSpeedometerSvg(rsi) {
-  const cx = 80, cy = 82, R = 66, needleLen = 52;
-  const C = Math.PI * R; // half-circle arc length
-  const needleRad = (Math.PI / 180) * (180 - rsi * 1.8);
-  const nx = cx + needleLen * Math.cos(needleRad);
-  const ny = cy - needleLen * Math.sin(needleRad);
+  const cx = 100, cy = 100, R = 74, bandW = 14;
   const color = rsi < 30 ? '#26a69a' : rsi > 70 ? '#ef5350' : '#f59e0b';
   const label = rsi < 30 ? 'Strong Buy' : rsi < 45 ? 'Buy' : rsi > 70 ? 'Strong Sell' : rsi > 55 ? 'Sell' : 'Neutral';
   const track = `M ${cx - R} ${cy} A ${R} ${R} 0 0 0 ${cx + R} ${cy}`;
+
+  // Radial angle for a given 0-100 value, matching the needle convention below:
+  // 0 -> pointing left (buy side), 100 -> pointing right (sell side).
+  const angleRad = (v) => (Math.PI / 180) * (180 - v * 1.8);
+  const ticks = [0, 25, 50, 75, 100].map((v) => {
+    const rad = angleRad(v);
+    const r1 = R + bandW / 2 + 2, r2 = R + bandW / 2 + 8;
+    const x1 = cx + r1 * Math.cos(rad), y1 = cy - r1 * Math.sin(rad);
+    const x2 = cx + r2 * Math.cos(rad), y2 = cy - r2 * Math.sin(rad);
+    return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>`;
+  }).join('');
+
+  const needleLen = 60;
+  const rot = (rsi * 1.8 - 180).toFixed(2); // SVG rotate() degrees for a needle drawn pointing right
+
   return `
     <div class="ti-section-label">Buy / Sell Pressure (RSI 14)</div>
     <div class="ti-speedometer">
-      <svg viewBox="0 0 160 92" style="width:100%;max-width:190px;display:block;margin:0 auto">
-        <path d="${track}" fill="none" stroke="rgba(128,128,128,0.18)" stroke-width="15" stroke-linecap="butt"/>
-        <path d="${track}" fill="none" stroke="#26a69a" stroke-width="12" stroke-linecap="butt"
-          stroke-dasharray="${(C * 0.3).toFixed(2)} ${(C * 0.7).toFixed(2)}" stroke-dashoffset="0"/>
-        <path d="${track}" fill="none" stroke="#f59e0b" stroke-width="12" stroke-linecap="butt"
-          stroke-dasharray="${(C * 0.4).toFixed(2)} ${(C * 0.6).toFixed(2)}"
-          stroke-dashoffset="${-(C * 0.3).toFixed(2)}"/>
-        <path d="${track}" fill="none" stroke="#ef5350" stroke-width="12" stroke-linecap="butt"
-          stroke-dasharray="${(C * 0.3).toFixed(2)} ${(C * 0.7).toFixed(2)}"
-          stroke-dashoffset="${-(C * 0.7).toFixed(2)}"/>
-        <line x1="${cx}" y1="${cy}" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}"
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-        <circle cx="${cx}" cy="${cy}" r="5" fill="${color}"/>
-        <text x="15" y="91" font-size="9" fill="#26a69a" font-family="sans-serif">Buy</text>
-        <text x="145" y="91" font-size="9" fill="#ef5350" text-anchor="end" font-family="sans-serif">Sell</text>
+      <svg viewBox="0 0 200 140" style="width:100%;max-width:220px;display:block;margin:0 auto">
+        <defs>
+          <linearGradient id="tiGaugeGrad" x1="${cx - R}" y1="${cy}" x2="${cx + R}" y2="${cy}" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#26a69a"/>
+            <stop offset="50%" stop-color="#f59e0b"/>
+            <stop offset="100%" stop-color="#ef5350"/>
+          </linearGradient>
+          <filter id="tiGaugeShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+        <path d="${track}" fill="none" stroke="var(--panel2)" stroke-width="${bandW + 6}" stroke-linecap="round"/>
+        <path d="${track}" fill="none" stroke="url(#tiGaugeGrad)" stroke-width="${bandW}" stroke-linecap="round"/>
+        ${ticks}
+        <g transform="rotate(${rot} ${cx} ${cy})" filter="url(#tiGaugeShadow)">
+          <polygon points="${cx - 16},${cy - 4} ${cx + needleLen},${cy} ${cx - 16},${cy + 4}" fill="${color}"/>
+        </g>
+        <circle cx="${cx}" cy="${cy}" r="9" fill="var(--panel)" stroke="${color}" stroke-width="3"/>
+        <circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>
+        <text x="${cx - R}" y="${cy + 24}" font-size="10" font-weight="700" fill="#26a69a" text-anchor="middle" font-family="sans-serif">BUY</text>
+        <text x="${cx + R}" y="${cy + 24}" font-size="10" font-weight="700" fill="#ef5350" text-anchor="middle" font-family="sans-serif">SELL</text>
       </svg>
       <div class="ti-speedometer-label" style="color:${color}">${label}</div>
       <div class="ti-speedometer-rsi">RSI ${rsi.toFixed(0)}</div>

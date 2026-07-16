@@ -20,7 +20,7 @@ Add the creator to the footer of the website.
 9. Place frontend .js files in the /src/js folder and backend .js files in the /src folder.
 10. Use favicon as Site logo.
 11. When the session is complex and has a lot of tasks, issue the compact command in between tasks to save tokens.
-12. use the skills from the skills directory to improve your coding skills and update you trading skills.
+12. use the skills from the skills directory to improve your coding skills and update your trading knowledge.
 
 ## Roadmap
 

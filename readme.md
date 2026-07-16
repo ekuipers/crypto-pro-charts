@@ -1,6 +1,6 @@
 # CryptoPro Charts
 
-**Version:** v1.29.1  
+**Version:** v1.34.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a TradingView-style charting website built with vanilla JS, Express, and LightweightCharts.
@@ -164,6 +164,7 @@ crypto-pro-charts/
 ├── .env.example         # PORT / NODE_ENV / Supabase Postgres connection string
 ├── data/                # kline cache + curated events.json (no user data here now)
 ├── cache/klines/        # server-side bar cache
+├── skills/              # reference guidance consulted per CLAUDE.md rule 12 (coding style, crypto-trader strategy playbook)
 └── memory.md            # running changelog
 ```
 

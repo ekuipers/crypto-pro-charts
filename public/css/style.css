@@ -226,6 +226,19 @@ input:focus, select:focus { border-color: var(--accent); }
 .right-tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
 .right-tab-content.active { display: flex; }
 
+.market-status { padding: 10px 10px 6px; border-bottom: 1px solid var(--border); flex: none; }
+.market-status .muted { padding: 6px 0; }
+.ms-row + .ms-row { margin-top: 8px; }
+.ms-label { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.ms-value { font-size: 12px; font-weight: 600; color: var(--text); }
+.ms-meter { height: 5px; border-radius: 3px; background: var(--panel2); margin-top: 4px; overflow: hidden; }
+.ms-meter-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+.ms-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.ms-stats { display: flex; gap: 6px; margin-top: 10px; }
+.ms-stat { flex: 1; background: var(--panel2); border-radius: 6px; padding: 5px 6px; text-align: center; }
+.ms-stat-label { display: block; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+.ms-stat-value { display: block; font-size: 11px; font-weight: 600; color: var(--text); margin-top: 2px; white-space: nowrap; }
+
 .sym-search-wrap { position: relative; padding: 8px; }
 .sym-search-wrap .panel-search { margin: 0; }
 .sym-search-results {

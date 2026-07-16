@@ -6,6 +6,7 @@ import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrice
 import { setLayout, setAutosaveFn, resizeAllCharts, redrawAllPanels } from './charts.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
+import { initMarketStatus } from './marketstatus.js';
 import { initAlerts } from './alerts.js';
 import { initSettings } from './settings.js';
 import { initScanner } from './scanner.js';
@@ -96,6 +97,7 @@ async function init() {
 
   initUI();
   initWatchlist();
+  initMarketStatus();
   initAlerts();
   initSettings();
   initScanner();

@@ -403,9 +403,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .scan-controls2 { padding-top: 0; flex-direction: row; align-items: center; gap: 6px; }
 .scan-controls2 #scanSaved { flex: 1; min-width: 0; }
 .scan-auto { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.scan-controls3 { padding-top: 0; flex-direction: row; align-items: center; gap: 6px; }
+.scan-controls3 #scanAddWlSel { flex: 1; min-width: 0; }
+.scan-select-all { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .scan-results { flex: 1; overflow-y: auto; }
-.scan-row { display: flex; justify-content: space-between; padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.scan-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
 .scan-row:hover { background: var(--hover); }
+.scan-row-check { flex: 0 0 auto; cursor: pointer; }
+.scan-row-vals { flex: 1; display: flex; justify-content: space-between; align-items: center; }
 
 /* ---------- Alerts overlay ---------- */
 .alerts-overlay {

@@ -4,6 +4,20 @@
 
 ---
 
+## v1.33.0 — 2026-07-16 · Roadmap: add scanned symbols to an existing watchlist from the Scanner pane
+
+### Roadmap item — "In the scanner pane when scanning all pairs, add the ability to add the symbols to an existing watchlist"
+**Problem:** `src/js/scanner.js` rendered scan results (gainers/losers/RSI/EMA/volume-spike hits, scope "All pairs" or "Watchlist") as plain read-only rows — clicking a row only loaded that symbol onto the active chart panel. There was no way to route interesting scan hits into a watchlist without leaving the pane and manually searching/adding each symbol one at a time via the separate symbol picker.
+**Fix:**
+- **`public/index.html`** — added a third scanner control row (`.scan-controls3`): a "Select all" checkbox (`#scanSelectAll`), a target-watchlist dropdown (`#scanAddWlSel`, populated from `state.watchlists`), and a "+ Watchlist" button (`#scanAddWlBtn`, disabled until at least one result is checked). Each result row in `#scanResults` gained a checkbox.
+- **`src/js/scanner.js`** — `renderResults` now renders a checkbox per row (via a `rowKey(sym, ex)` identity) and tracks checked rows in a module-level `selectedRows` Set that survives re-renders (auto-refresh, manual re-scan) but drops entries for symbols that fall out of the current result set. `addSelectedToWatchlist()` pushes every checked `{sym, ex}` into the chosen watchlist's array (`state.watchlists[name]`), skipping symbols already present (each pair is still identified by `symbol + exchange`, matching the existing dedup rule in `watchlist.js`'s `addSymbolPrompt`), then calls `scheduleAutosave()` (from `charts.js`) and `renderSymbolList()` (imported from `watchlist.js` — safe one-way import, `watchlist.js` doesn't import `scanner.js`) so the target watchlist panel reflects the addition immediately even if it's the one currently on screen. A toast reports how many were added vs. already-present. `refreshWlSelect()` keeps the dropdown's option list in sync with `state.watchlists` on every render, since watchlists can be created/renamed elsewhere in the app while the scanner tab is open. The checkbox click handler calls `stopPropagation()` so checking a box doesn't also trigger the row's existing click-to-chart behavior.
+- **`public/css/style.css`** — `.scan-row` switched from `justify-content: space-between` to a flex row with the new checkbox plus a `.scan-row-vals` wrapper (preserves the original label/value spread layout); added `.scan-controls3`/`.scan-select-all` styling matching the existing `.scan-controls2`/`.scan-auto` pattern.
+**Verified:** started the local server (`node server.js`, Postgres disabled — expected in this sandbox per the existing DB-disabled note) and drove the feature end-to-end with Playwright (chromium): opened the Scanner tab, set scope to "All pairs" and type to "Top Gainers", ran the scan (30 rows returned), checked 2 result rows, confirmed `#scanAddWlBtn` became enabled, selected the "Favorites" watchlist, clicked Add — toast read "Added 2 symbols to \"Favorites\"", the Add button re-disabled (selection cleared) after the add, and switching to the Favorites watchlist tab showed the two newly-added symbols in `#symList` alongside its existing contents. The 500/503 console errors seen during the run are the pre-existing Binance-server-IP-block issue (see project memory), unrelated to this change.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.33.0.
+
+---
+
 ## v1.32.0 — 2026-07-16 · Roadmap: redesigned Buy/Sell gauge in the Technical Info pane
 
 ### Roadmap item — "Replace the Buy/Sell gauge... with a better looking design"

@@ -4,7 +4,8 @@
 import { state } from './state.js';
 import { fetchAllPairs, getCachedKlines, defaultExchange } from './data.js';
 import { baseAsset, fmtPrice, fmtPct, fmtVol, toast, priceKey } from './utils.js';
-import { changeSymbol } from './charts.js';
+import { changeSymbol, scheduleAutosave } from './charts.js';
+import { renderSymbolList } from './watchlist.js';
 
 const SCAN_TYPES = [
   { id: 'gainers', label: 'Top Gainers' },
@@ -24,6 +25,8 @@ const AUTO_REFRESH_MS = 20000;
 
 let autoTimer = null;
 let lastHits = new Set(); // sym:ex keys from the previous auto-refresh run, to detect new hits
+let lastRows = []; // rows from the most recent render, for re-render after a bulk add
+const selectedRows = new Set(); // 'sym:ex' keys checked in the results list
 
 export function initScanner() {
   const sel = document.getElementById('scanType');
@@ -33,6 +36,9 @@ export function initScanner() {
   document.getElementById('scanAuto').addEventListener('change', e => setAutoRefresh(e.target.checked));
   document.getElementById('scanSaveBtn').addEventListener('click', saveCurrentScan);
   document.getElementById('scanSaved').addEventListener('change', loadSelectedScan);
+  document.getElementById('scanSelectAll').addEventListener('change', e => toggleSelectAll(e.target.checked));
+  document.getElementById('scanAddWlSel').addEventListener('change', updateAddWlBtnState);
+  document.getElementById('scanAddWlBtn').addEventListener('click', addSelectedToWatchlist);
   refreshSavedScansList();
 }
 
@@ -164,17 +170,85 @@ async function loadSelectedScan() {
   } catch { toast('Failed to load scan', 'error'); }
 }
 
+function rowKey(sym, ex) { return `${sym}:${ex || ''}`; }
+
 function renderResults(rows) {
+  lastRows = rows;
+  // Drop selections for symbols no longer in the result set.
+  const keys = new Set(rows.map(r => rowKey(r.sym, r.ex)));
+  [...selectedRows].forEach(k => { if (!keys.has(k)) selectedRows.delete(k); });
+
+  refreshWlSelect();
   const out = document.getElementById('scanResults');
-  if (!rows.length) { out.innerHTML = '<div class="muted">No matches.</div>'; return; }
+  document.getElementById('scanSelectAll').checked = rows.length > 0 && selectedRows.size === rows.length;
+  if (!rows.length) { out.innerHTML = '<div class="muted">No matches.</div>'; updateAddWlBtnState(); return; }
   out.innerHTML = rows.map(r => `
     <div class="scan-row" data-sym="${r.sym}" data-ex="${r.ex || ''}">
-      <span>${baseAsset(r.sym)}</span>
-      <span class="${r.up ? 'up' : 'down'}">${r.val}</span>
+      <input type="checkbox" class="scan-row-check" ${selectedRows.has(rowKey(r.sym, r.ex)) ? 'checked' : ''}>
+      <span class="scan-row-vals">
+        <span>${baseAsset(r.sym)}</span>
+        <span class="${r.up ? 'up' : 'down'}">${r.val}</span>
+      </span>
     </div>`).join('');
-  out.querySelectorAll('.scan-row').forEach(el => el.addEventListener('click', () => {
-    if (state.activePanel) changeSymbol(state.activePanel, el.dataset.sym, baseAsset(el.dataset.sym), el.dataset.ex || undefined);
-  }));
+  out.querySelectorAll('.scan-row').forEach(el => {
+    const check = el.querySelector('.scan-row-check');
+    check.addEventListener('click', e => e.stopPropagation());
+    check.addEventListener('change', () => {
+      const key = rowKey(el.dataset.sym, el.dataset.ex);
+      if (check.checked) selectedRows.add(key); else selectedRows.delete(key);
+      document.getElementById('scanSelectAll').checked = selectedRows.size === lastRows.length;
+      updateAddWlBtnState();
+    });
+    el.addEventListener('click', () => {
+      if (state.activePanel) changeSymbol(state.activePanel, el.dataset.sym, baseAsset(el.dataset.sym), el.dataset.ex || undefined);
+    });
+  });
+  updateAddWlBtnState();
+}
+
+function toggleSelectAll(checked) {
+  selectedRows.clear();
+  if (checked) lastRows.forEach(r => selectedRows.add(rowKey(r.sym, r.ex)));
+  renderResults(lastRows);
+}
+
+// Keeps the target-watchlist dropdown in sync with the current watchlist set
+// (new watchlists can be created elsewhere in the app while the scanner is open).
+function refreshWlSelect() {
+  const sel = document.getElementById('scanAddWlSel');
+  const names = Object.keys(state.watchlists);
+  const prev = sel.value;
+  sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.value = names.includes(prev) ? prev : state.currentWatchlist;
+}
+
+function updateAddWlBtnState() {
+  document.getElementById('scanAddWlBtn').disabled = selectedRows.size === 0;
+}
+
+// Adds every checked scan result (as symbol+exchange) to the chosen watchlist,
+// skipping symbols already present there.
+function addSelectedToWatchlist() {
+  const wlName = document.getElementById('scanAddWlSel').value;
+  const wl = state.watchlists[wlName];
+  if (!wl || !selectedRows.size) return;
+  let added = 0, dup = 0;
+  selectedRows.forEach(key => {
+    const [sym, ex] = key.split(':');
+    const exchange = ex || defaultExchange();
+    if (wl.some(s => s.symbol === sym && (s.exchange || defaultExchange()) === exchange)) { dup++; return; }
+    wl.push({ symbol: sym, name: baseAsset(sym), exchange });
+    added++;
+  });
+  selectedRows.clear();
+  if (added) {
+    scheduleAutosave();
+    renderSymbolList();
+    toast(`Added ${added} symbol${added > 1 ? 's' : ''} to "${wlName}"${dup ? ` (${dup} already there)` : ''}`, 'info');
+  } else {
+    toast('Already in watchlist', 'warn');
+  }
+  renderResults(lastRows);
 }
 
 // local copies of math (avoid coupling)

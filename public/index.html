@@ -142,6 +142,11 @@
           <button id="scanSaveBtn" title="Save current scan">💾</button>
           <label class="scan-auto" title="Re-run every 20s and toast new hits"><input type="checkbox" id="scanAuto"> Auto</label>
         </div>
+        <div class="scan-controls scan-controls3">
+          <label class="scan-select-all" title="Select all results"><input type="checkbox" id="scanSelectAll"> All</label>
+          <select id="scanAddWlSel" title="Target watchlist"></select>
+          <button id="scanAddWlBtn" title="Add selected symbols to the chosen watchlist" disabled>+ Watchlist</button>
+        </div>
         <div id="scanResults" class="scan-results"></div>
       </div>
 
@@ -168,7 +173,7 @@
     <span class="footer-sep">·</span>
     <span>© 2026</span>
     <span class="footer-sep">·</span>
-    <span class="footer-version">v1.32.0</span>
+    <span class="footer-version">v1.33.0</span>
   </footer>
 
   <!-- Alerts slide-out -->

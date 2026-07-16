@@ -15,7 +15,7 @@ Add the creator to the footer of the website.
 4. Automatically commit changes to git and sync with remote repo
 5. Update documentation.
 6. Update version number in the footer with the lastest version in the change log.
-7. Always directly implement roadmap and fix bugs after the roadmap scan.
+7. Always directly implement roadmap and fix bugs when the roadmap scan command is issued.
 8. Allow all edits and commands automatically.
 9. Place frontend .js files in the /src/js folder and backend .js files in the /src folder.
 10. Use favicon as Site logo.
@@ -23,7 +23,7 @@ Add the creator to the footer of the website.
 
 ## Roadmap
 
-_No open roadmap items. Completed items are logged in `memory.md` (see v1.32.0)._
+_No open roadmap items. Completed items are logged in `memory.md` (see v1.33.0)._
 
 ## Bugs
 

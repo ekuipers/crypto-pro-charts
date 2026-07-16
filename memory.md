@@ -4,6 +4,19 @@
 
 ---
 
+## Project validation — 2026-07-16 · Added `skills/` directory + CLAUDE.md rule 12
+
+**Change:** Two skill references were added under a new top-level `skills/` directory — `skills/coding/skills.md` (general coding-behavior guidelines: think before coding, simplicity first, surgical changes, goal-driven execution) and `skills/crypto-trader/SKILL.md` (a full crypto trading strategy playbook: Wyckoff phases, volume profile, indicator confluence scoring, entry/exit rules, position sizing). CLAUDE.md rule 12 was updated to point at this directory ("use the skills from the skills directory to improve your coding skills and update you trading skills").
+**Validation performed:** ran a full project health check to confirm the addition doesn't affect the running app —
+
+- `node --check` on every file in `server.js`, `src/*.js`, `src/js/*.js` — no syntax errors.
+- `npm test` — 35/35 passing (indicators, exchange-normalization, aggregation, TOTP — unchanged).
+- Booted `node server.js` locally — started cleanly (`CryptoPro Charts running at http://localhost:3000`, Postgres disabled as expected in this sandbox), then stopped.
+
+**Result:** the two skill files are plain markdown/instructions, not imported by any code path, so they're inert with respect to the app itself — confirmed no regressions. Note: `skills/coding/skills.md` and `skills/crypto-trader/SKILL.md` are project convention files per CLAUDE.md rule 12, not auto-discovered Claude Code skills (that would require `.claude/skills/<name>/SKILL.md`) — no action taken there since the user's ask was scoped to a project health/quality validation, not skill-discovery wiring.
+
+---
+
 ## v1.34.0 — 2026-07-16 · Roadmap: full pair + exchange label on Scanner results
 
 ### Roadmap item — "In the scanner page with the returned symbols, format the symbols to include the full pair and add the exchange as label."

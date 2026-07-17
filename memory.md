@@ -4,6 +4,21 @@
 
 ---
 
+## v1.35.0 — 2026-07-17 · Roadmap: URL anchors + symbol pair for direct chart/section links
+
+### Roadmap item — "Add anchors to different parts of the application. Include the symbol pair to the url for accessing a chart directly from the URL."
+**Problem:** The app had no client-side routing at all — the URL never reflected which symbol was on the active chart or which right-panel section (Watchlist/Events/Book/Info/Scanner/Paper) was open, so there was no way to bookmark or share a link straight to a specific chart or app section.
+**Fix:** new `src/js/router.js` module:
+- `syncUrl()` mirrors the active panel's symbol/exchange into `?symbol=&exchange=` query params and the open right-tab into a `#anchor` hash (`#watchlist`, `#events`, `#orderbook`, `#techinfo`, `#scanner`, `#paper`), via `history.replaceState` — updates the address bar without spamming browser history on every symbol/tab switch.
+- `applyUrlOnLoad()` reads those same params/hash at startup and, if present, loads that symbol pair onto the active chart (`changeSymbol`) and clicks the matching `.right-tab` button — so a URL like `/?symbol=ETHUSDT&exchange=binance#scanner` opens directly to that chart with the Scanner pane active, overriding whatever the restored autosave session had. The symbol is validated against `/^[A-Z0-9]{2,20}$/` and the exchange against the known `EXCHANGES` map before being applied, so malformed/untrusted URL input is never reflected into app state unchecked.
+- `initRouter()` wires `syncUrl()` to the existing `active-symbol-changed` event (already dispatched by `changeSymbol`/`setActivePanel` in `charts.js`) and a new `right-tab-changed` event dispatched from `wireRightTabs()` in `ui.js`.
+- **`src/js/main.js`** — wires the router in after all `init*()` calls (tab buttons/panes must exist before `applyUrlOnLoad()` can `.click()` a `.right-tab`), then calls `syncUrl()` once so the URL reflects the loaded state immediately, even before any user interaction.
+**Verified:** `node --check` clean on `router.js`/`main.js`/`ui.js`; `npm test` — 35/35 passing (unaffected, no coverage of routing). Booted the local server and drove it end-to-end with Playwright (Chrome, since no bundled Chromium was installed in this sandbox): loading `http://localhost:3000/?symbol=ETHUSDT&exchange=binance#scanner` rendered the chart's symbol button as "ETHUSDT" and activated the Scanner tab automatically; clicking the Watchlist tab updated the URL to `...#watchlist`; clicking BTC in the watchlist updated the URL to `?symbol=BTCUSDT&exchange=binance#watchlist` and the chart's symbol button to "BTCUSDT". The 500/503 console errors during the run are the pre-existing Binance-server-IP-block issue (see project memory), unrelated to this change.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.35.0.
+
+---
+
 ## v1.34.2 — 2026-07-17 · Bug fix: BUY/SELL text overlapped the RSI speedometer gauge
 
 ### Bug — "In the speedometer the text BUY and SELL are printed on top of the speedometer. Make sure that the text is visible by moving them next to the speedometer."

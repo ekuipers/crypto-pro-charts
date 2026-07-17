@@ -17,6 +17,7 @@ import { initAuth } from './auth.js';
 import { initReplay } from './replay.js';
 import { initPaper } from './paper.js';
 import { initCommandPalette } from './palette.js';
+import { initRouter, applyUrlOnLoad, syncUrl } from './router.js';
 import { debounce, log, toast } from './utils.js';
 
 function startPriceStream() {
@@ -106,6 +107,15 @@ async function init() {
   initOrderBookSubtabs();
   initPaper();
   initCommandPalette();
+
+  // Roadmap: a symbol pair and/or right-panel section named in the URL
+  // (?symbol=&exchange=#tab) overrides the restored session, so a shared
+  // link always opens the chart/section it points to. Wired after the tab
+  // buttons and their panes above are ready, since applying the URL's tab
+  // anchor simulates a click on the corresponding .right-tab button.
+  initRouter();
+  applyUrlOnLoad();
+  syncUrl();
 
   startPriceStream();
   document.addEventListener('restart-price-stream', startPriceStream);

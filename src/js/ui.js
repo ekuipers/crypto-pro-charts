@@ -428,6 +428,7 @@ function wireRightTabs() {
     if (id === 'orderbook') refreshOrderBook();
     if (id === 'techinfo') refreshTechInfo();
     if (id === 'paper') refreshPaper();
+    document.dispatchEvent(new CustomEvent('right-tab-changed'));
   }));
 }
 

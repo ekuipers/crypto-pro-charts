@@ -4,6 +4,18 @@
 
 ---
 
+## v1.34.2 — 2026-07-17 · Bug fix: BUY/SELL text overlapped the RSI speedometer gauge
+
+### Bug — "In the speedometer the text BUY and SELL are printed on top of the speedometer. Make sure that the text is visible by moving them next to the speedometer."
+**Problem:** `rsiSpeedometerSvg()` in `src/js/orderbook.js` drew the "BUY"/"SELL" labels as `<text>` elements *inside* the gauge's own SVG (`x = cx∓R, y = cy+24`), positioned directly beneath the arc's rounded end-caps rather than beside the gauge — reported as the labels sitting on top of the speedometer graphic.
+**Fix:** removed the two in-SVG `<text>` nodes and the now-unused bottom viewBox padding they required (viewBox height trimmed `140` → `120` to match the gauge's actual bounds). The gauge SVG is now wrapped in a new flex row (`.ti-speedometer-row`) with `<span class="ti-speedometer-side ti-speedometer-buy">BUY</span>` / `...-sell">SELL</span>` labels placed to the left/right of the SVG instead of drawn over it.
+**Files:** `src/js/orderbook.js` (`rsiSpeedometerSvg`), `public/css/style.css` (added `.ti-speedometer-row`, `.ti-speedometer-side`, `.ti-speedometer-buy`, `.ti-speedometer-sell`), `public/index.html` (footer version).
+**Verified:** `node --check src/js/orderbook.js` clean; `npm test` — 35/35 passing (unaffected, no coverage of this rendering path). Booted the local server (`node server.js`, Postgres disabled — expected in this sandbox) and confirmed `/` and `/js/orderbook.js` both serve 200 with the updated markup. **Could not click through the live Technical Info pane in a browser this session** — no browser-automation tool available in this sandbox (same recurring limitation as prior entries, e.g. v1.34.0/v1.32.0). The user should open the Technical Info pane and confirm BUY/SELL now render clearly beside the gauge, in both a dark and a light theme, before considering this fully verified.
+
+**Bug logged and fixed per workflow rule 7; bug list cleared.** Footer → v1.34.2.
+
+---
+
 ## v1.34.1 — 2026-07-16 · CLAUDE.md rescan: rule 10 ("Use favicon as Site logo") wasn't followed
 
 **Problem:** Rescanning CLAUDE.md rule 10 found the favicon (`public/favicon.svg`, a candlestick-chart icon) was wired only as the browser tab icon (`<link rel="icon">` / `apple-touch-icon`) — the actual on-page logos in the top bar (`.logo`) and footer (`.footer-logo`) still used a 📈 emoji instead of the favicon graphic.

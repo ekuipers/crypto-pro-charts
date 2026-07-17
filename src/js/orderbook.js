@@ -250,28 +250,30 @@ function rsiSpeedometerSvg(rsi) {
   return `
     <div class="ti-section-label">Buy / Sell Pressure (RSI 14)</div>
     <div class="ti-speedometer">
-      <svg viewBox="0 0 200 140" style="width:100%;max-width:220px;display:block;margin:0 auto">
-        <defs>
-          <linearGradient id="tiGaugeGrad" x1="${cx - R}" y1="${cy}" x2="${cx + R}" y2="${cy}" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#26a69a"/>
-            <stop offset="50%" stop-color="#f59e0b"/>
-            <stop offset="100%" stop-color="#ef5350"/>
-          </linearGradient>
-          <filter id="tiGaugeShadow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-opacity="0.35"/>
-          </filter>
-        </defs>
-        <path d="${track}" fill="none" stroke="var(--panel2)" stroke-width="${bandW + 6}" stroke-linecap="round"/>
-        <path d="${track}" fill="none" stroke="url(#tiGaugeGrad)" stroke-width="${bandW}" stroke-linecap="round"/>
-        ${ticks}
-        <g transform="rotate(${rot} ${cx} ${cy})" filter="url(#tiGaugeShadow)">
-          <polygon points="${cx - 16},${cy - 4} ${cx + needleLen},${cy} ${cx - 16},${cy + 4}" fill="${color}"/>
-        </g>
-        <circle cx="${cx}" cy="${cy}" r="9" fill="var(--panel)" stroke="${color}" stroke-width="3"/>
-        <circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>
-        <text x="${cx - R}" y="${cy + 24}" font-size="10" font-weight="700" fill="#26a69a" text-anchor="middle" font-family="sans-serif">BUY</text>
-        <text x="${cx + R}" y="${cy + 24}" font-size="10" font-weight="700" fill="#ef5350" text-anchor="middle" font-family="sans-serif">SELL</text>
-      </svg>
+      <div class="ti-speedometer-row">
+        <span class="ti-speedometer-side ti-speedometer-buy">BUY</span>
+        <svg viewBox="0 0 200 120" style="width:100%;max-width:220px;display:block;margin:0 auto">
+          <defs>
+            <linearGradient id="tiGaugeGrad" x1="${cx - R}" y1="${cy}" x2="${cx + R}" y2="${cy}" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#26a69a"/>
+              <stop offset="50%" stop-color="#f59e0b"/>
+              <stop offset="100%" stop-color="#ef5350"/>
+            </linearGradient>
+            <filter id="tiGaugeShadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-opacity="0.35"/>
+            </filter>
+          </defs>
+          <path d="${track}" fill="none" stroke="var(--panel2)" stroke-width="${bandW + 6}" stroke-linecap="round"/>
+          <path d="${track}" fill="none" stroke="url(#tiGaugeGrad)" stroke-width="${bandW}" stroke-linecap="round"/>
+          ${ticks}
+          <g transform="rotate(${rot} ${cx} ${cy})" filter="url(#tiGaugeShadow)">
+            <polygon points="${cx - 16},${cy - 4} ${cx + needleLen},${cy} ${cx - 16},${cy + 4}" fill="${color}"/>
+          </g>
+          <circle cx="${cx}" cy="${cy}" r="9" fill="var(--panel)" stroke="${color}" stroke-width="3"/>
+          <circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>
+        </svg>
+        <span class="ti-speedometer-side ti-speedometer-sell">SELL</span>
+      </div>
       <div class="ti-speedometer-label" style="color:${color}">${label}</div>
       <div class="ti-speedometer-rsi">RSI ${rsi.toFixed(0)}</div>
     </div>`;

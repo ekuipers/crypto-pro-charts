@@ -1,3 +1,5 @@
+[![Test](https://github.com/ekuipers/crypto-pro-charts/actions/workflows/test.yml/badge.svg)](https://github.com/ekuipers/crypto-pro-charts/actions/workflows/test.yml)
+
 # CryptoPro Charts
 
 **Version:** v1.34.1  

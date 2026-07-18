@@ -4,6 +4,19 @@
 
 ---
 
+## v1.41.1 — 2026-07-18 — Cross-suite title-bar/footer branding consistency
+
+**Change:** Driven by a CryptoPro Suite workflow-rules audit (rules 7 + 17: consistent title-bar/footer
+design, favicon-as-logo at a consistent size across all sub-projects). `.logo-icon` (topbar) bumped
+18px → 20px, `.footer-logo-icon` bumped 13px → 16px, both in `public/css/style.css`. `--topbar-h`
+(44px) and the fixed 30px footer height were deliberately **left unchanged** — Charts is a dense,
+professional multi-chart terminal where vertical chrome directly competes with chart canvas space, so
+matching the taller ~54px bars used on the more spacious Suite/Trader/Training pages would cost usable
+charting area for no functional benefit. Font-family was already the canonical stack
+(`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`) shared by every
+sub-project, so no change was needed there. Footer version bumped v1.41.0 → v1.41.1. **Verified:**
+grep-confirmed the two size edits landed in `style.css`; no other rule in `.topbar`/`.app-footer` touched.
+
 ## v1.41.0 — 2026-07-18 — Suite favicon (CryptoPro suite branding)
 
 **Change:** Replaced `public/favicon.svg` with the shared CryptoPro suite icon: dark navy gradient

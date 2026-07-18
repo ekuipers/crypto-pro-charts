@@ -63,7 +63,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .tb-group.right { margin-left: auto; }
 .logo { font-size: 15px; margin-right: 8px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .logo b { color: var(--accent); }
-.logo-icon { width: 18px; height: 18px; border-radius: 4px; }
+.logo-icon { width: 20px; height: 20px; border-radius: 4px; }
 .tb-btn {
   padding: 6px 10px; border-radius: 5px; font-size: 13px; position: relative;
   border: 1px solid transparent;
@@ -915,7 +915,7 @@ body.resizing * { pointer-events: none; }
 .app-footer b { color: var(--text); }
 .footer-logo { display: inline-flex; align-items: center; gap: 4px; }
 .footer-logo b { color: var(--accent); }
-.footer-logo-icon { width: 13px; height: 13px; border-radius: 3px; vertical-align: middle; }
+.footer-logo-icon { width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; }
 .footer-sep { color: var(--border); }
 .footer-version { opacity: 0.5; font-size: 10px; letter-spacing: 0.04em; }
 @media (max-width: 720px) {

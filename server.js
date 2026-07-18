@@ -661,12 +661,27 @@ app.get('*', (_req, res) => {
 // Create the database tables before accepting traffic, then start listening.
 // A DB failure is logged but not fatal — the kline proxy still works and the
 // frontend falls back to localStorage for persistence.
+//
+// Bug (v1.39.1): on Vercel, the platform imports this file as a serverless
+// function module and calls the request handler it exports — it never runs
+// a persistent process, so the old app.listen()-only bottom of this file had
+// no `export` at all. Vercel's Node runtime treated that as a fatal error on
+// every invocation ("No exports found in module ... did you forget to export
+// a function or a server?", exit status 1 — this is what turned into the
+// live 500/FUNCTION_INVOCATION_FAILED). `app.listen()` and the WS relay only
+// make sense for a real persistent process (local dev, or a non-serverless
+// host), so both are now skipped when `process.env.VERCEL` is set (set
+// automatically on every Vercel deployment) and `app` is exported instead so
+// Vercel's runtime has a handler to invoke.
 db.init()
   .then(async ok => { if (ok) { startAlertEngine(); await seedEventsFromDisk(); } })
   .catch(e => console.error('[db] init failed:', e?.message || e))
   .finally(() => {
+    if (process.env.VERCEL) return;
     const httpServer = app.listen(PORT, () => {
       console.log(`CryptoPro Charts running at http://localhost:${PORT}`);
     });
-    attachRelay(httpServer); // P3-17: WS kline relay for OKX/Gate.io on the same server/port
+    attachRelay(httpServer); // P3-17: WS kline relay for OKX/Gate.io on the same server/port — local/persistent-host only, not supported on Vercel's serverless runtime
   });
+
+export default app;

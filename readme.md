@@ -2,7 +2,7 @@
 
 # CryptoPro Charts
 
-**Version:** v1.39.0  
+**Version:** v1.39.1  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a professional-grade charting website built with vanilla JS, Express, and LightweightCharts.

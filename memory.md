@@ -4,6 +4,18 @@
 
 ---
 
+## v1.39.1 — 2026-07-18 · Bug fix: Vercel deployment crashed on every request after v1.39.0 shipped
+
+### Bug — "This Serverless Function has crashed. 500: INTERNAL_SERVER_ERROR / FUNCTION_INVOCATION_FAILED" on the live Vercel deployment
+**Problem:** `server.js` has always been a plain long-running Express app — it builds `app`, registers every route, then at the bottom unconditionally calls `db.init().then(...).finally(() => app.listen(PORT))`, with no `export` of any kind. That's the right shape for a persistent host (local `node server.js`, a VPS, Render, etc.), but Vercel's Node runtime imports `server.js` itself as the serverless function module and expects it to `export` a request handler (the Express app, in Vercel's zero-config Express support) — it never runs a persistent listener. With nothing exported, every single invocation logged `[db] connected; tables ready` / `[alerts] engine started (every 30s)` (proof `db.init()` and the rest of the module ran fine) and then crashed with **"No exports found in module '/var/task/server.js'. Did you forget to export a function or a server?"**, exit status 1 — which surfaced to visitors as the generic 500/FUNCTION_INVOCATION_FAILED crash page. This is why the v1.39.0 deploy (patterns-guide roadmap item, entirely frontend/static-file changes) appeared to "cause" the crash — it was actually the first deploy where this pre-existing gap got exercised; nothing in the v1.39.0 diff touches `server.js`.
+**Fix:** `server.js` — wrapped the local-only bits (`app.listen(PORT, ...)` and `attachRelay(httpServer)`, the WS kline relay for OKX/Gate.io/KuCoin) in `if (process.env.VERCEL) return;` inside the existing `db.init()...finally()` chain, since Vercel sets `VERCEL=1` on every deployment automatically and neither a persistent listener nor a raw WebSocket relay server is meaningful inside a stateless serverless invocation anyway. Added `export default app;` at the very end of the file so Vercel's runtime always has a handler to invoke, while `npm start` / `node server.js` locally is completely unaffected (env var unset → same `app.listen()` + WS relay startup as before).
+**Files:** `server.js`, `public/index.html` (footer version), `readme.md` (version line), `memory.md`.
+**Verified:** `node --check server.js` clean. Simulated the Vercel import path directly: `VERCEL=1` + `import('./server.js')` resolved with `typeof mod.default === 'function'` and both `.listen`/`.use` present (a valid Express app, no crash, no listener started) — confirms Vercel's runtime now gets exactly the handler it needs. Separately started the app normally (`node server.js`, no `VERCEL` env set) and confirmed via `curl` that `/` and `/js/patterns.js` both still serve 200 and the console log shows `[ws-relay] mounted at /ws/relay for okx, gate, kucoin` and `CryptoPro Charts running at http://localhost:3000` exactly as before — local/non-serverless behavior is unchanged. `npm test` — 35/35 passing (unrelated to this change, no test coverage of the Vercel-vs-local branch). Server stopped after the check (workflow rule 2). **Could not trigger an actual Vercel deployment from this sandbox** (no Vercel account access) — the user should redeploy and confirm the live URL loads without the 500 page.
+
+**Bug fix implemented directly per workflow rule 7; bug list cleared.** Footer → v1.39.1.
+
+---
+
 ## v1.39.0 — 2026-07-18 · Roadmap: technical patterns guide overlay
 
 ### Roadmap item — "Add toggle that activates an overlay window with an overview of technical patterns like bull flag, rising wedge, etc. and a detailed description on when it is bullish or bearish, what breakout levels to watch."

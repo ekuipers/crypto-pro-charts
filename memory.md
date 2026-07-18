@@ -4,6 +4,18 @@
 
 ---
 
+## v1.41.0 — 2026-07-18 — Suite favicon (CryptoPro suite branding)
+
+**Change:** Replaced `public/favicon.svg` with the shared CryptoPro suite icon: dark navy gradient
+rounded square (#1b2330→#0b0e14), three rising green/red candlesticks (#3fb950/#f85149), translucent
+green trend line, and an orange (#f7931a) badge — Charts gets a mini line-chart badge (Training uses
+a graduation cap, Dashboard opposing trade arrows) so all suite apps share one look but stay
+distinguishable in browser tabs. Added `favicon.ico`, `favicon-32.png`, `apple-touch-icon.png`
+(rendered via cairosvg) and updated `<head>` links (apple-touch now a real PNG — Safari ignores SVG
+there). Logo images site-wide reference `/favicon.svg`, so they picked up the new icon automatically.
+Footer version bumped v1.40.0 → v1.41.0. **Verified:** rendered at 180px and inspected; grep
+confirmed head links.
+
 ## v1.40.0 — 2026-07-18 · Roadmap: example diagrams for the technical patterns guide
 
 ### Roadmap item — "Add example patterns to the pattern overlay page option added in version 1.39. This gives a better insight than only the explaining text."

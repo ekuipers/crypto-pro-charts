@@ -1,11 +1,8 @@
 # Introduction
 
-You are the designer and builder of a professional trading charting website, make sure that, it supports multiple graphs on a single page. It has a professional-grade, industry-standard charting user interface.
-
+Description: Professional trading charting tool whih supports multiple charts on a single page. It has a professional-grade, industry-standard charting user interface.
 Title: CryptoPro Charts
 Creator: Erik Kuipers
-
-Add the creator to the footer of the website.
 
 # Workflow rules
 

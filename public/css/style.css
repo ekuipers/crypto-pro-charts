@@ -511,6 +511,11 @@ input:focus, select:focus { border-color: var(--accent); }
 .pat-breakout { font-size: 12px; line-height: 1.5; color: var(--muted); }
 .pat-breakout b { color: var(--text); }
 
+/* Pattern example illustration (Roadmap: schematic price-path diagram per pattern) */
+.pat-chart { width: 100%; height: 76px; display: block; margin-bottom: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.pat-chart-price { fill: none; stroke: var(--text); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.pat-chart-line { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; opacity: .8; }
+
 .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; flex: 1; }
 .tpl-card:hover { border-color: var(--accent); background: var(--hover); }

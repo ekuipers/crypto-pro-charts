@@ -2,7 +2,7 @@
 
 # CryptoPro Charts
 
-**Version:** v1.39.1  
+**Version:** v1.40.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a professional-grade charting website built with vanilla JS, Express, and LightweightCharts.
@@ -32,7 +32,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a profe
 - **MA crossing markers** — Golden/death cross arrows drawn where adjacent SMA/EMA overlays cross (up arrow below bar for bullish, down arrow above bar for bearish), coloured with the up/down theme colours
 - **Event markers** — High-impact economic events overlaid on the chart; past events snapped to the correct candle period, future events projected up to 2 weeks ahead at their correct future date (rendered on a hidden series so LWC doesn't snap them to the last candle)
 - **Tech Info pane** — RSI speedometer, daily/monthly/yearly performance pills, day's/52-week range gauges, seasonals chart
-- **Technical patterns guide** — 📐 topbar toggle opens a reference overlay covering 18 classic chart patterns (Head & Shoulders, triangles, wedges, flags, Cup & Handle, and more), each with its bullish/bearish bias and the exact breakout level to watch, filterable by bias
+- **Technical patterns guide** — 📐 topbar toggle opens a reference overlay covering 18 classic chart patterns (Head & Shoulders, triangles, wedges, flags, Cup & Handle, and more), each with a schematic example diagram, its bullish/bearish bias, and the exact breakout level to watch, filterable by bias
 - **Order Book pane** — Live order book depth, plus **Trades** (live time & sales tape) and **Depth** (cumulative bid/ask area chart) sub-tabs
 - **Derivatives overlay** — Per-panel funding rate + countdown, open interest, and live liquidation markers (Binance USDT-M futures)
 - **Bar replay** — Step through a chart's history candle-by-candle with play/pause/speed/scrub controls, for setup training

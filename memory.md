@@ -4,6 +4,18 @@
 
 ---
 
+## v1.40.0 — 2026-07-18 · Roadmap: example diagrams for the technical patterns guide
+
+### Roadmap item — "Add example patterns to the pattern overlay page option added in version 1.39. This gives a better insight than only the explaining text."
+**Problem:** The v1.39.0 patterns guide (`src/js/patterns.js`) described all 18 chart patterns in prose only — bias, kind, description, breakout level — with no visual of the actual shape, so matching the text to what a pattern looks like on a real chart still required outside reference material.
+**Fix:** Added a `chart` field to every entry in `PATTERNS` — a small schematic price-path diagram (not real data, illustrative only) in a shared `0 0 160 76` SVG viewBox: a zigzag `points` polyline for the price path, dashed `lines` for the neckline/trendline/support/resistance being watched, and (where the pattern has one) a `breakout` triangle marker at the confirming point. New `patternChartSvg()` renders this and `breakoutMarker()` draws the triangle, tinted by the pattern's bias color (`var(--green)`/`var(--red)`/`var(--muted)`) — reusing the same bias→color mapping as the existing badge rather than inventing new colors. Patterns with no single confirming line (Symmetrical Triangle, Rectangle, Broadening Formation) simply omit the arrow, matching their existing "no single confirmation" text. `patternCard()` now renders the SVG between the header row and the description text. `public/css/style.css` — new `.pat-chart`/`.pat-chart-price`/`.pat-chart-line` rules (dark canvas background, solid price line, dashed reference lines) using the same theme variables as the rest of the app so all 6 color themes render correctly.
+**Files:** `src/js/patterns.js`, `public/css/style.css`, `public/index.html` (footer version), `readme.md` (version + feature line), `CLAUDE.md` (roadmap cleared), `memory.md`.
+**Verified:** `node --check` clean. Since `patterns.js` pulls in `alerts.js`'s browser-only module graph (fails outside a DOM with `document is not defined`, same as any of this app's frontend modules run standalone in Node — not a regression), isolated the pure data/render logic (the `PATTERNS` array + `patternChartSvg`/`patternCard`, no DOM) into a throwaway Node eval: confirmed all 18 entries have a `chart` object, all 18 names are unique, and spot-checked the generated markup for Head & Shoulders (breakout arrow present, tinted red) and Symmetrical Triangle (no arrow, as expected for a pattern with no single confirming line). `npm test` — 35/35 passing (unaffected). Started the local server and confirmed via `curl` that `/js/patterns.js` serves the new `pat-chart` markup. Server stopped after the check (workflow rule 2). **Could not visually inspect the rendered SVGs in a live browser this session** — no browser-automation tool available in this sandbox (recurring limitation, see prior entries e.g. v1.39.0/v1.35.1). The user should open the 📐 Technical patterns guide and confirm each card shows a recognizable schematic diagram above its description, with the breakout arrow (where present) colored consistently with the Bullish/Bearish badge.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.40.0.
+
+---
+
 ## v1.39.1 — 2026-07-18 · Bug fix: Vercel deployment crashed on every request after v1.39.0 shipped
 
 ### Bug — "This Serverless Function has crashed. 500: INTERNAL_SERVER_ERROR / FUNCTION_INVOCATION_FAILED" on the live Vercel deployment

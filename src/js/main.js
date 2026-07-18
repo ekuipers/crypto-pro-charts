@@ -18,6 +18,7 @@ import { initAuth } from './auth.js';
 import { initReplay } from './replay.js';
 import { initPaper } from './paper.js';
 import { initCommandPalette } from './palette.js';
+import { initPatternsGuide } from './patterns.js';
 import { initRouter, applyUrlOnLoad, syncUrl } from './router.js';
 import { debounce, log, toast } from './utils.js';
 
@@ -115,6 +116,7 @@ async function init() {
   initOrderBookSubtabs();
   initPaper();
   initCommandPalette();
+  initPatternsGuide();
 
   // Roadmap: a symbol pair and/or right-panel section named in the URL
   // (?symbol=&exchange=#tab) overrides the restored session, so a shared

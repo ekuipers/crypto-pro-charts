@@ -491,6 +491,26 @@ input:focus, select:focus { border-color: var(--accent); }
 .modal.modal-settings { width: 480px; min-width: 360px; min-height: 300px; resize: both; overflow: auto; display: flex; flex-direction: column; }
 .modal.modal-settings .set-ex-list { flex: 1 1 auto; min-height: 120px; max-height: none; }
 
+/* Technical patterns guide (Roadmap) */
+.modal.modal-patterns { width: 640px; min-width: 420px; min-height: 420px; }
+.pat-intro { padding: 0; text-align: left; margin-bottom: 10px; }
+.pat-filters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.pat-filter { padding: 5px 12px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.pat-filter:hover { background: var(--hover); }
+.pat-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pat-list { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.pat-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--panel2); }
+.pat-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.pat-name { font-weight: 600; font-size: 13px; }
+.pat-kind { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.pat-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 7px; border-radius: 10px; color: #fff; }
+.pat-badge.pat-bullish { background: var(--green); }
+.pat-badge.pat-bearish { background: var(--red); }
+.pat-badge.pat-neutral { background: var(--muted); }
+.pat-desc { font-size: 12px; line-height: 1.5; color: var(--text); margin-bottom: 6px; }
+.pat-breakout { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.pat-breakout b { color: var(--text); }
+
 .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; flex: 1; }
 .tpl-card:hover { border-color: var(--accent); background: var(--hover); }

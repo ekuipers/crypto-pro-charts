@@ -4,6 +4,22 @@
 
 ---
 
+## v1.39.0 — 2026-07-18 · Roadmap: technical patterns guide overlay
+
+### Roadmap item — "Add toggle that activates an overlay window with an overview of technical patterns like bull flag, rising wedge, etc. and a detailed description on when it is bullish or bearish, what breakout levels to watch."
+**Problem:** The existing "Info" tab (`techinfo`, `src/js/orderbook.js`) only shows live per-symbol stats (price, RSI speedometer, seasonals) — there was no reference material in the app explaining chart *patterns* themselves (Head & Shoulders, triangles, flags, wedges, etc.), their bullish/bearish bias, or the specific price level that confirms a breakout.
+**Fix:** New `src/js/patterns.js` module:
+- `PATTERNS` — an 18-entry reference table covering the standard TA pattern library (Head & Shoulders / Inverse, Double/Triple Top/Bottom, Ascending/Descending/Symmetrical Triangle, Rising/Falling Wedge, Bull/Bear Flag, Pennant, Cup & Handle, Rounding Bottom, Rectangle, Broadening Formation). Each entry has a `bias` (`bullish`/`bearish`/`neutral` — some patterns like Symmetrical Triangle, Pennant, and Rectangle only resolve in a direction on the actual breakout, so they're tagged neutral rather than guessed), a `kind` (Reversal/Continuation), a plain-language description of the shape and why it forms, and a `breakout` line naming the exact level to watch (neckline, trendline, or support/resistance) plus the measured-move target. Content distilled from the existing `skills/crypto-trader/SKILL.md` trading-strategy skill (per CLAUDE.md rule 12) rather than invented fresh.
+- `openPatternsGuide()` reuses the existing shared `showModal()`/`closeModal()` helper (`src/js/alerts.js`, the same one `settings.js`/`palette.js`/`paper.js`/etc. already use) — no new modal plumbing needed. Renders as a resizable `modal-settings`-styled dialog (like the Settings dialog) with All/Bullish/Bearish/Neutral filter pills that re-render the card list client-side.
+- `initPatternsGuide()` wires a new `#patternsBtn` (📐, "Technical patterns guide") topbar button, added next to the existing event-markers toggle in `public/index.html`, and called from `src/js/main.js` alongside the other `init*()` calls.
+- `public/css/style.css` — new `.modal-patterns`/`.pat-*` rules for the filter pills and pattern cards, following the same `--green`/`--red`/`--muted` theme variables the rest of the app uses so all 6 color themes (including light/sepia) render correctly without any pattern-specific styling.
+**Files:** `src/js/patterns.js` (new), `src/js/main.js`, `public/index.html` (button + footer version), `public/css/style.css`, `CLAUDE.md` (roadmap cleared), `memory.md`.
+**Verified:** `node --check` clean on `patterns.js`/`main.js`; `npm test` — 35/35 passing (unaffected, no coverage of this UI-only addition). Started the local server and confirmed via `curl`: `/` serves the new `#patternsBtn` button markup, `/js/patterns.js` serves the new module, and `/js/main.js` contains both the import and the `initPatternsGuide()` call. **Could not click through the modal in a live browser this session** — no browser-automation tool available in this sandbox (recurring limitation, see prior entries e.g. v1.35.1/v1.34.2). Stopped the server after the check (workflow rule 2). The user should open the app, click the 📐 button in the topbar, and confirm the overlay opens centered with all 18 pattern cards, that the Bullish/Bearish/Neutral filter pills correctly narrow the list, and that Close (and clicking outside the modal) both dismiss it.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.39.0.
+
+---
+
 ## v1.38.0 — 2026-07-18 · Roadmap: expanded the market events calendar
 
 ### Roadmap item — "The market events list seem a bit low on items. Add more financial events that have impact (Hi/Med/Lo) to the crypto markets."

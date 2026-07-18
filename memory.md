@@ -4,6 +4,23 @@
 
 ---
 
+## v1.38.0 — 2026-07-18 · Roadmap: expanded the market events calendar
+
+### Roadmap item — "The market events list seem a bit low on items. Add more financial events that have impact (Hi/Med/Lo) to the crypto markets."
+**Problem:** `data/events.json` (seeded once into the `market_events` Postgres table, see v-era `seedEventsFromDisk`/`db.seedEvents`) held only 16 entries spanning Jan–Aug 2026 — almost entirely FOMC/CPI/NFP prints plus one ECB decision and one options expiry. No `low`-impact events existed at all despite the events pane/marker system (`src/js/events.js`) already supporting the full high/medium/low spectrum (`IMPACT_COLOR`), and coverage ran out after August even though the roadmap was scanned in July.
+**Fix:** Rebuilt `data/events.json` from 16 → 180 events covering all of Jan–Dec 2026, keeping every existing `id`/date unchanged (new entries only) so already-seeded rows in Postgres aren't duplicated (`seedEvents` uses `ON CONFLICT (id) DO NOTHING`). Added:
+- **Monetary policy:** full-year ECB, BoE, and BoJ meeting schedules (previously US-only via FOMC).
+- **Inflation:** PPI and Core PCE for every month, plus the CPI months missing from the original file.
+- **Employment/growth:** ADP Employment, ISM Manufacturing & Services PMI, Retail Sales, quarterly GDP advance estimates, Durable Goods Orders, and Consumer Confidence — filling out `medium`/`low`-impact months that previously had zero entries.
+- **Crypto-specific:** monthly BTC/ETH Deribit options expiry for every month (quarterly ones — Mar/Jun/Sep/Dec — flagged `high` impact as "quarterly" vs `medium` for the other months), an Ethereum network upgrade, and industry conferences (Consensus, Bitcoin Conference, Token2049) as `low`-impact awareness entries.
+- **Regulation/geopolitics:** SEC spot-altcoin-ETF decision deadlines, a US Senate crypto market-structure vote, Jackson Hole, Fed semi-annual testimony, Davos, and the G20 summit.
+**Files:** `data/events.json`, `CLAUDE.md` (roadmap cleared), `public/index.html` (footer version), `memory.md`.
+**Verified:** `node -e` sanity checks — 180 events, all IDs unique, all dates parse, every event has title/category/country/impact (impact distribution: 56 high / 83 medium / 41 low). Started the local server (no `DATABASE_URL` set in this environment, so it exercised the file-fallback path in `server.js`'s `/api/events` handler rather than Postgres) and confirmed `GET /api/events` returns valid JSON filtered to the same 7-day-retention cutoff as `db.pruneOldEvents()` — 86 events on/after the cutoff from today's date (2026-07-18), confirming the new file parses correctly and the existing retention-window logic still applies unchanged. Server stopped after the check (per workflow rule 2, local server only for testing).
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.38.0.
+
+---
+
 ## v1.37.0 — 2026-07-18 · Roadmap: toggle to hide/show the indicators bar
 
 ### Roadmap item — "Add a toggle to hide the indicator bar."

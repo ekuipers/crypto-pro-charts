@@ -318,6 +318,9 @@ function wireTopbar() {
 
   document.getElementById('toggleRight').addEventListener('click', () => { document.getElementById('rightPanel').classList.toggle('collapsed'); resizeAllCharts(); });
 
+  // Indicators bar toggle (Roadmap).
+  document.getElementById('toggleLeft').addEventListener('click', () => { document.getElementById('leftPanel').classList.toggle('collapsed'); resizeAllCharts(); });
+
   // Refresh all charts in one click — drops the kline cache and reloads every
   // panel. Disable + spin the button while in flight so rapid clicks can't pile
   // up overlapping refreshes.

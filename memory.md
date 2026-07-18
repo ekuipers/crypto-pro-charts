@@ -4,6 +4,21 @@
 
 ---
 
+## v1.37.0 — 2026-07-18 · Roadmap: toggle to hide/show the indicators bar
+
+### Roadmap item — "Add a toggle to hide the indicator bar."
+**Problem:** The left indicators panel added in v1.36.0 has no way to be hidden — a user who isn't actively managing indicators has no way to reclaim that 150px column for the chart.
+**Fix:**
+- `public/index.html` — new `#toggleLeft` button (icon `◧`, title "Toggle indicators bar") in the topbar's left `tb-group`, next to the logo and mirroring the existing `#toggleRight` (☰, "Toggle watchlist") pattern.
+- `public/css/style.css` — `.left-panel.collapsed { width: 0; min-width: 0; border: none; }`, the same collapse pattern already used by `.right-panel.collapsed`. Also hid `#toggleLeft` in the existing 820px mobile media query alongside `.left-panel { display: none }`, since the panel is already force-hidden there and a toggle with nothing to toggle is just a dead button.
+- `src/js/ui.js` — `wireTopbar()`: new listener toggling `.collapsed` on `#leftPanel` and calling `resizeAllCharts()`, identical in shape to the existing `#toggleRight` handler right above it.
+**Files:** `public/index.html`, `public/css/style.css`, `src/js/ui.js`, `CLAUDE.md` (roadmap cleared), `memory.md`.
+**Verified:** `node --check` clean; `npm test` — 35/35 passing (unrelated). Started the local server and drove it with Playwright: clicked `#toggleLeft` and confirmed the left panel collapses to zero width with the chart reflowing to reclaim the space and the drawing toolbar shifting left; clicked again and confirmed it expands back to its normal 150px width with indicators/state intact. Collapsed state is session-only (not persisted across reload), matching the existing `#toggleRight`/right-panel behavior — no persistence was added for the right panel either, so none was added here.
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.37.0.
+
+---
+
 ## v1.36.0 — 2026-07-18 · Roadmap: moved the indicators bar from the top nav to a new left-hand panel
 
 ### Roadmap item — "Move the indicators bar at the top of the page to a bar at the most left of the page. This makes the top bar more clean and provides more room for the indicators."

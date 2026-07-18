@@ -119,6 +119,7 @@ input:focus, select:focus { border-color: var(--accent); }
   background: var(--panel); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
+.left-panel.collapsed { width: 0; min-width: 0; border: none; }
 .left-panel-head {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
   padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none;
@@ -932,4 +933,5 @@ body.resizing * { pointer-events: none; }
   .draw-tool { width: 32px; height: 32px; }
 
   .left-panel { display: none; } /* reclaim space; indicators are still editable via the ƒ button */
+  #toggleLeft { display: none; } /* nothing to toggle on mobile — the panel is force-hidden above */
 }

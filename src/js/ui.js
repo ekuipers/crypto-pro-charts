@@ -57,7 +57,7 @@ export function initUI() {
   wireRightTabs();
   document.addEventListener('active-symbol-changed', () => { renderIndChips(); refreshOrderBook(); refreshTechInfo(); });
   document.addEventListener('indicators-changed', renderIndChips);
-  // open-indicators (fired by the panel's ƒ button) now opens the topbar dropdown.
+  // open-indicators (fired by the panel's ƒ button) opens the indicator picker dropdown.
   document.addEventListener('open-indicators', openIndDropdown);
   document.addEventListener('open-symbol-search', () => { document.getElementById('symSearch')?.focus(); });
   document.addEventListener('keydown', onKey);

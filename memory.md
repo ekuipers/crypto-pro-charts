@@ -4,6 +4,21 @@
 
 ---
 
+## v1.36.0 — 2026-07-18 · Roadmap: moved the indicators bar from the top nav to a new left-hand panel
+
+### Roadmap item — "Move the indicators bar at the top of the page to a bar at the most left of the page. This makes the top bar more clean and provides more room for the indicators."
+**Problem:** The "Indicators ▾" button and the active-indicator chip strip (`#indChips`) lived in the top nav (`.topbar-chips`), competing for the same horizontal row as the logo, layout selector, and all the right-side action buttons. The chip strip was capped at `max-width: 42vw` with horizontal scroll, so a chart with several active indicators quickly ran out of visible room and the topbar felt cluttered.
+**Fix:**
+- `public/index.html` — removed `#indDropBtn` and `#indChips` from `<header class="topbar">`. Added a new `<aside id="leftPanel" class="left-panel">` (mounted in `.app-main`, immediately before the existing `#drawToolbar` drawing-tools column, so it renders as the true leftmost element on the page) containing a header row (`INDICATORS` label + a `+` button, still `id="indDropBtn"`) and `#indChips` (same id, now `class="left-ind-chips"` for vertical stacking instead of horizontal scroll).
+- `public/css/style.css` — replaced `.topbar-chips` rules with `.left-panel` (150px fixed column, `border-right`, flex column), `.left-panel-head`/`.left-panel-title`/`.ind-add-btn`, and `.left-ind-chips` (vertical flex list, scrollable, with a CSS `:empty::after` placeholder — "No indicators yet — tap + to add" — since a mostly-empty vertical column needed an empty state that the old horizontal strip never did). `.ind-chip` widened to `width: 100%` for the vertical layout. Updated the two responsive blocks that referenced `.topbar-chips` (900px: narrower column instead of `max-width: 30vw`; 820px: `display: none`, same "still editable via the ƒ button" behavior as before).
+- `src/js/ui.js` — no functional changes needed: `renderIndChips()`/`openIndDropdown()`/`wireTopbar()` all look up elements by `id` (`indChips`, `indDropBtn`, `indDropdown`), which are unchanged, so moving the DOM location required zero JS logic changes. Only updated a stale comment ("now opens the topbar dropdown" → "opens the indicator picker dropdown").
+**Files:** `public/index.html`, `public/css/style.css`, `src/js/ui.js` (comment only), `CLAUDE.md` (roadmap cleared), `memory.md`.
+**Verified:** `node --check` clean; `npm test` — 35/35 passing (unrelated to this UI-only change). Started the local server and drove it end-to-end with Playwright (Chromium): confirmed the top bar no longer shows the Indicators button/chips and reads clean; confirmed the new left panel renders as the leftmost column (left of the drawing toolbar) with a "No indicators yet" empty state; clicked `+`, confirmed the picker dropdown opens anchored under the button; added SMA and EMA and confirmed both render as full-width vertical chips in the left panel *and* draw correctly on the chart; confirmed the chip `×` (remove) and dot (edit) affordances are present. Confirmed the left panel is hidden at a 390×844 mobile viewport (existing "editable via the ƒ button" mobile behavior preserved).
+
+**Roadmap item implemented directly per workflow rule 7; roadmap cleared.** Footer → v1.36.0.
+
+---
+
 ## v1.35.1 — 2026-07-18 · Bug fix: mobile layout hid the chart behind the watchlist + chart captured swipes meant for the page
 
 ### Bug 1 — "When choosing mobile layout instead of desktop, only the watch list is shown but not the charts. It's also very difficult to scroll in the mobile layout as you scroll easily on the chart rather than on the webpage itself."

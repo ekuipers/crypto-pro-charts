@@ -16,12 +16,8 @@
   <header class="topbar">
     <div class="tb-group">
       <span class="logo"><img src="/favicon.svg" alt="" class="logo-icon"> <b>CryptoPro</b> Charts</span>
-      <button id="indDropBtn" class="tb-btn" title="Add indicators to the active chart">Indicators ▾</button>
       <button id="toggleRight" class="tb-btn" title="Toggle watchlist">☰</button>
     </div>
-
-    <!-- Active indicators on the current chart (moved from left panel into the top nav) -->
-    <div id="indChips" class="topbar-chips" title="Active indicators on the selected chart"></div>
 
     <div class="tb-group">
       <div id="layoutDropWrap" class="layout-drop-wrap">
@@ -53,6 +49,15 @@
       <input id="indFilter" class="ind-drop-search" placeholder="Search indicators…">
       <div id="indList" class="ind-drop-list"></div>
     </div>
+
+    <!-- LEFT: indicators bar (moved from the top nav — Roadmap) -->
+    <aside id="leftPanel" class="left-panel">
+      <div class="left-panel-head">
+        <span class="left-panel-title">Indicators</span>
+        <button id="indDropBtn" class="ind-add-btn" title="Add indicators to the active chart">+</button>
+      </div>
+      <div id="indChips" class="left-ind-chips" title="Active indicators on the selected chart"></div>
+    </aside>
 
     <!-- Drawing toolbar -->
     <div id="drawToolbar" class="draw-toolbar"></div>
@@ -173,7 +178,7 @@
     <span class="footer-sep">·</span>
     <span>© 2026</span>
     <span class="footer-sep">·</span>
-    <span class="footer-version">v1.35.1</span>
+    <span class="footer-version">v1.36.0</span>
   </footer>
 
   <!-- Alerts slide-out -->

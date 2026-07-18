@@ -4,6 +4,23 @@
 
 ---
 
+## v1.35.1 — 2026-07-18 · Bug fix: mobile layout hid the chart behind the watchlist + chart captured swipes meant for the page
+
+### Bug 1 — "When choosing mobile layout instead of desktop, only the watch list is shown but not the charts. It's also very difficult to scroll in the mobile layout as you scroll easily on the chart rather than on the webpage itself."
+**Problem:** Two separate root causes, both in the P3-25 mobile layout (v1.x, see the `@media (max-width: 820px)` block in `style.css`):
+1. `src/js/main.js` only added the `.right-panel.collapsed` class once, at `init()`, gated on `window.innerWidth <= 820` at that instant. On mobile that class is what keeps the right panel (watchlist/etc.) from becoming a full-screen `position: fixed` overlay (`style.css` mobile block) that sits on top of `.charts-area` at `z-index: 80`. If the panel was open when the viewport was ≥820px wide and the window was then narrowed past the breakpoint (resize, orientation change, DevTools device toolbar — not just a fresh mobile page load), nothing ever re-added `.collapsed`, so the already-open panel became a full-screen overlay hiding the chart completely underneath it.
+2. lightweight-charts attaches its own touch handlers to the chart canvas for one-finger pan by default. On mobile, multi-chart layouts render as a horizontally swipeable `scroll-snap` row (`.charts-area` in the mobile media query) so the user can swipe between chart panels — but a one-finger swipe starting on the canvas itself was captured by the chart library's pan gesture instead of the browser's native scroll-snap, so it felt like "the chart scrolls instead of the page."
+**Fix:**
+- `src/js/constants.js` — added `MOBILE_BREAKPOINT = 820`, shared between JS and the existing CSS breakpoint instead of a re-typed magic number.
+- `src/js/main.js` — replaced the one-shot `innerWidth` check with a `window.matchMedia('(max-width: 820px)')` listener that re-collapses the right panel every time the viewport crosses into mobile width, not just at load.
+- `src/js/charts.js` — new `mobileTouchOptions()` helper: when the viewport is mobile-width **and** more than one chart panel is open (i.e. there's actually something to swipe between), it disables `handleScroll.horzTouchDrag`/`vertTouchDrag` so one-finger drags pass through to the browser's swipe/scroll-snap, while leaving `handleScale.pinch` enabled (a two-finger gesture that can't be confused with a swipe). A single-panel mobile layout has nothing to swipe between, so normal touch-drag chart panning is left enabled there. Wired into `chartTheme()` (applied at chart creation) and into `resizeAllCharts()` (re-applied via `applyOptions` on every resize/layout change, since `setLayout()` already calls `resizeAllCharts()` after adding/removing panels).
+**Files:** `src/js/constants.js`, `src/js/main.js`, `src/js/charts.js`, `public/index.html` (footer version).
+**Verified:** `node --check` clean on all three edited JS files; `npm test` — 35/35 passing (unaffected, no coverage of this DOM/touch-input path — this is a UI behavior fix, not a unit-testable one). Traced the CSS/JS interaction by hand: confirmed `.right-panel.collapsed` is the only thing preventing the mobile `position: fixed` overlay from covering `.charts-area`, and confirmed `resizeAllCharts()` already runs on every `window resize` (debounced) and every `setLayout()` call, so hooking the touch-option refresh into it covers both the viewport-resize and panel-count-change cases without a second listener. **Could not click through the live app on an actual mobile viewport this session** — no browser-automation tool available in this sandbox (recurring limitation, see prior entries). The user should verify on a real phone or DevTools device emulation: (a) resize a desktop-width window down past 820px with the watchlist open and confirm the chart is still visible underneath the hamburger-toggled panel, and (b) with a 2+ chart layout on a narrow viewport, confirm a one-finger swipe moves between chart panels rather than panning the visible chart.
+
+**Bug fix implemented directly per workflow rule 7. Footer → v1.35.1.**
+
+---
+
 ## v1.35.0 — 2026-07-17 · Roadmap: URL anchors + symbol pair for direct chart/section links
 
 ### Roadmap item — "Add anchors to different parts of the application. Include the symbol pair to the url for accessing a chart directly from the URL."

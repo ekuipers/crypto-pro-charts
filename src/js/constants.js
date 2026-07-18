@@ -3,6 +3,10 @@
 // ============================================================
 const BINANCE = 'https://api.binance.com/api/v3';
 
+// Viewport width (px) below which the mobile/tablet layout (P3-25) kicks in —
+// must match the `@media (max-width: 820px)` breakpoint in style.css.
+export const MOBILE_BREAKPOINT = 820;
+
 // Candle interval duration in seconds, keyed by timeframe id.
 export const TF_SECONDS = { '1m':60,'5m':300,'15m':900,'30m':1800,'1h':3600,'2h':7200,'4h':14400,'6h':21600,'12h':43200,'1d':86400,'3d':259200,'1w':604800,'1M':2592000 };
 // Ordered list of every selectable timeframe (panel TF dropdown + server aggregation).

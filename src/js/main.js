@@ -4,6 +4,7 @@
 import { state } from './state.js';
 import { openPriceStream, closePriceStream, priceStreamLive, refreshMissingPrices, refreshVolumes, defaultExchange } from './data.js';
 import { setLayout, setAutosaveFn, resizeAllCharts, redrawAllPanels } from './charts.js';
+import { MOBILE_BREAKPOINT } from './constants.js';
 import { initUI, updateWSStatus, renderIndChips, updateLayoutDropBtn } from './ui.js';
 import { initWatchlist, updatePriceRows } from './watchlist.js';
 import { initMarketStatus } from './marketstatus.js';
@@ -90,11 +91,18 @@ async function init() {
   document.documentElement.dataset.theme = state.theme;
   if (!restored) setLayout('l1');
 
-  // P3-25: on a phone/narrow-tablet viewport the right panel becomes a
-  // full-screen overlay (see the mobile media query in style.css) — default
-  // it to hidden so the chart is what a mobile user actually sees first,
-  // same hamburger (☰) button reveals it either way.
-  if (window.innerWidth <= 820) document.getElementById('rightPanel')?.classList.add('collapsed');
+  // P3-25 / bug fix: on a phone/narrow-tablet viewport the right panel becomes
+  // a full-screen overlay (see the mobile media query in style.css) — default
+  // it to hidden so the chart is what a mobile user actually sees first, same
+  // hamburger (☰) button reveals it either way. This has to be re-applied
+  // whenever the viewport crosses the breakpoint (window resize, orientation
+  // change, DevTools device toolbar), not just at load — otherwise a panel
+  // left open on a desktop-width layout becomes a full-screen overlay that
+  // hides the chart entirely the moment the window narrows past 820px.
+  const mobileMq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+  const collapseRightPanelForMobile = () => document.getElementById('rightPanel')?.classList.add('collapsed');
+  if (mobileMq.matches) collapseRightPanelForMobile();
+  mobileMq.addEventListener('change', e => { if (e.matches) collapseRightPanelForMobile(); });
 
   initUI();
   initWatchlist();

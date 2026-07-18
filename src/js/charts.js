@@ -2,7 +2,7 @@
 // CHARTS — panel + chart lifecycle, layouts, indicators glue
 // ============================================================
 import { state, drawingState } from './state.js';
-import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES, DEFAULT_FAVORITE_TIMEFRAMES } from './constants.js';
+import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES, DEFAULT_FAVORITE_TIMEFRAMES, MOBILE_BREAKPOINT } from './constants.js';
 import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
 import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast, priceKey } from './utils.js';
@@ -26,7 +26,7 @@ const PRICE_SCALE_MIN_WIDTH = 68;
 
 export function chartTheme() {
   const c = themeColors();
-  return {
+  const theme = {
     layout: {
       background: { type: 'solid', color: c.bg },
       textColor: c.text,
@@ -38,6 +38,26 @@ export function chartTheme() {
     rightPriceScale: { borderColor: c.border, minimumWidth: PRICE_SCALE_MIN_WIDTH },
     timeScale: { borderColor: c.border, timeVisible: true, secondsVisible: false },
     crosshair: { mode: LWC().CrosshairMode.Normal },
+  };
+  return { ...theme, ...mobileTouchOptions() };
+}
+
+// Bug fix: on mobile with more than one chart panel (P3-25 swipeable
+// layout), a one-finger drag on the canvas is normally captured by
+// lightweight-charts to pan the chart, which fights the browser's horizontal
+// scroll-snap between chart panels and makes it feel impossible to swipe
+// between them. Disabling touch-drag panning in that case leaves one-finger
+// gestures to the browser (swipe between panels) while pinch-to-zoom — a
+// two-finger gesture that can't be confused with a swipe — still works. A
+// single-panel mobile layout has nothing to swipe between, so normal
+// touch-drag panning of chart history is left enabled there. Applied both at
+// chart creation (chartTheme()) and on every resize, since the viewport or
+// panel count can change after charts already exist.
+function mobileTouchOptions() {
+  const disableTouchPan = window.innerWidth <= MOBILE_BREAKPOINT && state.panels.length > 1;
+  return {
+    handleScroll: { horzTouchDrag: !disableTouchPan, vertTouchDrag: !disableTouchPan },
+    handleScale: { pinch: true },
   };
 }
 
@@ -953,15 +973,18 @@ export function redrawAllPanels() {
 
 export function resizeAllCharts() {
   requestAnimationFrame(() => {
+    const touchOptions = mobileTouchOptions();
     state.panels.forEach(p => {
       const div = p.el.querySelector('.main-chart-div');
       const r = div.getBoundingClientRect();
       if (r.width && r.height && p.chart) p.chart.resize(r.width, r.height);
+      p.chart?.applyOptions(touchOptions);
       p.indicators.forEach(ind => {
         if (ind.subChart) {
           const sr = ind._oscDiv.getBoundingClientRect();
           if (sr.width && sr.height) ind.subChart.resize(sr.width, sr.height);
         }
+        ind.subChart?.applyOptions(touchOptions);
       });
       renderDrawings(p);
       renderVolProfile(p);

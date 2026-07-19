@@ -12,3 +12,6 @@ data/users.json.migrated
 data/accounts/
 data/sessions.json
 .env
+
+# Scratch/debug files from investigations — not source
+/debug/

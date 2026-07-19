@@ -918,6 +918,8 @@ body.resizing * { pointer-events: none; }
 .footer-logo-icon { width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; }
 .footer-sep { color: var(--border); }
 .footer-version { opacity: 0.5; font-size: 10px; letter-spacing: 0.04em; }
+.footer-donate { color: #e0b45c; text-decoration: none; }
+.footer-donate:hover { color: #f0c876; }
 @media (max-width: 720px) {
   .footer-desc, .footer-sep:nth-child(3), .footer-sep:nth-child(4) { display: none; }
 }

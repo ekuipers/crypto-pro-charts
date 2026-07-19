@@ -4,6 +4,26 @@
 
 ---
 
+## v1.41.2 — 2026-07-19 — Roadmap: suite-wide workflow-rules verification pass — donation link added
+
+**Task:** "rescan roadmap." Own Roadmap/Bugs were empty (checked directly in this repo's `CLAUDE.md`). The
+only open item across the whole suite was the Suite-level roadmap: "Verify all projects against the
+workflow rules in this file" — full audit + findings logged in `CryptoPro Suite/memory/memory.md`.
+
+**Gap found and fixed here:** Suite rule 3 ("title, year, creator and donation link in the footer") —
+`public/index.html`'s footer had title/creator/year/version but no donation link. Added a `☕ Donate` link
+to `https://buymeacoffee.com/erikkuipers` (same URL Suite's own footer uses) plus a matching
+`.footer-donate` rule in `public/css/style.css` (amber `#e0b45c`, matching Suite's own donate-link color
+for cross-suite consistency per rule 17). Header/title-bar branding (rule 14 — `CryptoPro` colored via
+`.logo b { color: var(--accent) }`) was already compliant, nothing to change there.
+
+**Not touched, correctly out of scope:** rule 24 (React frontend) is already tracked as its own `TO DO`
+item ("Charts: Convert Frontend to React") in Suite's `CLAUDE.md`, explicitly marked "don't implement, for
+planning only" — not something a roadmap-scan should auto-implement.
+
+**Verified:** footer/head tag balance unchanged (`<footer>`/`</footer>` count still 2); file still parses
+as valid text; version bumped v1.41.1 → v1.41.2.
+
 ## 2026-07-19 — Workflow rules deduped against CryptoPro Suite's master list (no version bump — docs only)
 
 **Change:** CryptoPro Suite roadmap item — "Add the Workflow rules from project CryptoPro Suite as reference

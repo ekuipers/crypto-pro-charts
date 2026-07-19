@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-07-19 — Workflow rules deduped against CryptoPro Suite's master list (no version bump — docs only)
+
+**Change:** CryptoPro Suite roadmap item — "Add the Workflow rules from project CryptoPro Suite as reference
+to the sub-project's workflow rules. Remove every duplicate workflow rule from the sub-projects." `CLAUDE.md`'s
+numbered rules 1–5, 7–12 were near-verbatim duplicates of Suite `CLAUDE.md` rules 1, 2, 15, 4, 5, 6, 8, 9, 10,
+11, 12 (memory.md changelog discipline, local-node-server-for-testing-only, move-completed-items-to-memory,
+auto-commit/sync, update-documentation, roadmap-scan-triggers-implementation, allow-all-edits, JS file
+placement, favicon-as-logo, compact-command, skills directory). Replaced with a pointer to Suite's `CLAUDE.md`
+on GitHub; kept only rule 6 ("Update version number in the footer with the latest version in the change log"),
+which has no Suite equivalent.
+**Verified:** no site code touched — `CLAUDE.md` diff only; `## Roadmap`/`## Bugs` sections unaffected.
+
+---
+
 ## v1.41.1 — 2026-07-18 — Cross-suite title-bar/footer branding consistency
 
 **Change:** Driven by a CryptoPro Suite workflow-rules audit (rules 7 + 17: consistent title-bar/footer

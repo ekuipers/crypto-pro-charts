@@ -4,6 +4,34 @@
 
 ---
 
+## v1.41.4 — 2026-07-21 — Roadmap: header logo shrunk to match the footer, footer color-split bug fixed
+
+**Task:** "run the last roadmap item also for projects Charts and Training," follow-up to the same fix
+already applied in CryptoPro Trader. Suite roadmap item: "In every project use the same height, font and
+colors for the project logo in the header as in the footer." Trader/Training chose to shrink the header
+down to the existing footer treatment rather than grow the footer up — applied the identical direction
+here for suite-wide consistency.
+
+**Found while comparing the two:** the footer had an actual bug, not just a size mismatch. Header markup
+correctly split `<b>CryptoPro</b> Charts` (only "CryptoPro" bold+accent-colored); the footer wrapped the
+whole phrase — `<b>CryptoPro Charts</b>` — so `.footer-logo b { color: var(--accent) }` colored "Charts"
+too, which no other CryptoPro sub-project does.
+
+**Change:** `public/index.html` — footer markup split to `<b>CryptoPro</b> Charts`, matching the header.
+`public/css/style.css` — `.logo` (header) shrunk from `font-size:15px` / 20×20px icon (`border-radius:4px`)
+/ `gap:6px` to `font-size:11px` / 16×16px icon (`border-radius:3px`) / `gap:4px`, now identical to
+`.footer-logo`/`.footer-logo-icon`. Added `.footer-logo { color: var(--text) }` — previously the plain
+"Charts" text inherited `.app-footer`'s dimmer `var(--muted)`, while the header's plain text was
+`var(--text)`; now both match. Overall `.topbar`/`.app-footer` bar heights (`--topbar-h`, footer's fixed
+30px) were deliberately left untouched — this is a dense charting terminal where taller chrome costs chart
+canvas space (same reasoning Trader's memory.md recorded for leaving Charts alone in the 2026-07-18 pass);
+only the logo/text sizing inside the existing bars was unified, not the bars themselves.
+
+**Not touched:** this project has no build step (`public/` served as static assets), so no bundler
+verification applies — changes are plain CSS/HTML, checked by inspection and by grep confirming no JS reads
+`.logo`/`.footer-logo`/`.logo-icon` classes. Footer version bumped v1.41.3 → v1.41.4 (also corrects a stale
+footer that still read v1.41.2 after the last two changelog entries).
+
 ## v1.41.3 — 2026-07-20 — Roadmap: cross-project auto sign-in (SSO ticket handoff)
 
 **Task:** "rescan roadmap," run from CryptoPro Trader with write access to all 4 suite repos. Suite roadmap

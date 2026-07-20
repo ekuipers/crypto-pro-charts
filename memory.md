@@ -4,6 +4,24 @@
 
 ---
 
+## v1.41.3 — 2026-07-20 — Roadmap: cross-project auto sign-in (SSO ticket handoff)
+
+**Task:** "rescan roadmap," run from CryptoPro Trader with write access to all 4 suite repos. Suite roadmap
+item: "Whenever the user is signed in to the Suite, automatically sign in to other projects." Full
+cross-repo narrative + security review logged in `CryptoPro Suite/memory/memory.md`; this entry covers only
+the slice added here.
+
+**Change:** `src/db.js` gained a `sso_tickets` table (token PK, uid FK, expires_at, used) created
+idempotently in `init()`, plus `createSsoTicket`/`consumeSsoTicket` (atomic single-use `UPDATE ...
+RETURNING uid`). `src/auth.js` gained `POST /api/auth/sso-ticket` (mints a 60s single-use ticket for the
+signed-in caller) and an `app.use` middleware — registered before the static routes in `server.js` — that
+consumes a `?sso=<token>` param on any GET request, mints a normal local session if valid, and always
+302-redirects to a clean URL. This app only gained the *consuming* side for now (a user arriving from
+Suite's landing page with a ticket); nothing here calls `/api/auth/sso-ticket` to issue one yet.
+
+**Verified:** `npm test` (35/35, unrelated existing suite — no DB-integration tests exist for this or the
+pre-existing accounts/sessions code), `node --check` on both edited files.
+
 ## v1.41.2 — 2026-07-19 — Roadmap: suite-wide workflow-rules verification pass — donation link added
 
 **Task:** "rescan roadmap." Own Roadmap/Bugs were empty (checked directly in this repo's `CLAUDE.md`). The

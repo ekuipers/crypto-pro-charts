@@ -4,6 +4,35 @@
 
 ---
 
+## v1.42.0 — 2026-07-21 — Roadmap: functional user manual (Charts-only)
+
+**Task:** Suite roadmap, Charts-only item: "Add a detailed functional user manual for the Charts web
+application. The user manual is opened with a Help button in the top bar of the application. The manual is
+unfolded from the most left side of the page with a content layout."
+
+**What shipped:** a `❓` button in the top bar (next to Settings) opens `#manualPanel`, a slide-out drawer
+that unfolds from the left edge of the page (mirrors the existing `#alertsPanel` slide-out, mirrored to the
+opposite side) with a two-pane content layout: a table-of-contents list on the left, the selected section's
+text on the right, plus a live search box that filters the TOC by title/body text. 15 sections cover every
+user-facing feature — layouts, drawing tools, indicators, watchlist, order book/info, scanner, paper
+trading, alerts, the patterns guide, save/layouts/templates, the command palette + deep links, bar replay,
+account/sync, and settings/theme — written from the survey of each `src/js/*.js` module's actual UI
+behavior, not from memory, so the copy matches what the buttons currently do.
+
+**Files:** `src/js/manual.js` (new — section content + TOC/search/open-close wiring), `public/css/manual.css`
+(new — kept separate from the already near-800-line `style.css` rather than growing it further), `helpBtn`
++ `#manualPanel` markup in `public/index.html`, `initManualGuide()` wired into `src/js/main.js`.
+
+**Verified:** local dev server (`npm run dev`) driven with Playwright — opened the panel, clicked through
+TOC sections, confirmed live search filtering (title *and* body-text substring match), confirmed Close
+button removes the `.open` class, and checked both desktop (1440px) and mobile (390px, where the TOC
+collapses into a wrapping chip row above the content) viewports via screenshot. Found and fixed one bug
+during testing: reopening the panel after a search left the stale filter text in the search box while the
+TOC itself silently reset unfiltered — the open handler now clears the search input so the two stay in
+sync. No console/page errors in any of the above.
+
+---
+
 ## v1.41.6 — 2026-07-21 — Bug fix: stale prices after tab/window regains focus
 
 **Bug:** "When the focus is off the charts web page and the focus returns, some prices are not updated.

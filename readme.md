@@ -2,7 +2,7 @@
 
 # CryptoPro Charts
 
-**Version:** v1.40.0  
+**Version:** v1.42.0  
 **Creator:** Erik Kuipers
 
 Professional multi-chart cryptocurrency trading & analytics platform — a professional-grade charting website built with vanilla JS, Express, and LightweightCharts.
@@ -46,6 +46,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a profe
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
 - **Responsive footer** — Creator attribution and version number
 - **Command palette (Ctrl/Cmd+K)** — instant symbol search/switch and an action launcher (layouts, theme, save, export, indicator toggles, …)
+- **User manual** — ❓ topbar button unfolds a searchable reference panel from the left, with a table of contents down one side and the selected section's content beside it, covering every feature in this list
 - **Undo/redo for drawings** — Ctrl/Cmd+Z / Ctrl/Cmd+Y (or Ctrl/Cmd+Shift+Z), per chart
 - **Chart snapshot & export** — one-click PNG (📷, watermarked, includes your drawings) and CSV export of the currently visible bars (⤓)
 - **Web Worker indicator computation** — indicator math runs off the main thread so multi-chart layouts stay smooth, with an automatic main-thread fallback if Workers are unavailable
@@ -132,9 +133,12 @@ crypto-pro-charts/
 │   ├── index.html
 │   ├── manifest.json    # PWA manifest
 │   ├── sw.js             # app-shell service worker (installable, offline fallback)
-│   └── css/style.css
+│   └── css/
+│       ├── style.css
+│       └── manual.css   # user-manual slide-out panel styling
 ├── src/js/
 │   ├── main.js          # app entry point
+│   ├── manual.js        # ❓ user manual — TOC + searchable content panel
 │   ├── auth.js          # account button + sign-in/2FA/change-password modals (client)
 │   ├── charts.js        # panel creation, indicators, volume profile, derivatives readout
 │   ├── data.js          # exchange REST/WS, kline fetching, pair lists, trade stream, volumes

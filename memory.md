@@ -4,6 +4,24 @@
 
 ---
 
+## v1.43.1 — 2026-07-22 — Doc sync: new workflow rule (manual must track functionality changes)
+
+**Task:** Erik added a new project rule directly to `CLAUDE.md`: "Whenever functionality is added or
+changed, update the user manual accordingly." Applying it retroactively caught that v1.43.0 (deep-link
+symbol validation, same session) had shipped without a manual update.
+
+**Fix:** the manual's existing "Command Palette & Deep Links" section (`src/js/manual.js`) already
+documented `?symbol=&exchange=#tab` links but predated both the not-watchlist-restricted behavior and the
+v1.43.0 validation. Added a sentence noting a linked symbol doesn't need to be on any watchlist (how sibling
+apps like Trader deep-link here) and that an unknown symbol now shows an error toast instead of silently
+loading a blank chart.
+
+**Files:** `src/js/manual.js` (copy only), `public/index.html` (footer version bump).
+
+**Verified:** `node --check src/js/manual.js`.
+
+---
+
 ## v1.43.0 — 2026-07-22 — Roadmap: validate deep-linked symbols not on any watchlist
 
 **Task:** Suite roadmap item #1: "allow the user to switch the symbol on the chart with a symbol not in a

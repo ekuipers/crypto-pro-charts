@@ -110,7 +110,7 @@ const SECTIONS = [
     id: 'palette', title: 'Command Palette & Deep Links',
     html: `
       <p>Press <b>Ctrl/Cmd + K</b> to open the command palette. It fuzzy-searches symbols (jumps the active chart to one you pick) and app actions — change layout, toggle panels/theme/event markers, refresh, open Save/Layouts/Templates/Alerts/Settings/Account, toggle replay, or export the active chart as PNG/CSV. Use the arrow keys and Enter to navigate and select.</p>
-      <p>The browser URL always reflects what you're looking at — <code>?symbol=BTCUSDT&exchange=binance#watchlist</code> — and updates live as you switch charts or tabs. Opening a link like that loads the matching symbol/exchange and switches to that right-panel tab, which makes it easy to share a specific chart or view with someone else.</p>`,
+      <p>The browser URL always reflects what you're looking at — <code>?symbol=BTCUSDT&exchange=binance#watchlist</code> — and updates live as you switch charts or tabs. Opening a link like that loads the matching symbol/exchange and switches to that right-panel tab, which makes it easy to share a specific chart or view with someone else. The symbol doesn't need to be on any of your watchlists — a link can point at any symbol the exchange actually lists, which is how other CryptoPro apps (like Trader) deep-link you straight to a chart. If the symbol in the link doesn't exist on that exchange, an error toast tells you so and your current chart is left alone.</p>`,
   },
   {
     id: 'replay', title: 'Bar Replay',

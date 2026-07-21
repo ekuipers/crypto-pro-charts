@@ -13,6 +13,7 @@ Creator: Erik Kuipers
 > specific to this project are listed below.
 
 1. Update version number in the footer with the lastest version in the change log.
+2. Whenever functionality is added or changed, update the user manual accordingly.
 
 ## Roadmap
 

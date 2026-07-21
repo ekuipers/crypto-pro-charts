@@ -8,10 +8,12 @@ import { addPanel, destroyPanel, setLayout, setActivePanel, addIndicator, loadPa
 import { initDrawingsHistory } from './drawings.js';
 import { showModal, closeModal } from './alerts.js';
 
-const AUTOSAVE_KEY  = 'cryptopro_autosave';
-const LAYOUTS_KEY   = 'cryptopro_layouts';
-const TEMPLATES_KEY = 'cryptopro_templates';
+const AUTOSAVE_KEY    = 'cryptopro_autosave';
+const LAYOUTS_KEY      = 'cryptopro_layouts';
+const TEMPLATES_KEY   = 'cryptopro_templates';
+const WATCHLISTS_KEY  = 'cryptopro_watchlists';
 const VERSION = 4;
+const WATCHLISTS_VERSION = 1;
 
 export function snapshot() {
   return {
@@ -20,15 +22,11 @@ export function snapshot() {
     layout: state.layout,
     gridSizes: state.gridSizes,
     obGrouping: state.obGrouping,
-    watchlists: state.watchlists,
-    // Explicit tab order. state.watchlists is a plain object, and the server
-    // stores the snapshot as Postgres JSONB — which does NOT preserve object
-    // key order — so the drag-reordered tab order would otherwise be lost on
-    // reload. Arrays keep their order through JSONB, so we persist the order
-    // separately and re-apply it on load.
-    watchlistOrder: Object.keys(state.watchlists),
-    currentWatchlist: state.currentWatchlist,
-    wlSort: state.wlSort,
+    // Watchlists are NOT part of this snapshot (Suite roadmap, Charts-only):
+    // they're saved per user account via their own /api/watchlists endpoint
+    // (see watchlistsSnapshot/persistWatchlists below), independent of both
+    // the autosave session and any named layout, so switching layouts never
+    // reverts or drops the watchlists tied to the account.
     settings: state.settings,
     alerts: state.alerts,
     symColors: state.symColors,
@@ -74,7 +72,67 @@ async function persistSession() {
   }
 }
 
-export const autosave = debounce(() => { persistSession(); }, 1500);
+// ---- Watchlists (Suite roadmap, Charts-only) ----
+// Saved per user account via their own endpoint/row, independent of the
+// session autosave and of named layouts, so the watchlists a user built up
+// follow them everywhere they open Charts and are never reverted by loading
+// (or deleting) a saved layout.
+function watchlistsSnapshot() {
+  return {
+    version: WATCHLISTS_VERSION,
+    watchlists: state.watchlists,
+    // Explicit tab order — state.watchlists is a plain object and the server
+    // stores this as Postgres JSONB, which doesn't preserve key order.
+    watchlistOrder: Object.keys(state.watchlists),
+    currentWatchlist: state.currentWatchlist,
+    wlSort: state.wlSort,
+  };
+}
+
+async function persistWatchlists() {
+  const snap = watchlistsSnapshot();
+  try {
+    await apiPut('/api/watchlists', snap);
+  } catch {
+    // Server unavailable — fall back to localStorage.
+    try { localStorage.setItem(WATCHLISTS_KEY, JSON.stringify(snap)); } catch {}
+  }
+}
+
+function applyWatchlistData(data) {
+  if (!data) return;
+  if (data.watchlists) state.watchlists = data.watchlists;
+  // Restore the drag-reordered tab order (JSONB doesn't preserve object key
+  // order). Honour the saved order, then append any watchlists not listed in
+  // it (e.g. created in an older session) so none are dropped.
+  if (data.watchlistOrder && Array.isArray(data.watchlistOrder)) {
+    const ordered = {};
+    data.watchlistOrder.forEach(n => { if (n in state.watchlists) ordered[n] = state.watchlists[n]; });
+    Object.keys(state.watchlists).forEach(n => { if (!(n in ordered)) ordered[n] = state.watchlists[n]; });
+    state.watchlists = ordered;
+  }
+  if (data.currentWatchlist) state.currentWatchlist = data.currentWatchlist;
+  if (data.wlSort) state.wlSort = data.wlSort;
+}
+
+export async function loadWatchlists() {
+  try {
+    const data = await apiGet('/api/watchlists');
+    if (data && data.version) { applyWatchlistData(data); return true; }
+  } catch {}
+  try {
+    const raw = localStorage.getItem(WATCHLISTS_KEY);
+    if (!raw) return false;
+    applyWatchlistData(JSON.parse(raw));
+    return true;
+  } catch { return false; }
+}
+
+// Single debounced hook every state-mutating call site (watchlist edits,
+// panel/indicator changes, drawings, etc.) already calls via
+// charts.js's scheduleAutosave() — persists both stores together so callers
+// don't need to know which store a given piece of state lives in.
+export const autosave = debounce(() => { persistSession(); persistWatchlists(); }, 1500);
 
 export async function loadAutosave() {
   // Try server first.
@@ -96,18 +154,6 @@ export function applyLayoutData(data) {
   if (data.theme) state.theme = LEGACY_THEME[data.theme] || (THEMES[data.theme] ? data.theme : DEFAULT_THEME);
   if (data.gridSizes) state.gridSizes = data.gridSizes;
   if (data.obGrouping) state.obGrouping = data.obGrouping;
-  if (data.watchlists) state.watchlists = data.watchlists;
-  // Restore the drag-reordered tab order (JSONB doesn't preserve object key
-  // order). Honour the saved order, then append any watchlists not listed in it
-  // (e.g. created in an older session) so none are dropped.
-  if (data.watchlistOrder && Array.isArray(data.watchlistOrder)) {
-    const ordered = {};
-    data.watchlistOrder.forEach(n => { if (n in state.watchlists) ordered[n] = state.watchlists[n]; });
-    Object.keys(state.watchlists).forEach(n => { if (!(n in ordered)) ordered[n] = state.watchlists[n]; });
-    state.watchlists = ordered;
-  }
-  if (data.currentWatchlist) state.currentWatchlist = data.currentWatchlist;
-  if (data.wlSort) state.wlSort = data.wlSort;
   if (data.settings) state.settings = { ...state.settings, ...data.settings };
   // Migrate legacy single-exchange sessions to the multi-exchange list.
   if (!Array.isArray(state.settings.exchanges) || !state.settings.exchanges.length) {

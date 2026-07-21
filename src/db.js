@@ -15,6 +15,10 @@ const { Pool } = pg;
 export const GUEST = '__guest__';
 // Row name under which a user's autosave session-state is stored in `layouts`.
 export const SESSION_NAME = '__session__';
+// Row name under which a user's watchlists are stored in `layouts` — kept
+// separate from named layouts (Suite roadmap, Charts-only) so loading or
+// deleting a saved layout never touches the watchlists tied to the account.
+export const WATCHLISTS_NAME = '__watchlists__';
 
 // Prefer the transaction-mode pooler (Supavisor, port 6543) over the
 // "non-pooling" URL. On this Supabase project the "non-pooling" connection
@@ -419,13 +423,17 @@ export async function deleteLayout(uid, name) {
 }
 export async function listLayouts(uid) {
   const { rows } = await q(
-    'select name, data from layouts where uid = $1 and name <> $2 order by updated_at desc',
-    [uid, SESSION_NAME],
+    'select name, data from layouts where uid = $1 and name not in ($2, $3) order by updated_at desc',
+    [uid, SESSION_NAME, WATCHLISTS_NAME],
   );
   const out = {};
   for (const r of rows) out[r.name] = r.data;
   return out;
 }
+
+// ---- Watchlists (Suite roadmap, Charts-only: per-account, not per-layout) ---
+export async function getWatchlists(uid) { return getLayout(uid, WATCHLISTS_NAME); }
+export async function putWatchlists(uid, data) { return putLayout(uid, WATCHLISTS_NAME, data); }
 
 // ---- Indicator templates (P2-12) --------------------------------------------
 export async function getTemplates(uid) {

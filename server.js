@@ -363,9 +363,10 @@ app.get('/api/market-status', async (_req, res) => {
 // Each request's data belongs to the signed-in account, or the GUEST uid when
 // anonymous — exactly the scoping the old per-user folders provided.
 
-// Reject names used for our internal autosave row or that are over-long.
+// Reject names used for our internal autosave/watchlists rows or that are over-long.
 function validLayoutName(name) {
-  return typeof name === 'string' && name.length > 0 && name.length <= 80 && name !== db.SESSION_NAME;
+  return typeof name === 'string' && name.length > 0 && name.length <= 80
+    && name !== db.SESSION_NAME && name !== db.WATCHLISTS_NAME;
 }
 
 app.get('/api/session', async (req, res) => {
@@ -385,6 +386,30 @@ app.put('/api/session', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('[api] put session:', e.message);
+    res.status(500).json({ error: String(e.message) });
+  }
+});
+
+// Watchlists (Suite roadmap, Charts-only): stored per account, independent of
+// named layouts, so switching/loading/deleting a saved layout never reverts
+// or drops the user's watchlists.
+app.get('/api/watchlists', async (req, res) => {
+  try {
+    const data = await db.getWatchlists(await currentUid(req));
+    if (data == null) return res.status(404).json(null);
+    res.json(data);
+  } catch (e) {
+    console.error('[api] get watchlists:', e.message);
+    res.status(500).json(null);
+  }
+});
+
+app.put('/api/watchlists', async (req, res) => {
+  try {
+    await db.putWatchlists(await currentUid(req), req.body);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[api] put watchlists:', e.message);
     res.status(500).json({ error: String(e.message) });
   }
 });

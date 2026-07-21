@@ -41,7 +41,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a profe
 - **Paper trading & journal** — Simulated long/short positions with live unrealized P&L, a closed-trade journal with notes, and one-click logging straight from the position drawing tool
 - **Watchlist heatmap** — Toggle the watchlist into a performance-heatmap tile grid; rows also show a 24h mini sparkline
 - **Multi-user accounts** — Application-only sign-in with a username and password (no third-party SSO). Passwords are salted + scrypt-hashed. Accounts, auth sessions, and chart layouts are persisted in a **Supabase (Postgres) database** (`accounts`, `sessions`, `layouts` tables, created automatically on startup). Each user's autosave session-state and named layouts are scoped to their account; anonymous users share a guest scope. Account button in the top bar (Sign in / Create account)
-- **Layout persistence** — Autosave + named layouts saved to the Postgres database (scoped per signed-in user); layout selector dropdown in the toolbar; falls back to browser localStorage if the server/DB is unavailable
+- **Layout persistence** — Autosave + named layouts saved to the Postgres database (scoped per signed-in user); layout selector dropdown in the toolbar; falls back to browser localStorage if the server/DB is unavailable. **Watchlists are stored separately, per account** (not inside any named layout), so they're identical everywhere the user signs in and are never reverted by loading (or overwritten by deleting) a saved layout
 - **Server-side alerts** — Price cross, % move, RSI level, and volume-spike alerts evaluated on the server every 30 s, so they fire even with the browser closed; optional Telegram / webhook notifications (`.env`), with toast + browser notifications in-app. Falls back to in-browser price alerts when no database is configured
 - **Themes** — Dark Classic, Light Classic, Solarized, Nord, Dracula
 - **Responsive footer** — Creator attribution and version number
@@ -109,7 +109,7 @@ The server creates these tables on startup if they don't exist:
 |---|---|
 | `accounts` | user id, username, salt, password hash, timestamps |
 | `sessions` | opaque session token → account, with expiry (FK to `accounts`) |
-| `layouts` | per-user autosave session-state and named layouts (`jsonb`), keyed by `(uid, name)` |
+| `layouts` | per-user autosave session-state, watchlists, and named layouts (`jsonb`), keyed by `(uid, name)` — autosave and watchlists each live under their own reserved `name` (`__session__`, `__watchlists__`), separate from every user-named layout |
 | `klines` | server-side bar store keyed by `(exchange, symbol, tf, time)` — powers infinite history scroll-back |
 | `alerts` | per-user server-side alerts (price / % move / RSI / volume spike), evaluated by the alert engine |
 | `templates` | per-user saved indicator templates (`jsonb`), keyed by `(uid, name)` |

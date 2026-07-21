@@ -13,7 +13,7 @@ import { initSettings } from './settings.js';
 import { initScanner } from './scanner.js';
 import { initEvents } from './events.js';
 import { refreshOrderBook, refreshTechInfo, initOrderBookSubtabs, updateTechInfoPrice } from './orderbook.js';
-import { autosave, loadAutosave } from './persistence.js';
+import { autosave, loadAutosave, loadWatchlists } from './persistence.js';
 import { initAuth } from './auth.js';
 import { initReplay } from './replay.js';
 import { initPaper } from './paper.js';
@@ -91,6 +91,11 @@ async function init() {
   const restored = await loadAutosave();
   document.documentElement.dataset.theme = state.theme;
   if (!restored) setLayout('l1');
+
+  // Watchlists load independently of the session/layout restore above (Suite
+  // roadmap, Charts-only): they're tied to the account, not to any layout, so
+  // they're always fetched here regardless of whether a session was restored.
+  await loadWatchlists();
 
   // P3-25 / bug fix: on a phone/narrow-tablet viewport the right panel becomes
   // a full-screen overlay (see the mobile media query in style.css) — default

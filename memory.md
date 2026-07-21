@@ -4,6 +4,48 @@
 
 ---
 
+## v1.41.5 — 2026-07-21 — Roadmap: watchlists saved per user account, decoupled from saved layouts
+
+**Task:** Suite roadmap, Charts-only item: "Make sure that the Watchlists are saved per user account and
+not with the saved layouts. This ensures that wherever the user accesses Charts, the same watchlists will
+persist. Watchlist changes are automatically saved with the user account."
+
+**Bug this closes:** `persistence.js`'s `snapshot()` was shared by both the autosave session (`/api/session`)
+and every named layout (`/api/layouts/:name`) — it bundled `watchlists`/`watchlistOrder`/`currentWatchlist`/
+`wlSort` into the same blob as panels/theme/layout. `applyLayoutData()` (used to restore *both* the session
+*and* any loaded named layout) then unconditionally overwrote `state.watchlists` from whatever was saved in
+that layout at save time. Net effect: loading an older saved layout silently reverted the user's current
+watchlists back to a stale snapshot, and watchlists were never truly "the same everywhere" — they rode along
+with whichever layout happened to load last.
+
+**Change:**
+
+- `src/db.js` — new reserved row name `WATCHLISTS_NAME = '__watchlists__'` in the existing `layouts` table
+  (same per-uid JSONB-blob pattern as the `__session__` autosave row — no new table needed). `listLayouts()`
+  now excludes both reserved names so `__watchlists__` never appears in the "Saved Layouts" list. New
+  `getWatchlists(uid)`/`putWatchlists(uid, data)` wrap `getLayout`/`putLayout` with that name.
+- `server.js` — new `GET`/`PUT /api/watchlists` routes (mirroring `/api/session`'s shape); `validLayoutName()`
+  now also rejects the `__watchlists__` name so a user can't create/overwrite it via `/api/layouts/:name`.
+- `src/js/persistence.js` — `snapshot()` no longer includes any watchlist field (named layouts and the
+  session snapshot are now watchlist-free). New `watchlistsSnapshot()`/`persistWatchlists()`/
+  `applyWatchlistData()`/`loadWatchlists()` — a fully separate persist/load pair against `/api/watchlists`,
+  with the same `localStorage` (`cryptopro_watchlists`) fallback pattern as the session autosave.
+  `applyLayoutData()` (used by both session restore and named-layout load) no longer touches
+  `state.watchlists`/`currentWatchlist`/`wlSort` at all — loading a saved layout now only changes chart
+  panels/theme/layout, never the watchlists. The exported `autosave` debounce now persists both stores
+  (`persistSession()` + `persistWatchlists()`) together, so the ~15 existing call sites in `watchlist.js`
+  that already call `scheduleAutosave()` on every watchlist edit didn't need touching individually.
+- `src/js/main.js` — `loadWatchlists()` is called once at startup (after `loadAutosave()`, before
+  `initWatchlist()` renders tabs), independent of whether a session was restored, so watchlists are always
+  loaded from the account regardless of layout/session state.
+
+**Verified:** `npm test` (35/35 pass, unaffected — no existing test covered this path). Manual local
+`node server.js` + `curl` smoke test as the GUEST account: `PUT /api/watchlists` → `GET /api/watchlists`
+round-trips correctly; `PUT /api/layouts/__watchlists__` is rejected (`400 invalid name`); saving a named
+layout via `PUT /api/layouts/MyLayout` with a watchlist-free snapshot succeeds; `GET /api/layouts` lists only
+`MyLayout` (no `__session__`/`__watchlists__` leakage); watchlists are unchanged both after saving that
+layout and after `DELETE /api/layouts/MyLayout`. Footer version bumped v1.41.4 → v1.41.5.
+
 ## v1.41.4 — 2026-07-21 — Roadmap: header logo shrunk to match the footer, footer color-split bug fixed
 
 **Task:** "run the last roadmap item also for projects Charts and Training," follow-up to the same fix

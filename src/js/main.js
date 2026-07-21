@@ -53,6 +53,7 @@ function startPriceStream() {
     };
     setTimeout(pollMissing, 2000);
     startPriceStream._missingTimer = setInterval(pollMissing, 30000);
+    startPriceStream._pollMissing = pollMissing;
   }
 }
 
@@ -69,8 +70,13 @@ function onPriceStreamClosed() {
 
 // Reconnect immediately if the socket isn't live when the user returns to the
 // tab / window, or the network comes back — rather than waiting out the backoff.
+// Also force the REST missing-price poll right away: browsers throttle
+// background-tab setInterval timers (Chrome can push it out well past 30s),
+// so on refocus that poll's rows (symbols Binance's ws doesn't carry) could
+// otherwise sit stale until its own delayed interval finally fires.
 function ensurePriceStream() {
   if (!priceStreamLive()) startPriceStream();
+  startPriceStream._pollMissing?.();
 }
 
 async function init() {

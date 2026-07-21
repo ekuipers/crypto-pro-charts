@@ -20,4 +20,4 @@ _No open roadmap items. Completed items are logged in `memory.md` (see v1.40.0).
 
 ## Bugs
 
-_No open bugs. Fixed bugs are logged in `memory.md` (see v1.35.1)._
+_No open bugs. Fixed bugs are logged in `memory.md` (see v1.41.6)._

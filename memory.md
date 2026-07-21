@@ -4,6 +4,30 @@
 
 ---
 
+## v1.41.6 — 2026-07-21 — Bug fix: stale prices after tab/window regains focus
+
+**Bug:** "When the focus is off the charts web page and the focus returns, some prices are not updated.
+Enforce a refresh of the charts."
+
+**Root cause:** `startPriceStream()` in `src/js/main.js` runs two independent update paths: the Binance
+mini-ticker websocket (covers most symbols, ticks every ~1.5s) and a REST poll (`pollMissing`) for
+watchlist symbols Binance doesn't carry (e.g. USDC pairs only listed on Gate.io/KuCoin), on a 30s
+`setInterval`. The existing `visibilitychange`/`focus`/`online` handlers only called `ensurePriceStream()`,
+which reconnects the websocket if it dropped — they never touched the REST poll. Browsers throttle
+background-tab `setInterval` timers (Chrome's intensive throttling can push a 30s interval out past a
+minute, or longer the longer the tab stays hidden), so on refocus those REST-polled rows could sit stale
+well past the nominal 30s cadence — "some prices" (the non-Binance-stream ones), not all.
+
+**Fix:** `startPriceStream()` now stashes its `pollMissing` closure as `startPriceStream._pollMissing`.
+`ensurePriceStream()` (already wired to `visibilitychange`/`focus`/`online` in `main.js`) calls it
+immediately in addition to the existing websocket-liveness check, so refocus forces both paths to refresh
+rather than waiting out a throttled interval.
+
+**Verified:** `npm test` (35/35 passing, unrelated but confirms no regression); logic reviewed against the
+existing throttle/backoff comments already in `main.js`.
+
+---
+
 ## v1.41.5 — 2026-07-21 — Roadmap: watchlists saved per user account, decoupled from saved layouts
 
 **Task:** Suite roadmap, Charts-only item: "Make sure that the Watchlists are saved per user account and

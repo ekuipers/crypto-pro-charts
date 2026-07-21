@@ -7,8 +7,9 @@
 // ============================================================
 import { state } from './state.js';
 import { changeSymbol, setActivePanel } from './charts.js';
-import { defaultExchange } from './data.js';
+import { defaultExchange, validateSymbol } from './data.js';
 import { EXCHANGES } from './constants.js';
+import { toast } from './utils.js';
 
 // Must match the `data-tab` values in index.html's `.right-tab` buttons.
 const TAB_IDS = ['watchlist', 'events', 'orderbook', 'techinfo', 'scanner', 'paper'];
@@ -33,7 +34,11 @@ export function syncUrl() {
 
 // Apply a `?symbol=&exchange=` / `#tab` URL onto the just-restored app state.
 // Called once at startup, after the saved session/layout has produced panels.
-export function applyUrlOnLoad() {
+// Deep-linked symbols don't need to be on any watchlist — changeSymbol()
+// charts them directly — but a stale/mistyped symbol in the link (e.g. from
+// another CryptoPro app) should fail with a toast rather than silently
+// charting garbage, hence the validateSymbol() check below.
+export async function applyUrlOnLoad() {
   const params = new URLSearchParams(location.search);
   const symbol = (params.get('symbol') || '').toUpperCase();
   const exchange = params.get('exchange');
@@ -41,11 +46,16 @@ export function applyUrlOnLoad() {
 
   if (symbol && SYMBOL_RE.test(symbol)) {
     const ex = exchange && EXCHANGES[exchange] ? exchange : defaultExchange();
-    const panel = state.activePanel || state.panels[0];
-    if (panel && (panel.symbol !== symbol || panel.exchange !== ex)) {
-      changeSymbol(panel, symbol, null, ex);
-    } else if (panel) {
-      setActivePanel(panel);
+    const known = await validateSymbol(symbol, ex);
+    if (!known) {
+      toast(`${symbol} not found on ${EXCHANGES[ex].name} — check the link`, 'error');
+    } else {
+      const panel = state.activePanel || state.panels[0];
+      if (panel && (panel.symbol !== symbol || panel.exchange !== ex)) {
+        changeSymbol(panel, symbol, null, ex);
+      } else if (panel) {
+        setActivePanel(panel);
+      }
     }
   }
 

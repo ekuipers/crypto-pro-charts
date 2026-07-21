@@ -137,7 +137,7 @@ async function init() {
   // buttons and their panes above are ready, since applying the URL's tab
   // anchor simulates a click on the corresponding .right-tab button.
   initRouter();
-  applyUrlOnLoad();
+  await applyUrlOnLoad();
   syncUrl();
 
   startPriceStream();

@@ -4,6 +4,39 @@
 
 ---
 
+## v1.43.0 — 2026-07-22 — Roadmap: validate deep-linked symbols not on any watchlist
+
+**Task:** Suite roadmap item #1: "allow the user to switch the symbol on the chart with a symbol not in a
+watchlist. This allows deeplinking from Trader to Charts to symbols not in the watch list and to look at
+symbols not in the watchlist."
+
+**Found already working:** `changeSymbol()`/`selectWatchlistSymbol()` (`src/js/charts.js`) never checked
+watchlist membership, and the `?symbol=&exchange=#tab` deep-link mechanism (`src/js/router.js`,
+`applyUrlOnLoad()`) already called `changeSymbol()` directly — so charting an arbitrary non-watchlist
+symbol, including via URL, already worked end-to-end before this change.
+
+**Gap closed:** a mistyped or stale deep-link symbol (e.g. a bad link sent from Trader) silently charted a
+blank/broken panel with no feedback — `applyUrlOnLoad()` did no existence check. Repurposed the
+previously-unused `validateSymbol()` in `src/js/data.js` (was Binance-only, dead code, no call sites) into
+an exchange-aware check: `validateSymbol(symbol, exchange)` now calls the already-exported
+`fetchExchangePairs(exchange)` (renamed from module-private) and confirms the symbol is actually listed
+there. `applyUrlOnLoad()` awaits this before calling `changeSymbol()`; an unknown symbol now shows
+`toast(..., 'error')` ("SYMBOL not found on Exchange — check the link") and leaves the current chart alone
+instead of loading garbage. `main.js`'s `init()` now `await`s `applyUrlOnLoad()` (was fire-and-forget) so
+`syncUrl()` right after it reflects the validated outcome, not a still-in-flight one.
+
+**Files:** `src/js/data.js` (export `fetchExchangePairs`, rewrite `validateSymbol`), `src/js/router.js`
+(await validation in `applyUrlOnLoad`, toast on failure), `src/js/main.js` (await the now-async call).
+
+**Verified:** `npm test` (35/35 passing, no regressions — none of the existing tests touch router/data
+network paths). Directly exercised the real `validateSymbol()` against live exchange APIs via a Node
+script: `BTCUSDT` on `binance` → `true`, `ETHUSDT` on `bybit` → `true` (confirms cross-exchange, non-default
+symbols validate correctly), a garbage symbol on `binance` → `false`. No browser automation tool was
+available in this session to click through the toast/UI visually; the underlying validation logic and its
+wiring into `applyUrlOnLoad`/`main.js` were verified by direct code execution instead.
+
+---
+
 ## v1.42.0 — 2026-07-21 — Roadmap: functional user manual (Charts-only)
 
 **Task:** Suite roadmap, Charts-only item: "Add a detailed functional user manual for the Charts web

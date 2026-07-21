@@ -320,7 +320,7 @@ async function fetchBinancePairs() {
     .map(s => ({ symbol: s.symbol, name: s.baseAsset, quote: s.quoteAsset }));
 }
 
-async function fetchExchangePairs(exId) {
+export async function fetchExchangePairs(exId) {
   switch (exId) {
     case 'bybit': {
       const j = await fetchJSON('https://api.bybit.com/v5/market/instruments-info?category=spot');
@@ -407,11 +407,13 @@ export async function fetchAllPairs() {
   }
 }
 
-// Validate a symbol exists on Binance
-export async function validateSymbol(symbol) {
+// Validate a symbol is actually listed on the given exchange — used to check
+// deep-link (?symbol=&exchange=) input before charting it, so a stale or
+// mistyped link fails with a toast instead of loading a blank/broken chart.
+export async function validateSymbol(symbol, exchange = 'binance') {
   try {
-    await fetchJSON(`${EXCHANGES.binance.rest}/ticker/price?symbol=${symbol}`);
-    return true;
+    const pairs = await fetchExchangePairs(exchange);
+    return pairs.some(p => p.symbol === symbol);
   } catch { return false; }
 }
 

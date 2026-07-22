@@ -73,6 +73,12 @@
     <!-- Per-chart timeframe dropdown (shared, repositioned/repopulated per panel — see toggleTfDropdown in charts.js) -->
     <div id="tfDropdown" class="tf-dropdown" style="display:none"></div>
 
+    <!-- Per-chart symbol-switch dropdown (shared, repositioned/repopulated per panel — see toggleSymDropdown in charts.js). Unfolds directly below the clicked symbol button; picking a symbol charts it there and adds it to the current watchlist. -->
+    <div id="symDropdown" class="sym-dropdown" style="display:none">
+      <input id="symDropSearch" class="panel-search" placeholder="Search all symbols…">
+      <div id="symDropList" class="sym-drop-list"></div>
+    </div>
+
     <!-- CENTER: charts -->
     <main id="chartsArea" class="charts-area layout-l1"></main>
 
@@ -183,7 +189,7 @@
     <span class="footer-sep">·</span>
     <span>© 2026</span>
     <span class="footer-sep">·</span>
-    <span class="footer-version">v1.43.1</span>
+    <span class="footer-version">v1.43.2</span>
     <span class="footer-sep">·</span>
     <a class="footer-donate" href="https://buymeacoffee.com/erikkuipers" target="_blank" rel="noopener">☕ Donate</a>
   </footer>

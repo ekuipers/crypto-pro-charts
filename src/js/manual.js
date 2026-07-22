@@ -28,7 +28,7 @@ const SECTIONS = [
       <p>The <b>layout dropdown</b> in the top bar switches between Single, 2 Columns, 2 Rows, 4/6/8-Grid, or any layout you've saved yourself. Grid splitters between panels can be dragged to resize columns/rows.</p>
       <p>Each chart panel's header bar has:</p>
       <ul>
-        <li>A <b>symbol button</b> to search and switch the pair on that panel.</li>
+        <li>A <b>symbol button</b> — click it to unfold a searchable symbol list right below it and switch the pair on that panel. Any symbol works, not just ones already on a watchlist; picking one also adds it to your current watchlist.</li>
         <li>A live <b>price readout</b>, colored green/red against the last tick.</li>
         <li>A <b>chart-type selector</b> — Candles, Hollow, Bars, Line, Area, Heikin Ashi, Renko.</li>
         <li><b>Timeframe pills</b> you've favorited (★), plus a "▾" dropdown to pin/unpin more.</li>

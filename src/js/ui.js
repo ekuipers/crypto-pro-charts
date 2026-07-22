@@ -59,7 +59,6 @@ export function initUI() {
   document.addEventListener('indicators-changed', renderIndChips);
   // open-indicators (fired by the panel's ƒ button) opens the indicator picker dropdown.
   document.addEventListener('open-indicators', openIndDropdown);
-  document.addEventListener('open-symbol-search', () => { document.getElementById('symSearch')?.focus(); });
   document.addEventListener('keydown', onKey);
   renderIndChips();
 }

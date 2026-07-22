@@ -2,10 +2,10 @@
 // CHARTS — panel + chart lifecycle, layouts, indicators glue
 // ============================================================
 import { state, drawingState } from './state.js';
-import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES, DEFAULT_FAVORITE_TIMEFRAMES, MOBILE_BREAKPOINT } from './constants.js';
-import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange } from './data.js';
+import { LAYOUT_COUNTS, COLORS, THEMES, DEFAULT_THEME, TF_SECONDS, TIMEFRAMES, DEFAULT_FAVORITE_TIMEFRAMES, MOBILE_BREAKPOINT, EXCHANGES } from './constants.js';
+import { getCachedKlines, fetchKlines, fetchOlderKlines, openKlineStream, defaultExchange, fetchAllPairs, searchCoinGecko, enabledExchanges } from './data.js';
 import { indDef, calcOverlay, calcOscillator, calcHeikinAshi } from './indicators.js';
-import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast, priceKey } from './utils.js';
+import { baseAsset, quoteAsset, fmtPrice, uid, log, warn, toast, priceKey, esc, debounce } from './utils.js';
 import { initDrawingsForPanel, renderDrawings } from './drawings.js';
 import { exportPanelPNG, exportPanelCSV } from './snapshot.js';
 import { computeInWorker } from './indicator-client.js';
@@ -484,9 +484,10 @@ export function addPanel(opts = {}) {
   state.panels.push(panel);
 
   // wire events
-  el.querySelector('.sym-btn').addEventListener('click', () => {
+  el.querySelector('.sym-btn').addEventListener('click', e => {
+    e.stopPropagation();
     setActivePanel(panel);
-    document.dispatchEvent(new CustomEvent('open-symbol-search', { detail: { panel } }));
+    toggleSymDropdown(panel, e.currentTarget);
   });
   renderTfGroup(panel);
   el.querySelector('.tf-drop-btn').addEventListener('click', e => {
@@ -687,6 +688,94 @@ document.addEventListener('click', e => {
   if (!menu || menu.style.display === 'none') return;
   if (menu.contains(e.target) || e.target.closest?.('.tf-drop-btn')) return;
   closeTfDropdown();
+}, true);
+
+// ---------- Symbol-switch dropdown ----------
+// Roadmap: clicking a chart panel's symbol button unfolds a searchable
+// symbol list directly below it (mirrors the timeframe ▾ dropdown above),
+// instead of just focusing the watchlist's search box. Any listed symbol can
+// be picked — not only ones already on a watchlist — and picking one charts
+// it on that panel and adds it to the current watchlist if not already there.
+let _symDropPanel = null;
+
+function pickSymDropdownItem(panel, sym, name, exchange) {
+  closeSymDropdown();
+  changeSymbol(panel, sym, name, exchange);
+  const wl = state.watchlists[state.currentWatchlist];
+  if (wl && !wl.some(s => s.symbol === sym && (s.exchange || defaultExchange()) === exchange)) {
+    wl.push({ symbol: sym, name: name || baseAsset(sym), exchange });
+    toast(`Charted ${baseAsset(sym)} — added to watchlist`, 'info');
+  }
+  scheduleAutosave();
+}
+
+function renderSymDropdownList(panel, query, cgCoins = []) {
+  const list = document.getElementById('symDropList');
+  if (!list) return;
+  const q = query.toUpperCase().trim();
+  const pairs = state.allPairs || [];
+  const matches = (q ? pairs.filter(p => p.symbol.includes(q) || p.name.includes(q)) : pairs).slice(0, 30);
+  const multiEx = enabledExchanges().length > 1;
+  const exHtml = matches.map(r => {
+    const badge = multiEx ? `<span class="search-res-ex">${esc(EXCHANGES[r.exchange]?.name || r.exchange)}</span>` : '';
+    return `<div class="search-res" data-sym="${r.symbol}" data-name="${esc(r.name)}" data-ex="${esc(r.exchange || defaultExchange())}">${esc(baseAsset(r.symbol))}<span>${esc(quoteAsset(r.symbol))}</span>${badge}</div>`;
+  }).join('');
+  const cgHtml = cgCoins.length
+    ? `<div class="search-sep">CoinGecko</div>` + cgCoins.map(c => {
+        const sym = `${c.symbol}USDT`;
+        return `<div class="search-res search-res-cg" data-sym="${sym}" data-name="${esc(c.name)}" data-ex="${esc(defaultExchange())}"><span class="cg-badge">CG</span>${esc(c.name)}<span>${c.symbol}/USDT</span></div>`;
+      }).join('')
+    : '';
+  list.innerHTML = (exHtml + cgHtml) || '<div class="muted" style="padding:8px 10px">No matches</div>';
+  list.querySelectorAll('.search-res').forEach(el => el.addEventListener('click', () =>
+    pickSymDropdownItem(panel, el.dataset.sym, el.dataset.name, el.dataset.ex)));
+}
+
+function closeSymDropdown() {
+  const menu = document.getElementById('symDropdown');
+  if (menu) menu.style.display = 'none';
+  _symDropPanel = null;
+}
+
+async function toggleSymDropdown(panel, btn) {
+  const menu = document.getElementById('symDropdown');
+  if (!menu) return;
+  if (menu.style.display !== 'none' && _symDropPanel === panel) { closeSymDropdown(); return; }
+  _symDropPanel = panel;
+  menu.style.display = 'block';
+  const r = btn.getBoundingClientRect();
+  const mw = menu.offsetWidth || 260;
+  let left = r.left;
+  if (left + mw > window.innerWidth - 4) left = window.innerWidth - mw - 4;
+  if (left < 4) left = 4;
+  menu.style.left = left + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  const search = document.getElementById('symDropSearch');
+  if (search) { search.value = ''; search.focus(); }
+  await fetchAllPairs();
+  if (_symDropPanel === panel) renderSymDropdownList(panel, '');
+}
+
+const _onSymDropSearch = debounce(async (panel, q) => {
+  renderSymDropdownList(panel, q, []);
+  if (q.trim().length >= 2) {
+    const cgResults = await searchCoinGecko(q.trim());
+    const pairs = state.allPairs || [];
+    const exSyms = new Set(pairs.map(p => p.symbol));
+    const fresh = cgResults.filter(c => !exSyms.has(`${c.symbol}USDT`));
+    if (_symDropPanel === panel) renderSymDropdownList(panel, q, fresh);
+  }
+}, 300);
+
+document.getElementById('symDropSearch')?.addEventListener('input', e => {
+  if (_symDropPanel) _onSymDropSearch(_symDropPanel, e.target.value);
+});
+
+document.addEventListener('click', e => {
+  const menu = document.getElementById('symDropdown');
+  if (!menu || menu.style.display === 'none') return;
+  if (menu.contains(e.target) || e.target.closest?.('.sym-btn')) return;
+  closeSymDropdown();
 }, true);
 
 function initChart(panel) {

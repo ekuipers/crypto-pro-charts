@@ -806,6 +806,17 @@ body.resizing * { pointer-events: none; }
 .tfd-star:hover { color: #f7a600; }
 .tfd-label { flex: 1; text-align: left; padding: 7px 10px 7px 0; font-size: 13px; color: var(--text); }
 
+/* Per-chart symbol-switch dropdown (unfolds below the panel's symbol button) */
+.sym-dropdown {
+  position: fixed; z-index: 250; width: 260px; max-height: 70vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  padding: 8px;
+}
+.sym-dropdown .panel-search { margin: 0 0 6px; width: 100%; box-sizing: border-box; }
+.sym-drop-list { max-height: 320px; overflow-y: auto; }
+.sym-drop-list .search-res { border-radius: 5px; }
+
 /* Chart type selector (P1-3) */
 .ctype-sel {
   background: var(--panel2); color: var(--muted); border: 1px solid transparent;

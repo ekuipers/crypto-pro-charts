@@ -4,6 +4,44 @@
 
 ---
 
+## v1.43.2 — 2026-07-22 — Roadmap rescan: symbol switching now unfolds from the chart panel itself
+
+**Task:** "rescan roadmap." Suite roadmap item #3: "opening a symbol in the chart which is not on the list
+should be invoked when the user clicks on the symbol in the chart. The list with symbols to select from
+should unfold directly from the symbol downward in the chart itself instead of in the watchlist. This makes
+it more intuitive. The selected symbol should be added to the watchlist." Own Bugs empty.
+
+**Before:** each chart panel's `.sym-btn` dispatched an `open-symbol-search` event whose only handler
+(`ui.js`) focused `#symSearch` — the search box in the right-side Watchlist panel. That required the
+Watchlist tab to be open and visible, and only searched/selected among symbols already reachable from that
+panel; it wasn't really "unfolding from the symbol."
+
+**Fix:** ported the same anchored-dropdown pattern already used for the panel's timeframe `▾` button
+(`toggleTfDropdown`/`#tfDropdown` in `src/js/charts.js`) to build a new `toggleSymDropdown`/`#symDropdown`:
+a shared, repositioned-per-click floating panel (search input + result list) that opens directly below
+whichever panel's symbol button was clicked. Search reuses the existing aggregated-pairs + debounced
+CoinGecko-discovery logic from `watchlist.js`'s `handleSearch`, re-implemented locally in `charts.js` to
+avoid a circular import (`watchlist.js` already imports from `charts.js`). Picking a result calls the
+existing `changeSymbol(panel, ...)` and pushes the symbol onto `state.watchlists[state.currentWatchlist]`
+if not already present (mirroring `addSymbolPrompt`'s dedup-by-symbol+exchange logic), so it charts on that
+specific panel and lands on the watchlist in one action — not restricted to symbols already listed there.
+Removed the now-dead `open-symbol-search` event/listener (`ui.js`) since nothing dispatches it anymore.
+Updated the manual's "Charts & Layouts" section (`src/js/manual.js`) to describe the new behavior.
+
+**Files:** `src/js/charts.js` (new dropdown + imports + `.sym-btn` handler), `src/js/ui.js` (removed dead
+listener), `public/index.html` (`#symDropdown` markup), `public/css/style.css` (`.sym-dropdown`/`.sym-drop-list`,
+reusing the existing `.search-res`/`.search-res-ex`/`.search-sep`/`.cg-badge` row styles), `src/js/manual.js`,
+footer version bump.
+
+**Verified:** `node --check` on all three modified JS files; `npm test` (35/35, no regressions — no test
+covers this UI path); a local `node server.js` smoke test confirmed `#symDropdown`/`#symDropSearch` render
+in the served HTML and `charts.js` serves clean. No browser automation tool was available this session to
+click through the dropdown open/search/pick flow visually — recommended before fully trusting it.
+
+**Roadmap item now complete** — cleared from Suite's own `CLAUDE.md`.
+
+---
+
 ## v1.43.1 — 2026-07-22 — Doc sync: new workflow rule (manual must track functionality changes)
 
 **Task:** Erik added a new project rule directly to `CLAUDE.md`: "Whenever functionality is added or

@@ -33,7 +33,7 @@ export function snapshot() {
     panels: state.panels.map(p => ({
       symbol: p.symbol, symbolName: p.symbolName, exchange: p.exchange, tf: p.tf,
       chartType: p.chartType || 'candles', scaleMode: p.scaleMode || 0, linkGroup: p.linkGroup || null,
-      indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color, active: i.active !== false })),
+      indicators: p.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color, active: i.active !== false, paneHeight: i.paneHeight || null })),
       overlays: (p.overlays || []).map(o => ({ symbol: o.symbol, name: o.name, exchange: o.exchange, color: o.color })),
       drawings: p.drawings,
     })),
@@ -183,7 +183,7 @@ export function applyLayoutData(data) {
     panel.el.querySelector('.sym-btn').innerHTML = `${baseAsset(pd.symbol)}<span class="sym-quote">${quoteAsset(pd.symbol)}</span>`;
     renderTfGroup(panel);
     loadPanelData(panel).then(() => {
-      (pd.indicators || []).forEach(ind => addIndicator(panel, ind.defId, ind.params, ind.color, ind.active !== false));
+      (pd.indicators || []).forEach(ind => addIndicator(panel, ind.defId, ind.params, ind.color, ind.active !== false, ind.paneHeight));
     });
   });
   if (state.panels[0]) setActivePanel(state.panels[0]);

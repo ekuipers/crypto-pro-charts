@@ -1083,12 +1083,12 @@ export function resizeAllCharts() {
 }
 
 // ---------- Indicators ----------
-export function addIndicator(panel, defId, params, color, active = true) {
+export function addIndicator(panel, defId, params, color, active = true, paneHeight = null) {
   const def = indDef(defId);
   if (!def) return;
   const ind = {
     uid: uid('ind'), defId, params: params || {}, color: color || def.color,
-    active: active !== false,
+    active: active !== false, paneHeight: paneHeight || null,
     series: [], subChart: null, subSeries: [], hist: null,
   };
   // fill default params
@@ -1220,10 +1220,13 @@ function buildOscillator(panel, ind, p, res) {
   const oscWrap = panel.el.querySelector('.osc-wrap');
   const div = document.createElement('div');
   div.className = 'osc-pane';
-  div.innerHTML = `<div class="osc-label">${def.full}<button class="osc-close">✕</button></div><div class="osc-chart"></div>`;
+  div.innerHTML = `<div class="osc-label" draggable="true"><span class="osc-drag" title="Drag to reorder">⠿</span>${def.full}<button class="osc-close">✕</button></div><div class="osc-chart"></div>`;
   oscWrap.appendChild(div);
   ind._oscDiv = div;
   div.querySelector('.osc-close').addEventListener('click', () => removeIndicator(panel, ind));
+  wireOscDrag(panel, ind, div);
+  // layoutOscillators() below rebuilds resize handles for every pane
+  // (rewireOscResizeHandles), so this new pane's handle is wired there.
 
   const chartDiv = div.querySelector('.osc-chart');
   const sub = LWC().createChart(chartDiv, {
@@ -1275,6 +1278,116 @@ function buildOscillator(panel, ind, p, res) {
     if (r.width && r.height) sub.resize(r.width, r.height);
     sub.timeScale().setVisibleLogicalRange(panel.chart.timeScale().getVisibleLogicalRange());
     alignPriceScales(panel);
+  });
+}
+
+// ---- Oscillator pane vertical resize (drag the border between two panes) ----
+// A pane with no explicit ind.paneHeight shares the wrap height equally with
+// its siblings (flex: 1 1 0), matching the pre-resize default look. Dragging a
+// handle freezes every sibling's CURRENT on-screen height into paneHeight
+// first (so untouched panes don't jump), then only redistributes pixels
+// between the two panes on either side of the dragged handle — the same
+// "lock the ratio, only move the boundary" idea as wirePanelResizers.
+const MIN_OSC_PANE_H = 90; // matches .osc-pane's CSS min-height — resizing below it would be fought by CSS
+function applyOscPaneFlex(panel) {
+  panel.indicators.filter(i => i._oscDiv).forEach(i => {
+    i._oscDiv.style.flex = i.paneHeight ? `0 0 ${i.paneHeight}px` : '1 1 0';
+  });
+}
+function beginOscPaneResize(panel, aInd, bInd, e) {
+  e.preventDefault(); e.stopPropagation();
+  panel.indicators.filter(i => i._oscDiv && i.paneHeight == null)
+    .forEach(i => { i.paneHeight = i._oscDiv.getBoundingClientRect().height; });
+  const startY = e.clientY;
+  const startA = aInd._oscDiv.getBoundingClientRect().height;
+  const combined = startA + bInd._oscDiv.getBoundingClientRect().height;
+  const move = ev => {
+    let a = startA + (ev.clientY - startY);
+    a = Math.max(MIN_OSC_PANE_H, Math.min(combined - MIN_OSC_PANE_H, a));
+    aInd.paneHeight = a;
+    bInd.paneHeight = combined - a;
+    applyOscPaneFlex(panel);
+    resizeAllCharts();
+  };
+  const up = () => {
+    window.removeEventListener('mousemove', move);
+    window.removeEventListener('mouseup', up);
+    document.body.classList.remove('resizing-row');
+    scheduleAutosave();
+  };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+  document.body.classList.add('resizing-row');
+}
+
+// ---- Oscillator pane reorder (drag the label to move a pane) ----
+let _dragOscInd = null;
+function wireOscDrag(panel, ind, div) {
+  const label = div.querySelector('.osc-label');
+  label.addEventListener('dragstart', e => {
+    _dragOscInd = ind;
+    div.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', ind.uid); } catch {}
+  });
+  label.addEventListener('dragend', () => {
+    _dragOscInd = null;
+    panel.el.querySelectorAll('.osc-pane').forEach(p => p.classList.remove('dragging', 'drop-above', 'drop-below'));
+  });
+  div.addEventListener('dragover', e => {
+    if (!_dragOscInd || _dragOscInd === ind) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = div.getBoundingClientRect();
+    const below = e.clientY > r.top + r.height / 2;
+    div.classList.toggle('drop-below', below);
+    div.classList.toggle('drop-above', !below);
+  });
+  div.addEventListener('dragleave', () => div.classList.remove('drop-above', 'drop-below'));
+  div.addEventListener('drop', e => {
+    if (!_dragOscInd) return;
+    e.preventDefault();
+    const r = div.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    const from = _dragOscInd;
+    div.classList.remove('drop-above', 'drop-below');
+    reorderOscillatorPane(panel, from, ind, after);
+  });
+}
+// Reorder panel.indicators (order is what persistence.js's snapshot() saves)
+// and re-append the .osc-pane DOM nodes to match — appendChild on an existing
+// node moves it rather than duplicating it.
+function reorderOscillatorPane(panel, fromInd, toInd, after) {
+  if (fromInd === toInd) return;
+  const arr = panel.indicators;
+  const fromIdx = arr.indexOf(fromInd);
+  if (fromIdx < 0) return;
+  arr.splice(fromIdx, 1);
+  const toIdx = arr.indexOf(toInd);
+  if (toIdx < 0) arr.push(fromInd);
+  else arr.splice(after ? toIdx + 1 : toIdx, 0, fromInd);
+  const oscWrap = panel.el.querySelector('.osc-wrap');
+  arr.forEach(i => { if (i._oscDiv) oscWrap.appendChild(i._oscDiv); });
+  rewireOscResizeHandles(panel);
+  alignPriceScales(panel);
+  scheduleAutosave();
+}
+// Rebuild every pane's resize handle after add/remove/reorder so each one
+// (other than whichever pane is now first) drags against its new neighbor.
+function rewireOscResizeHandles(panel) {
+  const oscInds = panel.indicators.filter(i => i._oscDiv);
+  oscInds.forEach((ind, idx) => {
+    const existing = ind._oscDiv.querySelector('.osc-resize');
+    if (idx === 0) { existing?.remove(); return; }
+    let handle = existing;
+    if (!handle) {
+      handle = document.createElement('div');
+      handle.className = 'osc-resize';
+      handle.title = 'Drag to resize';
+      ind._oscDiv.insertBefore(handle, ind._oscDiv.firstChild);
+    }
+    const prevInd = oscInds[idx - 1];
+    handle.onmousedown = e => beginOscPaneResize(panel, prevInd, ind, e);
   });
 }
 
@@ -1332,10 +1445,23 @@ function syncTimeScales(main, sub) {
   });
 }
 
+const DEFAULT_OSC_PANE_H = 110, OSC_WRAP_CAP = 330;
 function layoutOscillators(panel) {
   const wrap = panel.el.querySelector('.osc-wrap');
-  const n = panel.indicators.filter(i => i._oscDiv).length;
-  wrap.style.height = n ? Math.min(n * 110, 330) + 'px' : '0';
+  const oscInds = panel.indicators.filter(i => i._oscDiv);
+  let total = oscInds.reduce((sum, i) => sum + (i.paneHeight || DEFAULT_OSC_PANE_H), 0);
+  // Once any pane has been manually resized, honour the user's explicit total
+  // instead of clamping to the default 3-pane cap — that cap only exists to
+  // keep the un-resized default stack from growing unbounded.
+  if (!oscInds.some(i => i.paneHeight)) total = Math.min(total, OSC_WRAP_CAP);
+  wrap.style.height = oscInds.length ? total + 'px' : '0';
+  // Re-append in logical (panel.indicators) order every time — restoring a
+  // saved layout adds several oscillators whose async worker calcs can settle
+  // out of order, so DOM append order alone isn't reliable; this keeps the
+  // visual stack (and therefore resize-handle pairing) matching the saved order.
+  oscInds.forEach(i => wrap.appendChild(i._oscDiv));
+  applyOscPaneFlex(panel);
+  rewireOscResizeHandles(panel);
   // The oscillator set changed — drop every scale back to the baseline so the
   // panes re-measure from scratch (otherwise they stay padded to the width of
   // a since-removed oscillator and never shrink back). alignPriceScales then

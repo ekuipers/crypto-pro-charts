@@ -4,6 +4,51 @@
 
 ---
 
+## v1.43.4 — 2026-07-22 — Roadmap rescan: resizable + reorderable oscillator panes
+
+**Task:** "scan roadmap" (issued from Trader, which shares the Suite's master `CLAUDE.md`). Suite roadmap
+item #2: "Charts: allow the indicator panes below the chart to be resized vertically and to be moved to
+another position within the indicators area." Own Bugs/Roadmap empty.
+
+**Before:** oscillator panes (RSI, MACD, etc., stacked in `.osc-wrap` below the main chart) were always
+`flex: 1` — equal height, fixed DOM order (append order), no way to resize or reorder them.
+
+**Fix (`src/js/charts.js`):**
+
+- Each indicator (`ind.paneHeight`, new optional field) can now hold an explicit pixel height. `applyOscPaneFlex()`
+  switches a pane to `flex: 0 0 {paneHeight}px` once set, otherwise it keeps the original equal-share `flex: 1 1 0`.
+- A thin `.osc-resize` handle sits between every pair of adjacent panes (none above the first). Dragging it
+  (`beginOscPaneResize`) freezes every sibling's *current* on-screen height into `paneHeight` first (so
+  untouched panes don't jump), then redistributes pixels only between the dragged pair — same "lock the
+  ratio, only move the boundary" idea as the existing `wirePanelResizers` panel splitter. Min pane height
+  90px, matching the pre-existing CSS `min-height`.
+- `layoutOscillators()`'s wrap-height formula now sums each pane's `paneHeight || 110`, still capped at the
+  original 330px default until any pane is manually resized (then the user's explicit total is honoured).
+  It also re-appends panes in `panel.indicators` array order on every call — restoring a saved layout adds
+  several oscillators whose async worker calcs can resolve out of order, so DOM append order alone wasn't a
+  reliable stand-in for logical order once resize-handle pairing and persistence started depending on it.
+- Reordering: each pane's label (`.osc-label`, now `draggable="true"`, with a `⠿` handle like the existing
+  watchlist row/tab drag pattern) fires native HTML5 drag events; dropping above/below a sibling splices
+  `panel.indicators` to the new position (`reorderOscillatorPane`) and re-appends the DOM nodes to match —
+  `appendChild` on an existing node moves it, no duplication. Resize handles are rebuilt after every
+  add/remove/reorder (`rewireOscResizeHandles`) so each one always pairs with its current neighbor above it.
+
+**Persistence (`src/js/persistence.js`):** `snapshot()` now includes `paneHeight` per indicator (array order
+already encoded pane order, so reordering needed no schema change beyond the height field);
+`applyLayoutData()` passes it through `addIndicator()`'s new 6th `paneHeight` parameter.
+
+**Docs:** `src/js/manual.js`'s Indicators section documents both gestures; footer version bumped to v1.43.4.
+
+**Files:** `src/js/charts.js`, `src/js/persistence.js`, `src/js/manual.js`, `public/css/style.css`
+(`.osc-resize`, `.osc-drag`, `.osc-pane.dragging/.drop-above/.drop-below`, new `body.resizing-row` cursor
+class — the pre-existing `body.resizing` hardcodes `cursor: col-resize`, wrong for a vertical drag), `public/index.html`.
+
+**Verified:** `npm test` (35/35, no regressions — no existing test touches DOM/drag-drop code, consistent
+with the existing test file scope). `node --check` on all three edited JS files. No browser session
+available this session to click through resize/reorder live — recommended before fully trusting it.
+
+---
+
 ## v1.43.3 — 2026-07-22 — Roadmap rescan: fix Trader→Charts deep-link not loading the symbol
 
 **Task:** "rescan roadmap." Suite Bugs #1: "when in Trader a symbol is selected it should load the symbol

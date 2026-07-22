@@ -57,7 +57,8 @@ const SECTIONS = [
         <li>Click the <b>colored dot</b> to reopen its params/color.</li>
         <li>Click the <b>×</b> to remove it.</li>
       </ul>
-      <p>Indicator math runs in a background worker, so adding several indicators across a multi-chart layout doesn't freeze the UI.</p>`,
+      <p>Indicator math runs in a background worker, so adding several indicators across a multi-chart layout doesn't freeze the UI.</p>
+      <p>Oscillator indicators (RSI, MACD, etc.) stack in their own panes below the main chart. Drag the thin bar between two panes to resize them vertically, or drag a pane's label (⠿) up or down to move it to another position in the stack. Both the size and order are saved with the layout.</p>`,
   },
   {
     id: 'watchlist', title: 'Watchlist & Market Status',

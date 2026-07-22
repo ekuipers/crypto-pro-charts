@@ -413,6 +413,14 @@ export async function fetchAllPairs() {
 export async function validateSymbol(symbol, exchange = 'binance') {
   try {
     const pairs = await fetchExchangePairs(exchange);
+    if (exchange === 'alpaca' || exchange === 'cryptocompare') {
+      // These two reuse Binance's pair list (no free unauthenticated pair-list
+      // endpoint of their own) but quote differently — Alpaca is USD, Binance is
+      // USDT/BUSD/etc — so a literal symbol compare always fails. Match on base
+      // asset instead, same substitution toExchangeSymbol() already applies.
+      const base = baseAsset(symbol);
+      return pairs.some(p => baseAsset(p.symbol) === base);
+    }
     return pairs.some(p => p.symbol === symbol);
   } catch { return false; }
 }

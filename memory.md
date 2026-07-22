@@ -4,6 +4,33 @@
 
 ---
 
+## v1.43.3 — 2026-07-22 — Roadmap rescan: fix Trader→Charts deep-link not loading the symbol
+
+**Task:** "rescan roadmap." Suite Bugs #1: "when in Trader a symbol is selected it should load the symbol
+in charts. The link from Trader is correct but it doesn't load the correct chart in Charts."
+
+**Root cause:** Trader's `tvLink()` builds `?symbol=BTCUSD&exchange=alpaca` (Alpaca is genuinely
+USD-quoted). `router.js`'s `applyUrlOnLoad()` gates the deep link through `data.js`'s `validateSymbol()`,
+which for `alpaca` (no free unauthenticated pair-list endpoint) falls back to Binance's pair list via
+`fetchExchangePairs()` — but Binance lists `BTCUSDT`, not `BTCUSD`. The old `validateSymbol()` did a literal
+`p.symbol === symbol` string compare, which can never match, so every Trader deep link failed validation
+and the router showed a "not found" toast instead of charting the symbol.
+
+**Fix:** `validateSymbol()` (`src/js/data.js`) now special-cases `alpaca`/`cryptocompare` (the two
+exchanges that reuse Binance's pair list) to compare by `baseAsset()` instead of the literal pair string —
+the same base/quote substitution `toExchangeSymbol()` already applies when it builds the actual kline
+request. `BTCUSD` now matches Binance's `BTCUSDT` entry on base asset `BTC`, passes validation, and charts
+normally at `BTC/USD` via Alpaca.
+
+**Files:** `src/js/data.js` (`validateSymbol`), `public/index.html` (footer version bump).
+
+**Verified:** `npm test` (35/35, no regressions — no existing test covers `validateSymbol` since it's
+network-dependent and the suite only unit-tests pure functions; consistent with existing test file scope).
+No browser session available to click a live Trader→Charts link end-to-end this session — recommended
+before fully trusting it.
+
+---
+
 ## v1.43.2 — 2026-07-22 — Roadmap rescan: symbol switching now unfolds from the chart panel itself
 
 **Task:** "rescan roadmap." Suite roadmap item #3: "opening a symbol in the chart which is not on the list

@@ -58,7 +58,8 @@ const SECTIONS = [
         <li>Click the <b>×</b> to remove it.</li>
       </ul>
       <p>Indicator math runs in a background worker, so adding several indicators across a multi-chart layout doesn't freeze the UI.</p>
-      <p>Oscillator indicators (RSI, MACD, etc.) stack in their own panes below the main chart. Drag the thin bar between two panes to resize them vertically, or drag a pane's label (⠿) up or down to move it to another position in the stack. Both the size and order are saved with the layout.</p>`,
+      <p>Oscillator indicators (RSI, MACD, etc.) stack in their own panes below the main chart. Drag the thin bar between two panes to resize them vertically, or drag a pane's label (⠿) up or down to move it to another position in the stack. Both the size and order are saved with the layout.</p>
+      <p>Drag the thin bar directly above the oscillator stack (only visible once at least one oscillator is added) to resize the whole stack against the main candlestick pane — dragging down grows the main chart, dragging up grows the oscillator area.</p>`,
   },
   {
     id: 'watchlist', title: 'Watchlist & Market Status',

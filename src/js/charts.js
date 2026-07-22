@@ -450,6 +450,7 @@ export function addPanel(opts = {}) {
     </div>
     <div class="panel-body">
       <div class="main-chart-div"></div>
+      <div class="main-osc-resize" title="Drag to resize" style="display:none"></div>
       <div class="osc-wrap"></div>
       <div class="vol-profile-layer"></div>
       <div class="drawing-layer"></div>
@@ -511,6 +512,7 @@ export function addPanel(opts = {}) {
   });
   el.addEventListener('mousedown', () => setActivePanel(panel));
   wirePanelResizers(panel);
+  wireMainOscResize(panel);
 
   initChart(panel);
   loadPanelData(panel);
@@ -1139,14 +1141,17 @@ export function setIndicatorActive(panel, ind, active) {
 }
 
 export function recomputeIndicators(panel) {
-  // rebuild all (simple + robust)
-  const defs = panel.indicators.map(i => ({ defId: i.defId, params: i.params, color: i.color, uid: i.uid }));
-  panel.indicators.slice().forEach(ind => {
-    ind.series.forEach(s => { try { panel.chart.removeSeries(s); } catch {} });
-    if (ind.hist) { try { panel.chart.removeSeries(ind.hist); } catch {} }
-    if (ind.subChart) { try { ind.subChart.remove(); } catch {} ind._oscDiv?.remove(); }
-    ind.series = []; ind.subSeries = []; ind.subChart = null; ind.hist = null;
-  });
+  // rebuild all (simple + robust). Reuses teardownIndicator() (rather than a
+  // separate inline copy) so ind._oscDiv/_spacer are nulled out and ind._gen
+  // is bumped — without the null-out, an oscillator pane whose async rebuild
+  // (worker calc) hasn't resolved yet still had its stale, DOM-detached div
+  // sitting on `ind._oscDiv`; a sibling oscillator's rebuild finishing first
+  // calls layoutOscillators(), which re-appends every ind with a truthy
+  // _oscDiv — including that stale, now-chartless div — back into .osc-wrap,
+  // showing an empty pane until (if ever) its own rebuild replaces it. This
+  // is what made refreshAllPanels() intermittently leave indicator panes
+  // empty (Suite roadmap rescan bug report, 2026-07-22).
+  panel.indicators.slice().forEach(ind => teardownIndicator(panel, ind));
   if (panel.heikinSeries) { try { panel.chart.removeSeries(panel.heikinSeries); } catch {} panel.heikinSeries = null; }
   panel.el.querySelector('.vol-profile-layer').innerHTML = '';
   panel._luxAlgoMarkers = [];
@@ -1320,6 +1325,55 @@ function beginOscPaneResize(panel, aInd, bInd, e) {
   document.body.classList.add('resizing-row');
 }
 
+// ---- Main chart / oscillator-stack boundary resize (Suite roadmap: "make
+// the chart pane sizeable") ----
+// .main-chart-div is flex:1, so it has no explicit height to drag — instead
+// this scales every oscillator's paneHeight together, proportionally, which
+// changes .osc-wrap's total explicit height and therefore how much room
+// main-chart-div's flex:1 has left. Reuses the same paneHeight field (and
+// autosave path) individual-pane resizing already persists, so no schema
+// change is needed. .main-chart-div's own CSS min-height (200px) is the real
+// floor; MIN_MAIN_CHART_H just keeps the drag from fighting it every frame.
+const MIN_MAIN_CHART_H = 200;
+function wireMainOscResize(panel) {
+  const handle = panel.el.querySelector('.main-osc-resize');
+  if (!handle) return;
+  handle.addEventListener('mousedown', e => {
+    const oscInds = panel.indicators.filter(i => i._oscDiv);
+    if (!oscInds.length) return;
+    e.preventDefault(); e.stopPropagation();
+    const wrap = panel.el.querySelector('.osc-wrap');
+    const body = panel.el.querySelector('.panel-body');
+    const startY = e.clientY;
+    const startWrapH = wrap.getBoundingClientRect().height;
+    const bodyH = body.getBoundingClientRect().height;
+    const startHeights = oscInds.map(i => i.paneHeight || (startWrapH / oscInds.length));
+    const startTotal = startHeights.reduce((a, b) => a + b, 0) || 1;
+    const move = ev => {
+      const maxWrapH = Math.max(MIN_OSC_PANE_H * oscInds.length, bodyH - MIN_MAIN_CHART_H);
+      const minWrapH = MIN_OSC_PANE_H * oscInds.length;
+      // Dragging the handle down grows the main chart pane above it, which
+      // means shrinking the oscillator wrap below it — mirrors the "drag
+      // grows the pane above the handle" convention beginOscPaneResize uses.
+      const newWrapH = Math.max(minWrapH, Math.min(maxWrapH, startWrapH - (ev.clientY - startY)));
+      const scale = newWrapH / startTotal;
+      oscInds.forEach((ind, idx) => { ind.paneHeight = Math.max(MIN_OSC_PANE_H, startHeights[idx] * scale); });
+      applyOscPaneFlex(panel);
+      wrap.style.height = oscInds.reduce((sum, i) => sum + i.paneHeight, 0) + 'px';
+      resizeAllCharts();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      document.body.classList.remove('resizing-row');
+      scheduleAutosave();
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    document.body.classList.add('resizing-row');
+  });
+}
+
 // ---- Oscillator pane reorder (drag the label to move a pane) ----
 let _dragOscInd = null;
 function wireOscDrag(panel, ind, div) {
@@ -1462,6 +1516,11 @@ function layoutOscillators(panel) {
   oscInds.forEach(i => wrap.appendChild(i._oscDiv));
   applyOscPaneFlex(panel);
   rewireOscResizeHandles(panel);
+  // Suite roadmap: "make the chart pane sizeable" — the boundary between the
+  // main candlestick pane and the oscillator stack is only meaningful once
+  // there's a stack to trade space with.
+  const mainOscHandle = panel.el.querySelector('.main-osc-resize');
+  if (mainOscHandle) mainOscHandle.style.display = oscInds.length ? 'block' : 'none';
   // The oscillator set changed — drop every scale back to the baseline so the
   // panes re-measure from scratch (otherwise they stay padded to the width of
   // a since-removed oscillator and never shrink back). alignPriceScales then

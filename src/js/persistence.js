@@ -30,6 +30,17 @@ export function snapshot() {
     settings: state.settings,
     alerts: state.alerts,
     symColors: state.symColors,
+    // Which panel was active (Suite roadmap rescan bug fix, 2026-07-22): without
+    // this, applyLayoutData() always re-activated panels[0] regardless of which
+    // panel the user actually had selected, and router.js's syncUrl() had
+    // already written THAT panel's symbol into the URL on every symbol change.
+    // On reload, applyUrlOnLoad() then saw panels[0]'s (wrongly restored)
+    // symbol differ from the URL's (correct, previously-active) one and
+    // silently overwrote panels[0]'s symbol via changeSymbol() — corrupting a
+    // panel that had nothing to do with the deep link, with its indicators
+    // racing against the still-in-flight session-restore rebuild in the
+    // process (reported as "wrong chart price" + empty indicator panes).
+    activePanelIndex: state.panels.indexOf(state.activePanel),
     panels: state.panels.map(p => ({
       symbol: p.symbol, symbolName: p.symbolName, exchange: p.exchange, tf: p.tf,
       chartType: p.chartType || 'candles', scaleMode: p.scaleMode || 0, linkGroup: p.linkGroup || null,
@@ -186,7 +197,8 @@ export function applyLayoutData(data) {
       (pd.indicators || []).forEach(ind => addIndicator(panel, ind.defId, ind.params, ind.color, ind.active !== false, ind.paneHeight));
     });
   });
-  if (state.panels[0]) setActivePanel(state.panels[0]);
+  const restoredActive = state.panels[data.activePanelIndex] || state.panels[0];
+  if (restoredActive) setActivePanel(restoredActive);
   document.dispatchEvent(new CustomEvent('layout-restored'));
 }
 

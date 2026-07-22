@@ -4,6 +4,64 @@
 
 ---
 
+## v1.43.5 — 2026-07-22 — Roadmap rescan: main-chart/oscillator resize handle + 2 refresh/reload bugs
+
+**Task:** "rescan roadmap" (issued from Trader, which shares the Suite's master `CLAUDE.md`). Suite roadmap
+item #2: "Make the chart pane sizeable." Suite Bugs #1: "when clicking refresh, the indicator panes below
+the chart pane are empty." Suite Bugs #2: "on a renew page request in the browser, the charts and the
+indicator panes are not refreshed, resulting in empty indicator panes and wrong chart price for the
+symbol." Bugs took precedence per Suite workflow rule 22; all three are addressed below. Own Bugs/Roadmap
+empty going in.
+
+**Bug 1 fix — `recomputeIndicators()` left a stale, DOM-detached `ind._oscDiv` during refresh
+(`src/js/charts.js`):** `recomputeIndicators` (called by `loadPanelData`, which `refreshAllPanels` calls
+for every panel) had its own inline per-indicator teardown loop that removed each oscillator's DOM node
+(`ind._oscDiv?.remove()`) but never reset `ind._oscDiv`/`ind._spacer` to `null`, unlike the standalone
+`teardownIndicator()` used by remove/deactivate. Rebuilding an oscillator is async (worker calc), so
+between the teardown and the rebuild, `ind._oscDiv` still pointed at the removed, chartless div. If a
+*sibling* oscillator's rebuild resolved first, its `buildOscillator()` call to `layoutOscillators()` — which
+re-appends every indicator with a truthy `_oscDiv` — put that stale, empty div back into `.osc-wrap`,
+visible until (if ever) its own rebuild replaced it. Fix: `recomputeIndicators` now calls the shared
+`teardownIndicator()` per indicator instead of duplicating an incomplete copy — nulls `_oscDiv`/`_spacer`
+correctly and bumps `ind._gen` to invalidate any in-flight computation from a prior refresh, which the old
+inline loop didn't do either.
+
+**Bug 2 fix — active panel wasn't restored on reload, so a deep-link URL round-trip could corrupt a
+different panel's symbol (`src/js/persistence.js`):** `snapshot()` never saved which panel was active;
+`applyLayoutData()` always called `setActivePanel(state.panels[0])` regardless. Meanwhile `router.js`'s
+`syncUrl()` writes the *actually*-active panel's symbol into the URL on every `active-symbol-changed`
+event. On a multi-panel layout (l2h/l2v/l4) where a non-first panel was the active one, a reload restored
+every panel's own saved symbol correctly, then wrongly activated `panels[0]`, then `applyUrlOnLoad()` saw
+the URL's (correct, previously-active) symbol differ from `panels[0]`'s (correctly-restored, but now
+wrongly-active) symbol and called `changeSymbol(panels[0], ...)` — silently overwriting a panel that had
+nothing to do with the deep link, racing its own still-in-flight session-restore `loadPanelData` call.
+Reported as "wrong chart price" plus empty/mismatched indicator panes. Fix: `snapshot()` now saves
+`activePanelIndex: state.panels.indexOf(state.activePanel)`; `applyLayoutData()` restores
+`state.panels[data.activePanelIndex] || state.panels[0]` as active instead of hardcoding `panels[0]`. Older
+saved sessions without the field fall back to `panels[0]` unchanged.
+
+**Roadmap #2 — main chart / oscillator boundary is now draggable (`src/js/charts.js`,
+`public/css/style.css`, `public/index.html`):** the earlier v1.43.4 rescan made oscillator-to-oscillator
+boundaries resizable, but the boundary between the main candlestick pane and the oscillator stack as a
+whole was still fixed — `.main-chart-div` is `flex:1` with no explicit height to drag. New
+`.main-osc-resize` handle (only shown once ≥1 oscillator exists, toggled in `layoutOscillators()`) scales
+every oscillator's existing `paneHeight` field proportionally on drag, which changes `.osc-wrap`'s total
+explicit height and therefore how much space `.main-chart-div`'s `flex:1` has left — reuses the same field
+(and autosave path) individual-pane resizing already persists, no new schema. Clamped so the main chart
+never shrinks below 200px (matching `.main-chart-div`'s existing CSS `min-height`) and no oscillator pane
+below the existing 90px `MIN_OSC_PANE_H` floor. Manual doc (`src/js/manual.js`) updated; footer bumped to
+v1.43.5.
+
+**Files:** `src/js/charts.js`, `src/js/persistence.js`, `src/js/manual.js`, `public/css/style.css`,
+`public/index.html`.
+
+**Verified:** `npm test` (35/35, no regressions). `node --check` on all three edited JS files. No browser
+session available this session to click through refresh/reload/drag live — recommended before fully
+trusting all three, especially the reload/active-panel fix which depends on multi-panel layout state that's
+hard to exercise headlessly.
+
+---
+
 ## v1.43.4 — 2026-07-22 — Roadmap rescan: resizable + reorderable oscillator panes
 
 **Task:** "scan roadmap" (issued from Trader, which shares the Suite's master `CLAUDE.md`). Suite roadmap

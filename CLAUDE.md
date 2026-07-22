@@ -17,8 +17,8 @@ Creator: [name removed]
 
 ## Roadmap
 
-_No open roadmap items. Completed items are logged in `memory.md` (see v1.43.2)._
+_No open roadmap items. Completed items are logged in `memory.md` (see v1.43.5)._
 
 ## Bugs
 
-_No open bugs. Fixed bugs are logged in `memory.md` (see v1.41.6)._
+_No open bugs. Fixed bugs are logged in `memory.md` (see v1.43.5)._

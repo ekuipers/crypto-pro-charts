@@ -218,6 +218,11 @@ function accountModal(user) {
       </div>
     </div>
     <p class="muted">Your layouts and watchlists are saved to this account.</p>
+    <label>Notification email<input id="acctNotifyEmail" type="email" placeholder="you@example.com" value="${esc(user.notificationEmail || '')}"></label>
+    <div class="modal-actions acct-sec-row">
+      <button id="acctNotifyEmailSave" class="primary-btn">Save email</button>
+    </div>
+    <div class="auth-err" id="acctNotifyEmailMsg"></div>
     <div class="acct-sec-sep">Security</div>
     <div class="modal-actions acct-sec-row">
       <button id="acctChangePw">Change password</button>
@@ -230,6 +235,25 @@ function accountModal(user) {
     m.querySelector('#acctClose').addEventListener('click', closeModal);
     m.querySelector('#acctChangePw').addEventListener('click', changePasswordModal);
     m.querySelector('#acctTotp').addEventListener('click', () => (user.totpEnabled ? disableTotpModal() : setupTotpModal()));
+    m.querySelector('#acctNotifyEmailSave').addEventListener('click', async () => {
+      const msgEl = m.querySelector('#acctNotifyEmailMsg');
+      const email = m.querySelector('#acctNotifyEmail').value.trim();
+      msgEl.classList.remove('set-warn');
+      msgEl.style.color = 'var(--muted)';
+      msgEl.textContent = 'Saving…';
+      try {
+        const r = await fetch('/api/auth/notification-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { msgEl.style.color = 'var(--red)'; msgEl.textContent = data.error || 'Could not save email.'; return; }
+        user.notificationEmail = data.notificationEmail;
+        if (currentUser) currentUser.notificationEmail = data.notificationEmail;
+        msgEl.style.color = 'var(--green)';
+        msgEl.textContent = 'Saved.';
+      } catch { msgEl.style.color = 'var(--red)'; msgEl.textContent = 'Network error — try again.'; }
+    });
     m.querySelector('#acctLogout').addEventListener('click', async () => {
       try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
       window.location.reload();

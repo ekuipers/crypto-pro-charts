@@ -2,12 +2,12 @@
 
 Description: Professional trading charting tool whih supports multiple charts on a single page. It has a professional-grade, industry-standard charting user interface.
 Title: CryptoPro Charts
-Creator: Erik Kuipers
+Creator: [name removed]
 
 # Workflow rules
 
 > Master workflow rules shared across all CryptoPro sub-projects live in
-> [CryptoPro Suite's CLAUDE.md](https://github.com/ekuipers/crypto-pro-suite/blob/main/CLAUDE.md)
+> [CryptoPro Suite's CLAUDE.md](https://github.com/[username]/crypto-pro-suite/blob/main/CLAUDE.md)
 > (memory.md changelog discipline, local-server, auto-commit/sync, documentation, roadmap-scan-triggers-implementation,
 > allow-all-edits, JS file placement, favicon-as-logo, compact-command, skills directory, etc.). Only rules
 > specific to this project are listed below.

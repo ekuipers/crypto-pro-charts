@@ -71,7 +71,7 @@ click through the dropdown open/search/pick flow visually — recommended before
 
 ## v1.43.1 — 2026-07-22 — Doc sync: new workflow rule (manual must track functionality changes)
 
-**Task:** Erik added a new project rule directly to `CLAUDE.md`: "Whenever functionality is added or
+**Task:** the user added a new project rule directly to `CLAUDE.md`: "Whenever functionality is added or
 changed, update the user manual accordingly." Applying it retroactively caught that v1.43.0 (deep-link
 symbol validation, same session) had shipped without a manual update.
 
@@ -269,7 +269,7 @@ workflow rules in this file" — full audit + findings logged in `CryptoPro Suit
 
 **Gap found and fixed here:** Suite rule 3 ("title, year, creator and donation link in the footer") —
 `public/index.html`'s footer had title/creator/year/version but no donation link. Added a `☕ Donate` link
-to `https://buymeacoffee.com/erikkuipers` (same URL Suite's own footer uses) plus a matching
+to `https://buymeacoffee.com/[username]` (same URL Suite's own footer uses) plus a matching
 `.footer-donate` rule in `public/css/style.css` (amber `#e0b45c`, matching Suite's own donate-link color
 for cross-suite consistency per rule 17). Header/title-bar branding (rule 14 — `CryptoPro` colored via
 `.logo b { color: var(--accent) }`) was already compliant, nothing to change there.
@@ -1508,7 +1508,7 @@ Shipped the entire P1 tier of the 2026-07-11 roadmap in one release. Verified wi
 - `public/css/style.css`: Added `.sym-quote-tag` (10 px, muted, normal weight).
 
 ### Footer bar
-- `public/index.html`: Added `<footer class="app-footer">` — logo, description, "Created by Erik Kuipers", © 2026.
+- `public/index.html`: Added `<footer class="app-footer">` — logo, description, "Created by [name removed]", © 2026.
 - `public/css/style.css`: Added `.app-footer` (30 px, flex, panel bg, top border) with responsive rule hiding the description on narrow screens.
 
 ### SVG drawing toolbar icons

@@ -10,6 +10,17 @@ import { showModal, closeModal } from './alerts.js';
 
 export let currentUser = null;
 
+// Renders the otpauth:// URI as a QR image via the vendored qrcode-lib.js
+// (window.qrcode, loaded as a classic script ahead of this module — see
+// public/index.html). Falls back to the plain link if the library didn't load.
+function totpQrTag(otpauthUri) {
+  if (typeof window.qrcode !== 'function') return `<p class="muted">${esc(otpauthUri)}</p>`;
+  const qr = window.qrcode(0, 'M');
+  qr.addData(otpauthUri);
+  qr.make();
+  return qr.createImgTag(6, 8, '2FA setup QR code');
+}
+
 async function fetchMe() {
   try {
     const r = await fetch('/api/me');
@@ -150,6 +161,7 @@ function setupTotpModal() {
     m.innerHTML = `
       <h3>Enable 2FA</h3>
       <p class="muted">Scan this into any TOTP authenticator app (Google Authenticator, Authy, 1Password…), or enter the secret manually.</p>
+      <div class="totp-qr">${totpQrTag(setup.otpauthUri)}</div>
       <div class="totp-secret">${esc(setup.secret)}</div>
       <label>Enter the 6-digit code from your app to confirm<input id="tfCode" inputmode="numeric" maxlength="6" placeholder="000000"></label>
       <div class="auth-err set-warn" id="tfErr"></div>

@@ -4,6 +4,25 @@
 
 ---
 
+## v1.43.6 — 2026-07-22 — Roadmap: 2FA registration QR code
+
+**Task:** "scan roadmap" (issued from Trader, shares the Suite master `CLAUDE.md`). Suite roadmap item #3:
+"Add a QR Code to the 2FA registration dialog." `/api/auth/2fa/setup` already returned an `otpauthUri`
+(`src/totp.js`), but the "Enable 2FA" modal (`src/js/auth.js`'s `setupTotpModal`) only ever showed the raw
+secret as text.
+
+**Fix:** vendored `qrcode-generator` (Kazuhiko Arase, MIT, pure JS, no deps) as `src/js/qrcode-lib.js`
+(identical file across all 4 suite projects, checksummed to confirm), loaded via a plain `<script>` tag in
+`public/index.html` ahead of the ES-module `main.js` so `window.qrcode` is ready before the modal can be
+opened. `setupTotpModal` now renders a new `totpQrTag(setup.otpauthUri)` helper's `<img>` (data-URI, no
+network call) above the existing secret text, styled with a new `.totp-qr` rule (`public/css/style.css`)
+matching `.totp-secret`'s card.
+
+**Verified:** `node --check` passed; the vendored encoder was round-tripped in Node against a real
+`otpauth://` URI to confirm it produces a valid QR (not just that the file parses) — same verification run
+across all 4 projects, detailed in Suite's `memory/memory.md` v2026-07-22.6. **Not verified: an actual
+phone-camera scan** — no browser tool or logged-in test session in this run.
+
 ## v1.43.5 — 2026-07-22 — Roadmap rescan: main-chart/oscillator resize handle + 2 refresh/reload bugs
 
 **Task:** "rescan roadmap" (issued from Trader, which shares the Suite's master `CLAUDE.md`). Suite roadmap

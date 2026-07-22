@@ -52,7 +52,7 @@ Professional multi-chart cryptocurrency trading & analytics platform — a profe
 - **Web Worker indicator computation** — indicator math runs off the main thread so multi-chart layouts stay smooth, with an automatic main-thread fallback if Workers are unavailable
 - **Native WebSocket relay** — OKX, Gate.io and KuCoin kline streams run through a server-side connection manager (one upstream socket per symbol, fanned out to every connected client) instead of REST polling
 - **Mobile/tablet responsive layout + PWA** — installable, offline-capable app shell; below ~820px any layout becomes a swipeable single-chart view with pointer/touch-driven drawing
-- **Security hardening** — CSP + standard security headers, Origin-based CSRF protection, per-IP rate limiting on auth routes, self-service password change, and optional TOTP 2FA
+- **Security hardening** — CSP + standard security headers, Origin-based CSRF protection, per-IP rate limiting on auth routes, self-service password change, and optional TOTP 2FA (setup dialog shows a scannable QR code alongside the manual-entry secret)
 - **Test suite + CI** — unit tests for indicator math and exchange kline normalization (`npm test`), run on every push/PR via GitHub Actions
 
 ## Exchanges & Data Sources

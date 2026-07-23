@@ -941,6 +941,7 @@ body.resizing-row * { pointer-events: none; }
 .footer-logo { display: inline-flex; align-items: center; gap: 4px; color: var(--text); }
 .footer-logo b { color: var(--accent); }
 .footer-logo-icon { width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; }
+.footer-studio { display: inline-flex; align-items: center; gap: 4px; }
 .footer-sep { color: var(--border); }
 .footer-version { opacity: 0.5; font-size: 10px; letter-spacing: 0.04em; }
 .footer-donate { color: #e0b45c; text-decoration: none; }

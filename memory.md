@@ -4,6 +4,23 @@
 
 ---
 
+## v1.43.8 — 2026-07-23 — Roadmap: "rescan workflows rules" — Developer Studio logo added to footer
+
+**Task:** "rescan roadmap" (Suite's shared master `CLAUDE.md`, roadmap item #1: "rescan workflows rules").
+Suite workflow rule 3 had just been updated to require a "company logo" + "developer studio name" in the
+footer, alongside a genuinely new source asset (`docs/VibeSoft Studio logo.png` in the Suite repo). No footer
+in any of the 4 projects showed the Developer Studio's own name/logo before this. Implemented identically
+across all 4 projects (shared footer pattern, Suite workflow rule 17); full cross-project detail in Suite's
+own `memory/memory.md` 2026-07-23 (4).
+
+**Fix:** resized the source PNG to a 96×96 `public/studio-logo.png` (served at `/studio-logo.png`, same static
+root as `public/favicon.svg`). `public/index.html`'s footer gained a `.footer-studio` span ("Developer Studio:
+**SoftVibe Studio**" + the logo image at this project's existing 16×16 `.footer-logo-icon` size) next to
+"Created by Erik Kuipers". Bumped `.footer-version` `v1.43.7` → `v1.43.8`.
+
+**Verified:** local `node server.js` smoke test confirmed `/studio-logo.png` serves `200 image/png` and `/`
+still 200; server stopped immediately after. No browser render check this session.
+
 ## v1.43.7 — 2026-07-23 — Roadmap: donation link swapped from Buy Me a Coffee to Patreon
 
 **Task:** "scan roadmap" (issued from Trader, shares the Suite master `CLAUDE.md`). Suite roadmap item 1:

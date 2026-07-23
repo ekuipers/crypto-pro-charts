@@ -4,6 +4,17 @@
 
 ---
 
+## v1.43.9 — 2026-07-23 — Fix: footer Developer Studio name typo ("SoftVibe" → "VibeSoft")
+
+**Task:** user flagged the wrong studio name in the footer, starting from CryptoPro Trader. Suite's shared
+`CLAUDE.md` (source of truth) has always said "VibeSoft Studio", but the name landed transposed in v1.43.8
+below when the Developer Studio footer line was first added.
+
+**Fix:** `public/index.html` — corrected the `<b>` text to "VibeSoft Studio". Also corrected the v1.43.8
+journal entry, which had the same typo. No version field to bump manually in this project's footer.
+
+**Verified:** visual diff against Suite `CLAUDE.md`'s Developer Studio line; no build run (plain-text edit).
+
 ## v1.43.8 — 2026-07-23 — Roadmap: "rescan workflows rules" — Developer Studio logo added to footer
 
 **Task:** "rescan roadmap" (Suite's shared master `CLAUDE.md`, roadmap item #1: "rescan workflows rules").
@@ -15,7 +26,7 @@ own `memory/memory.md` 2026-07-23 (4).
 
 **Fix:** resized the source PNG to a 96×96 `public/studio-logo.png` (served at `/studio-logo.png`, same static
 root as `public/favicon.svg`). `public/index.html`'s footer gained a `.footer-studio` span ("Developer Studio:
-**SoftVibe Studio**" + the logo image at this project's existing 16×16 `.footer-logo-icon` size) next to
+**VibeSoft Studio**" + the logo image at this project's existing 16×16 `.footer-logo-icon` size) next to
 "Created by Erik Kuipers". Bumped `.footer-version` `v1.43.7` → `v1.43.8`.
 
 **Verified:** local `node server.js` smoke test confirmed `/studio-logo.png` serves `200 image/png` and `/`

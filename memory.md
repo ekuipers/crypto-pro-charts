@@ -4,7 +4,21 @@
 
 ---
 
-## v1.43.7 — 2026-07-22 — Roadmap: notification email on the account profile
+## v1.43.7 — 2026-07-23 — Roadmap: donation link swapped from Buy Me a Coffee to Patreon
+
+**Task:** "scan roadmap" (issued from Trader, shares the Suite master `CLAUDE.md`). Suite roadmap item 1:
+"Replace the buymeacoffee donation link to Patreon." Suite's own docs already described Patreon as the
+active link, but the footer code across all 4 projects still pointed at `buymeacoffee.com/erikkuipers` —
+implemented the actual code change identically across all 4 projects (shared footer pattern, Suite workflow
+rule 17).
+
+**Fix:** `public/index.html` — `.footer-donate` link now points to `https://patreon.com/vibesoftstudio`
+with label "♥ Support" (was "☕ Donate"). Bumped `.footer-version` from v1.43.6 to v1.43.7.
+
+**Verified:** static link/label + version-string change only; no dev server run this session. Full
+cross-project writeup: Suite's `memory/memory.md` this same date.
+
+## v1.43.7 (prior) — 2026-07-22 — Roadmap: notification email on the account profile
 
 **Task:** "rescan roadmap" (issued from Trader, shares the Suite master `CLAUDE.md`). Suite roadmap item 1:
 "Add the option for the user to add an email address to their profile to receive notifications. Save it in
